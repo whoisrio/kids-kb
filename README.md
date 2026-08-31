@@ -18,8 +18,19 @@ uv run python -m kb.cli status
 uv run pytest                          # 测试需 KB_TEST_DATABASE_URL（如 postgresql://localhost/kb_test）
 ```
 
-五阶段骨架：渲染 -> 整页版面 -> 视觉解析 -> 质检 lite -> 复核队列；
+五阶段骨架：渲染 -> 版面分析 -> 分级解析 -> 质检 -> 复核队列；
 各阶段幂等、可断点重跑，输入输出落 PostgreSQL（含 pgvector 扩展，本期只建表）。
+
+## 精度期 2a：版面引擎与质检升级
+
+- 版面引擎开关：`KB_LAYOUT_ENGINE=paddleocr`（需 `uv sync --extra layout`）。
+  选型实测：完整 PaddleOCR-VL 质量 SOTA 但 Mac CPU 353s/页（逐块 VLM 识别我们用不上）；
+  改用版面专用模型 PP-DocLayoutV2，实测 ~5s/页，识别仍走③分级路由（文本→rapidocr，公式/图/表→视觉模型）。
+- 质检三层：L1 规则（empty/maybe_truncated，自动关闭）；
+  L2 公式 KaTeX 校验（bad_latex，可自动关闭，需本机 node）；
+  L3 双模型比对（`KB_VISION_COMPARE_MODEL` 配置第二渠道，llm_disagree 只进不出、人工裁决）。
+- 黄金集区块级：`golden-annotate <doc_id>` 导出区块标注底稿（人工校对），
+  `golden-check <doc_id> --level block` 报区块匹配率/类型准确率/内容 CER。
 
 ## 黄金集基线（骨架期，qwen3.8-27b 整页转录）
 
