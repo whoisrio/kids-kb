@@ -39,7 +39,12 @@
   .btn { border:none; border-radius:6px; padding:8px 18px; cursor:pointer; font-size:14px; }
   .btn.approve { background:#059669; color:#fff; }
   .btn.reject { background:#dc2626; color:#fff; }
+  .btn.plain { background:#e5e7eb; color:#111827; }
   .btn:disabled { opacity:.5; cursor:default; }
+  .editor { width:100%; min-height:260px; font:13px/1.6 ui-monospace,Menlo,monospace;
+            padding:10px; border:1px solid var(--line); border-radius:6px;
+            resize:vertical; box-sizing:border-box; }
+  .hint { color:var(--muted); font-size:12px; align-self:center; }
   .empty { text-align:center; color:var(--muted); padding:60px 0; }
 </style>
 </head>
@@ -106,6 +111,7 @@ function card(it) {
     ${it.status === "pending" ? `
     <div class="actions">
       <button class="btn approve">✓ 通过</button>
+      <button class="btn plain edit">✎ 编辑</button>
       <button class="btn reject">✗ 打回</button>
     </div>` : ""}`;
   const on = (sel, action) => {
@@ -114,7 +120,47 @@ function card(it) {
   };
   on(".btn.approve", "approve");
   on(".btn.reject", "reject");
+  const editBtn = d.querySelector(".btn.edit");
+  if (editBtn) editBtn.onclick = () => enterEdit(d, it);
   return d;
+}
+
+function enterEdit(cardEl, it) {
+  const md = cardEl.querySelector(".md");
+  const original = it.content_md || "";
+  md.innerHTML = "";
+  const ta = document.createElement("textarea");
+  ta.className = "editor";
+  ta.value = original;
+  md.appendChild(ta);
+  const bar = document.createElement("div");
+  bar.className = "actions";
+  bar.innerHTML = '<button class="btn approve">保存</button>' +
+                  '<button class="btn plain">取消</button>' +
+                  '<span class="hint"></span>';
+  md.appendChild(bar);
+  const [saveBtn, cancelBtn] = bar.querySelectorAll("button");
+  const hint = bar.querySelector(".hint");
+  cancelBtn.onclick = () => {
+    md.innerHTML = original ? renderContent(original) : "（空转录）";
+  };
+  saveBtn.onclick = async () => {
+    saveBtn.disabled = true;
+    const resp = await fetch(`/api/blocks/${it.block_id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content_md: ta.value }),
+    });
+    if (!resp.ok) {
+      saveBtn.disabled = false;
+      hint.textContent = "保存失败: " + resp.status;
+      return;
+    }
+    const data = await resp.json();
+    saveBtn.disabled = false;
+    alert(`已保存，自动关闭 ${data.resolved_reviews} 条复核记录`);
+    refresh();
+  };
 }
 
 async function act(id, action, btn) {
