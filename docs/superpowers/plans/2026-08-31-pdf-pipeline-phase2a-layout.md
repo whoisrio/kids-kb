@@ -14,28 +14,28 @@
 
 ---
 
-### Task 1: PaddleOCR-VL 可行性 spike（决策门）
+### Task 1: PaddleOCR-VL spike（效果与性能验证）
 
 **Files:**
 - Modify: `pyproject.toml`
 - Create: `backend/scripts/spike_paddleocr.py`
 
-**背景风险:** paddlepaddle 对 macOS arm64 + Python 3.13 的 wheel 支持不确定（`.python-version` 是 3.13）。本任务是决策门：跑不通就走备选（transformers 引擎或远端 VLM 版面分析），不要硬闯。
+**可装性已查实（PyPI，非猜测）：** paddlepaddle 3.3.1 有 `cp313-macosx_11_0_arm64` wheel（覆盖本项目 Python 3.13 + Apple Silicon）；paddleocr 3.7.0（requires_python >=3.8，经 `paddlex[ocr-core]` 引入）。本任务不是可行性赌博，而是验证真实页上的**区块质量与速度**——这是黄金集验收的第一次读数。
 
 - [ ] **Step 1: 安装依赖**
 
 `pyproject.toml` 的 `[project.optional-dependencies]` 追加：
 
 ```toml
-# 版面分析（精度期）；paddlepaddle 平台支持有限，装不上见 spike 任务备选
+# 版面分析（精度期）
 layout = [
-    "paddlepaddle>=3.0",
-    "paddleocr>=3.3",
+    "paddlepaddle>=3.3",
+    "paddleocr>=3.7",
 ]
 ```
 
 Run: `uv sync --extra layout`
-Expected: 安装成功。**若 paddlepaddle 无 cp313 macOS wheel** → 试 `uv sync --extra layout --python 3.12`；仍失败则记录结论，转备选路线（跳到 Step 4）。
+Expected: 安装成功（wheel 已确认存在；若解析失败，先看是不是 paddleocr 间接依赖冲突，再考虑降 paddleocr 小版本）。
 
 - [ ] **Step 2: spike 脚本**
 
@@ -80,15 +80,14 @@ if __name__ == "__main__":
 
 Run: `uv run --extra layout python backend/scripts/spike_paddleocr.py resources/2025秋7星学霸题中题数学4年级第7辑-第6页.png`
 决策标准（记录到本任务完成说明里）：
-- 安装成功且单页耗时 < 5min（CPU）→ 采用，进 Task 2
-- 区块能区分 标题/正文/公式/图 且正文识别基本正确 → 采用
-- 安装失败或输出不可用 → 备选：`PaddleOCRVL(engine="transformers")`（torch 路线）再试一次；仍不行则改用"远端视觉模型带坐标版面分析"（实现 `RemoteVisionLayout`，prompt 要求输出 JSON 区块列表，接口同为 `LayoutAnalyzer`），后续任务不变
+- 单页耗时 < 5min（CPU）且区块能区分 标题/正文/公式/图、正文识别基本正确 → 采用，进 Task 2
+- 输出不可用或慢到不可接受 → 备选：`PaddleOCRVL(engine="transformers")`（torch 路线）再试一次；仍不行则改用"远端视觉模型带坐标版面分析"（实现 `RemoteVisionLayout`，prompt 要求输出 JSON 区块列表，接口同为 `LayoutAnalyzer`），后续任务不变
 
 - [ ] **Step 4: Commit**
 
 ```bash
 git add pyproject.toml uv.lock backend/scripts/spike_paddleocr.py
-git commit -m "chore: PaddleOCR-VL 版面分析 spike（决策门）"
+git commit -m "chore: PaddleOCR-VL 版面分析 spike（效果与性能验证）"
 ```
 
 ---
