@@ -103,6 +103,7 @@ def test_run_parse_repairs_drifted_page_status(conn, parsed_doc):
 
     doc_id, cfg = parsed_doc
     with conn.cursor() as cur:  # 模拟状态漂移：内容在，状态被重置
+        cur.execute("UPDATE blocks SET content_md='已有内容'")
         cur.execute("UPDATE pages SET status='rendered'")
     assert run_parse(conn, cfg, doc_id, client=FakeClient()) == 0  # 无待解析块
     with conn.cursor() as cur:
