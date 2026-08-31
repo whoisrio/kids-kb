@@ -2,12 +2,34 @@
 精度期扩展：LaTeX 编译检查、题号连续性、置信分阈值分流。"""
 from __future__ import annotations
 
+import json
+import re
+import subprocess
 import uuid
+from pathlib import Path
 
 _TRUNCATION_ENDINGS = ("…", "...", "，", "、", "；", "：")
+_KATEX_CHECK = Path(__file__).parent.parent / "scripts" / "katex_check.cjs"
+_MATH_RE = re.compile(r"\$\$([\s\S]+?)\$\$|\$([^$\n]+?)\$")
 
 # 机器可检测的原因：只有这些允许自动关闭；人工插入的自定义原因必须人显式 通过/打回
-CHECKABLE_REASONS = frozenset({"empty", "maybe_truncated"})
+CHECKABLE_REASONS = frozenset({"empty", "maybe_truncated", "bad_latex"})
+
+
+def check_latex(content: str) -> bool:
+    """所有公式能被 KaTeX 渲染才返回 True；node 不可用则跳过（不误报）。"""
+    formulas = [m.group(1) or m.group(2) for m in _MATH_RE.finditer(content)]
+    if not formulas or not _KATEX_CHECK.exists():
+        return True
+    try:
+        proc = subprocess.run(
+            ["node", str(_KATEX_CHECK)], input=json.dumps(formulas),
+            capture_output=True, text=True, timeout=30,
+        )
+        results = json.loads(proc.stdout)
+    except Exception:
+        return True
+    return all(results)
 
 
 def check_content(content: str | None) -> list[str]:
@@ -16,6 +38,8 @@ def check_content(content: str | None) -> list[str]:
     reasons = []
     if content.rstrip().endswith(_TRUNCATION_ENDINGS):
         reasons.append("maybe_truncated")
+    if not check_latex(content):
+        reasons.append("bad_latex")
     return reasons
 
 

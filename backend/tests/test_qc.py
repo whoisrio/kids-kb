@@ -102,3 +102,42 @@ def test_run_qc_keeps_custom_reason_rows(conn, tmp_path):
     with conn.cursor() as cur:
         cur.execute("SELECT status FROM review_queue WHERE reason='幻觉前缀'")
         assert cur.fetchone()[0] == "pending"  # 自定义行存活
+
+
+def test_check_content_flags_bad_latex():
+    from kb.qc import check_content
+    assert "bad_latex" in check_content("公式坏了：$\\frac{1$ 缺括号")
+    assert check_content("公式正常：$\\frac{1}{2}$ 和 $$x^2$$") == []
+
+
+def test_bad_latex_auto_resolves_after_fix(conn, tmp_path):
+    """bad_latex 属可机器复判原因：修复后 resolve_block_reviews 自动关闭。"""
+    import pymupdf as fitz
+
+    from kb.config import Config
+    from kb.layout import run_layout
+    from kb.qc import resolve_block_reviews
+    from kb.render import render_document
+
+    cfg = Config(
+        database_url="postgresql://localhost/kb_test",
+        storage_dir=tmp_path / "storage",
+        vision_base_url="http://localhost:11434/v1",
+        vision_api_key="ollama",
+        vision_model="qwen3:4b",
+    )
+    p = tmp_path / "s.pdf"
+    d = fitz.open()
+    d.new_page()
+    d.save(p)
+    doc_id = render_document(conn, cfg, p, title="t")
+    run_layout(conn, doc_id)
+    with conn.cursor() as cur:
+        cur.execute("SELECT id FROM blocks")
+        block_id = str(cur.fetchone()[0])
+        cur.execute("INSERT INTO review_queue (block_id, reason) VALUES (%s,'bad_latex')", (block_id,))
+        cur.execute("UPDATE blocks SET content_md='修好了 $\\frac{1}{2}$' WHERE id=%s", (block_id,))
+    assert resolve_block_reviews(conn, block_id) == 1
+    with conn.cursor() as cur:
+        cur.execute("SELECT status FROM review_queue WHERE reason='bad_latex'")
+        assert cur.fetchone()[0] == "approved"
