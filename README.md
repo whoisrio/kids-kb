@@ -47,8 +47,21 @@ uv run pytest                          # 测试需 KB_TEST_DATABASE_URL（如 po
 结论：整页 VLM 转录无法满足“文本必须准确”的目标，
 精度期需按设计切换 PaddleOCR-VL 版面分析 + 分区块解析。
 
+## 精度期 2b：结构化拆分
+
+```bash
+uv run python -m kb.cli structure <doc_id> [--toc-pages 5]   # 目录页不给则自动探测
+```
+
+- 目录页经视觉模型解析进 `chapters` 表：章节/印刷页码/分类(taxonomy)/思想方法(tags)，是该书词表的唯一事实来源；
+- `calibrate_pages` 用章节标题在块文本中的首次出现定位物理页范围（印刷页码≠物理页码；目录页含所有标题，搜索时排除）；
+- 按章节窗口（非单页）喂文本模型拆条，跨页题目天然合并；taxonomy/tags 从该章词表注入，模型不自由发挥；
+- `pair_items` 按 label 精确配对 answer ↔ exercise/example；题号连续性检查（`missing_item`）进复核队列（不自动关闭）。
+
 设计文档：`docs/superpowers/specs/2026-08-31-pdf-parsing-pipeline-design.md`
-实施计划：`docs/superpowers/plans/2026-08-31-pdf-pipeline-phase1.md`
+实施计划：`docs/superpowers/plans/2026-08-31-pdf-pipeline-phase1.md`（骨架期）、
+`2026-08-31-pdf-pipeline-phase2a-layout.md`（版面+分级解析）、
+`2026-08-31-pdf-pipeline-phase2b-structure.md`（结构化拆分）
 
 ## 人工复核（最简 web 页）
 
