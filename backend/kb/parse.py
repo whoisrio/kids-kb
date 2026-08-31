@@ -35,12 +35,36 @@ def transcribe_image(client, model: str, image_path, prompt: str = TRANSCRIBE_PR
     return resp.choices[0].message.content
 
 
-def run_parse(conn, cfg: Config, doc_id: str, client=None) -> int:
-    """转录所有未解析的 block；单页失败只记 parse_error，不中断。返回成功解析的 block 数。"""
+# 走本地 rapidocr 的区块类型；其余（formula/figure/table/page）走视觉模型
+_OCRABLE_TYPES = {"text", "title", "header", "footer"}
+
+_ocr_engine = None
+
+
+def _get_ocr_engine():
+    global _ocr_engine
+    if _ocr_engine is None:
+        from rapidocr_onnxruntime import RapidOCR
+        _ocr_engine = RapidOCR()
+    return _ocr_engine
+
+
+def ocr_image(image_path) -> str:
+    """rapidocr 识别区块图像，按阅读顺序（y 后 x）拼接文本行。"""
+    result, _ = _get_ocr_engine()(str(image_path))
+    if not result:
+        return ""
+    lines = sorted(result, key=lambda r: (round(r[0][0][1] / 10), r[0][0][0]))
+    return "\n".join(r[1] for r in lines)
+
+
+def run_parse(conn, cfg: Config, doc_id: str, client=None, ocr=None) -> int:
+    """按区块类型分级解析；单块失败不中断。返回成功解析的 block 数。"""
     client = client or OpenAI(base_url=cfg.vision_base_url, api_key=cfg.vision_api_key)
+    ocr = ocr or ocr_image
     with conn.cursor() as cur:
         cur.execute(
-            """SELECT b.id, b.crop_path, b.page_id FROM blocks b
+            """SELECT b.id, b.crop_path, b.page_id, b.block_type FROM blocks b
                JOIN pages p ON p.id = b.page_id
                WHERE p.document_id=%s AND b.content_md IS NULL
                ORDER BY p.page_no""",
@@ -48,10 +72,13 @@ def run_parse(conn, cfg: Config, doc_id: str, client=None) -> int:
         )
         rows = cur.fetchall()
         n = 0
-        for block_id, crop_path, page_id in rows:
+        for block_id, crop_path, page_id, block_type in rows:
             try:
-                text = transcribe_image(client, cfg.vision_model, crop_path)
-            except Exception as e:  # noqa: BLE001 - 单页失败不中断
+                if block_type in _OCRABLE_TYPES:
+                    text = ocr(crop_path)
+                else:
+                    text = transcribe_image(client, cfg.vision_model, crop_path)
+            except Exception as e:  # noqa: BLE001 - 单块失败不中断
                 cur.execute(
                     "UPDATE pages SET status='failed', parse_error=%s WHERE id=%s",
                     (str(e)[:500], page_id),

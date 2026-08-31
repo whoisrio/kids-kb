@@ -18,6 +18,7 @@ def test_map_block_label():
     assert map_block_label("header") == "header"
     assert map_block_label("footer") == "footer"
     assert map_block_label("seal") == "figure"
+    assert map_block_label("image") == "figure"
     assert map_block_label("没见过的类型") == "text"  # 未知一律当正文，不丢内容
 
 

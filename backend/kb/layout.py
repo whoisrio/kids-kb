@@ -29,11 +29,15 @@ _LABEL_MAP = {
     "figure_title": "figure",
     "chart": "figure",
     "seal": "figure",
+    "image": "figure",
+    "vision_footnote": "figure",
     "table": "table",
     "header": "header",
     "header_image": "header",
     "footer": "footer",
+    "footer_image": "footer",
     "footnote": "footer",
+    "number": "footer",
 }
 
 
@@ -70,32 +74,40 @@ class WholePageLayout:
 
 
 class PaddleOCRLayout:
-    """PaddleOCR-VL 版面分析。模型懒加载（首次 predict 时才起）。"""
+    """PP-DocLayoutV2 版面检测（只切块+分类，不识别内容；识别走③分级解析）。
+
+    选型记录：完整 PaddleOCR-VL 实测 353s/页（CPU），其中逐块 VLM 识别我们并不需要；
+    版面专用模型 PP-DocLayoutV2 实测 ~5s/页，与本架构分工吻合。模型懒加载。
+    """
 
     def __init__(self, blocks_dir: Path, pipeline=None):
         self._blocks_dir = Path(blocks_dir)
-        self._pipeline = pipeline  # 测试可注入假 pipeline
+        self._pipeline = pipeline  # 测试可注入假模型
 
     def _get_pipeline(self):
         if self._pipeline is None:
-            from paddleocr import PaddleOCRVL
-            self._pipeline = PaddleOCRVL(pipeline_version="v1.5")
+            from paddleocr import LayoutDetection
+            self._pipeline = LayoutDetection(model_name="PP-DocLayoutV2")
         return self._pipeline
 
     def analyze(self, page_id: str, image_path: str) -> list[BlockDraft]:
         output = self._get_pipeline().predict(str(image_path))
         data = output[0].json if hasattr(output[0], "json") else {}
-        raw_blocks = (data.get("res") or data).get("parsing_res_list", [])
+        boxes = (data.get("res") or data).get("boxes", [])
+        # 阅读顺序：从上到下，同带内从左到右（单栏教辅够用；多栏由黄金集验收兜底）
+        boxes = sorted(boxes,
+                       key=lambda b: (round((b.get("coordinate") or [0])[1] / 20),
+                                      (b.get("coordinate") or [0, 0])[0]))
         out_dir = self._blocks_dir / page_id
         out_dir.mkdir(parents=True, exist_ok=True)
         drafts = []
-        for i, b in enumerate(raw_blocks):
-            bbox = tuple(b.get("block_bbox") or b.get("bbox") or (0, 0, 0, 0))
+        for i, b in enumerate(boxes):
+            bbox = tuple(b.get("coordinate") or (0, 0, 0, 0))
             crop = out_dir / f"b{i:03d}.png"
             crop_image(image_path, bbox, crop)
             drafts.append(BlockDraft(
                 page_id=page_id,
-                block_type=map_block_label(b.get("block_label") or b.get("label")),
+                block_type=map_block_label(b.get("label")),
                 bbox=tuple(float(v) for v in bbox),
                 crop_path=str(crop),
             ))

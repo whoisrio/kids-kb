@@ -109,3 +109,59 @@ def test_run_parse_repairs_drifted_page_status(conn, parsed_doc):
     with conn.cursor() as cur:
         cur.execute("SELECT status FROM pages WHERE document_id=%s", (doc_id,))
         assert {r[0] for r in cur.fetchall()} == {"parsed"}
+
+
+def test_ocr_text_blocks_with_rapidocr(tmp_path):
+    """rapidocr 真能认出渲染出来的文字（本地 ONNX，无需模型服务）。"""
+    from kb.parse import ocr_image
+
+    img = tmp_path / "t.png"
+    d = fitz.open()
+    pg = d.new_page()
+    pg.insert_text((36, 72), "乘除法竖式谜", fontsize=24, fontname="china-s")  # 默认 helv 不支持 CJK
+    pg.get_pixmap(dpi=150).save(img)
+    text = ocr_image(img)
+    assert "乘除法竖式谜" in text.replace(" ", "")
+
+
+def test_run_parse_routes_by_block_type(conn, parsed_doc):
+    """text 块走 ocr（不调视觉模型），formula 块走视觉模型。"""
+    from kb.parse import run_parse
+
+    doc_id, cfg = parsed_doc
+    calls = []
+
+    class SpyChat:
+        class completions:
+            @staticmethod
+            def create(model, messages, max_tokens):
+                calls.append(model)
+
+                class M:
+                    content = "视觉结果"
+
+                class C:
+                    message = M()
+
+                class R:
+                    choices = [C()]
+
+                return R()
+
+    class SpyClient:
+        chat = SpyChat()
+
+    with conn.cursor() as cur:  # 把第 1 块改成 text，第 2 块改成 formula
+        cur.execute("SELECT id FROM blocks ORDER BY created_at LIMIT 2")
+        b1, b2 = [r[0] for r in cur.fetchall()]
+        cur.execute("UPDATE blocks SET block_type='text' WHERE id=%s", (b1,))
+        cur.execute("UPDATE blocks SET block_type='formula' WHERE id=%s", (b2,))
+
+    def fake_ocr(image_path):
+        calls.append("ocr")
+        return "OCR结果"
+
+    n = run_parse(conn, cfg, doc_id, client=SpyClient(), ocr=fake_ocr)
+    assert n == 2
+    assert calls.count("ocr") == 1  # text 块走 ocr
+    assert calls.count(cfg.vision_model) == 1  # formula 块走视觉模型
