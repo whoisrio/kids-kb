@@ -88,12 +88,12 @@ PyMuPDF 渲染每页为图片（~200dpi），页面图存档。
 | 渲染 + 文本层检测 | PyMuPDF（已装） | 本地 | ~200dpi |
 | 版面分析 | PaddleOCR-VL-1.5（HuggingFace `PaddlePaddle/PaddleOCR-VL-1.5`） | 本地（Mac CPU/MPS） | 黄金集实测不达标则换：MinerU 2.5 / 远端 VLM 带坐标解析 |
 | 纯文本区块 OCR | rapidocr-onnxruntime（已装） | 本地 | |
-| 硬区域解析（公式/竖式/图形） | 阿里云百炼 DashScope `qwen3-vl-max` | 远端 API | 备选 Mathpix；复用现有 .env 里的远端渠道配置 |
-| 结构化拆分 | 阿里云百炼 DashScope `qwen-plus` | 远端 API | 纯文本任务；备选 qwen-flash |
+| 硬区域解析（公式/竖式/图形） | 远端视觉模型 qwen3.8-27b（现有渠道） | 远端 | 黄金集不达标再升级：百炼 qwen3-vl-max / Mathpix |
+| 结构化拆分 | 远端 qwen3.8-27b（纯文本调用） | 远端 | 备选本地 qwen3:4b（黄金集验证后决定） |
 | Embedding | bge-m3（fastembed 加载） | 本地 | 1024 维，中文检索效果好的开源模型 |
 | 数据库 | PostgreSQL（本地已有实例）+ pgvector 扩展 | 本地 | schema 用 SQL migration 文件管理 |
 
-新增依赖：`paddlepaddle`（Mac arm64 CPU 版）、`fastembed`、`psycopg[binary]`、`pgvector`（Python 驱动侧）；百炼走现有 openai 兼容客户端。
+新增依赖：`paddlepaddle`（Mac arm64 CPU 版）、`fastembed`、`psycopg[binary]`、`pgvector`（Python 驱动侧）；远端模型走现有 OpenAI 兼容客户端（openai 包已装，端点/key 在 .env）。
 所有模型名/端点集中在配置里，换模型不改代码。
 
 ## 6. 存储设计（PostgreSQL + pgvector）
