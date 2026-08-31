@@ -89,12 +89,16 @@ def calibrate_pages(conn, doc_id: str) -> int:
         chapters = cur.fetchall()
         located = []  # (chapter_id, page_start)
         for cid, title in chapters:
+            # 排除目录页：目录页包含所有章节标题，直接搜"首次出现页"会全命中目录
             cur.execute(
                 """SELECT p.page_no FROM pages p
                    JOIN blocks b ON b.page_id = p.id
                    WHERE p.document_id=%s AND b.content_md LIKE %s
+                     AND NOT EXISTS (SELECT 1 FROM blocks b2
+                                     WHERE b2.page_id = p.id
+                                       AND b2.content_md LIKE %s)
                    ORDER BY p.page_no LIMIT 1""",
-                (doc_id, f"%{title}%"),
+                (doc_id, f"%{title}%", "%目录%"),
             )
             row = cur.fetchone()
             if row:

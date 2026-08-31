@@ -126,6 +126,31 @@ def test_calibrate_pages_maps_print_to_physical(conn, doc_with_toc):
         assert cur.fetchall() == [(1, 2, 2), (2, 3, 3)]  # 文档共 3 页，末章到末页
 
 
+def test_calibrate_pages_skips_toc_page(conn, doc_with_toc):
+    """回归：目录页块文本含所有章节标题时，校准必须跳过目录页（真实数据踩过：全命中目录页导致 5->4 空区间）。"""
+    from kb.toc import calibrate_pages, extract_toc
+
+    doc_id, cfg = doc_with_toc
+    extract_toc(conn, cfg, doc_id, client=_client(TOC_JSON))
+    with conn.cursor() as cur:
+        cur.execute(  # 目录页同时含两个章节标题（模拟真实目录）
+            """UPDATE blocks SET content_md='目录 乘除法竖式谜 1 三角形 10' WHERE page_id IN
+               (SELECT id FROM pages WHERE page_no=1)"""
+        )
+        cur.execute(
+            """UPDATE blocks SET content_md='第 1 讲 乘除法竖式谜 正文' WHERE page_id IN
+               (SELECT id FROM pages WHERE page_no=2)"""
+        )
+        cur.execute(
+            """UPDATE blocks SET content_md='第 2 讲 三角形 正文' WHERE page_id IN
+               (SELECT id FROM pages WHERE page_no=3)"""
+        )
+    assert calibrate_pages(conn, doc_id) == 2
+    with conn.cursor() as cur:
+        cur.execute("SELECT chapter_no, page_start, page_end FROM chapters ORDER BY chapter_no")
+        assert cur.fetchall() == [(1, 2, 2), (2, 3, 3)]
+
+
 def test_calibrate_pages_leaves_null_when_not_found(conn, doc_with_toc):
     from kb.toc import calibrate_pages, extract_toc
 
