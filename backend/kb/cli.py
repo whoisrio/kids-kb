@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import argparse
+from pathlib import Path
 
 from kb.config import load_config
 from kb.db import connect, migrate
@@ -26,6 +27,12 @@ def main() -> None:
     p_ingest.add_argument("--type", dest="doc_type", default="workbook",
                           choices=["workbook", "exam"])
     sub.add_parser("status")
+    p_golden = sub.add_parser("golden-extract")
+    p_golden.add_argument("doc_id")
+    p_golden.add_argument("--dir", default="golden")
+    p_check = sub.add_parser("golden-check")
+    p_check.add_argument("doc_id")
+    p_check.add_argument("--dir", default="golden")
     args = ap.parse_args()
 
     cfg = load_config()
@@ -48,6 +55,13 @@ def main() -> None:
             )
             for title, status, parsed, total in cur.fetchall():
                 print(f"{title}\t{status}\t{parsed}/{total} 页已解析")
+    elif args.cmd == "golden-extract":
+        from kb.golden import extract
+        out = extract(conn, args.doc_id, Path(args.dir))
+        print(f"导出 {len(out)} 页黄金稿，请人工校对: {args.dir}/{args.doc_id}/")
+    elif args.cmd == "golden-check":
+        from kb.golden import check
+        check(conn, cfg, args.doc_id, Path(args.dir))
 
 
 if __name__ == "__main__":
