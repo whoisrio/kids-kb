@@ -4,7 +4,7 @@ from __future__ import annotations
 import uuid
 from pathlib import Path
 
-import fitz  # PyMuPDF
+import pymupdf as fitz  # PyMuPDF
 
 from kb.config import Config
 
