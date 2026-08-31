@@ -26,6 +26,8 @@ def main() -> None:
     p_ingest.add_argument("--grade", default=None)
     p_ingest.add_argument("--type", dest="doc_type", default="workbook",
                           choices=["workbook", "exam"])
+    p_ingest.add_argument("--start", type=int, default=1, help="起始页(1-based，含)")
+    p_ingest.add_argument("--end", type=int, default=None, help="结束页(1-based，含)，默认到末页")
     sub.add_parser("status")
     p_golden = sub.add_parser("golden-extract")
     p_golden.add_argument("doc_id")
@@ -42,7 +44,8 @@ def main() -> None:
     elif args.cmd == "ingest":
         migrate(conn)
         doc_id = ingest(conn, cfg, args.pdf, args.title,
-                        subject=args.subject, grade=args.grade, doc_type=args.doc_type)
+                        subject=args.subject, grade=args.grade, doc_type=args.doc_type,
+                        start=args.start, end=args.end)
         print(f"完成 document_id={doc_id}")
     elif args.cmd == "status":
         with conn.cursor() as cur:

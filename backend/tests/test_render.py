@@ -63,3 +63,20 @@ def test_render_document_is_idempotent(conn, cfg, scanned_pdf):
     with conn.cursor() as cur:
         cur.execute("SELECT count(*) FROM pages WHERE document_id=%s", (id1,))
         assert cur.fetchone()[0] == 2
+
+
+def test_render_document_page_range(conn, cfg, tmp_path):
+    p = tmp_path / "r.pdf"
+    d = fitz.open()
+    for _ in range(4):
+        d.new_page()
+    d.save(p)
+    doc_id = render_document(conn, cfg, p, title="t", start=2, end=3)
+    with conn.cursor() as cur:
+        cur.execute("SELECT page_no FROM pages WHERE document_id=%s ORDER BY page_no", (doc_id,))
+        assert [r[0] for r in cur.fetchall()] == [2, 3]
+    # 不带范围重跑：幂等补齐剩余页
+    render_document(conn, cfg, p, title="t")
+    with conn.cursor() as cur:
+        cur.execute("SELECT count(*) FROM pages WHERE document_id=%s", (doc_id,))
+        assert cur.fetchone()[0] == 4

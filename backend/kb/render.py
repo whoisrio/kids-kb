@@ -21,7 +21,10 @@ def render_document(
     subject: str | None = None,
     grade: str | None = None,
     doc_type: str = "workbook",
+    start: int = 1,
+    end: int | None = None,
 ) -> str:
+    """start/end 为 1-based 且含端点；不传 end 到末页。只渲染指定范围，断点重跑可补齐剩余页。"""
     # 存绝对路径：source_path 是幂等键，相对路径会因 CWD 不同而重复建档
     pdf_path = str(Path(pdf_path).resolve())
     with conn.cursor() as cur:
@@ -49,7 +52,10 @@ def render_document(
             (doc_id,),
         )
         done = {r[0] for r in cur.fetchall()}
-        for i in range(doc.page_count):
+        end_page = doc.page_count if end is None else min(end, doc.page_count)
+        if not (1 <= start <= end_page):
+            raise SystemExit(f"页码范围非法: start={start} end={end_page} total={doc.page_count}")
+        for i in range(start - 1, end_page):
             page_no = i + 1
             img_rel = str(pages_dir / f"p{page_no:04d}.png")
             if page_no not in done:

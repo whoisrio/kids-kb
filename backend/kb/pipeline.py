@@ -10,8 +10,10 @@ from kb.render import render_document
 
 def ingest(conn, cfg: Config, pdf_path, title: str,
            subject: str | None = None, grade: str | None = None,
-           doc_type: str = "workbook", client=None) -> str:
-    doc_id = render_document(conn, cfg, pdf_path, title, subject, grade, doc_type)
+           doc_type: str = "workbook", client=None,
+           start: int = 1, end: int | None = None) -> str:
+    doc_id = render_document(conn, cfg, pdf_path, title, subject, grade, doc_type,
+                             start=start, end=end)
     run_layout(conn, doc_id)
     run_parse(conn, cfg, doc_id, client=client)
     run_qc(conn, doc_id)
