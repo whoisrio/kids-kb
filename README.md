@@ -46,5 +46,5 @@ cd backend && uv run python -m kb.cli review   # http://127.0.0.1:8765
 ```
 
 待复核/已通过/已打回三个页签；每条记录左侧裁图、右侧转录文本并排；
-「✓ 通过 / ✗ 打回」直接回写 `review_queue.status`。
+转录渲染为可读 Markdown + LaTeX（KaTeX，本地静态资产，DOMPurify 消毒）；「✓ 通过 / ✗ 打回」直接回写 `review_queue.status`。
 打回后的重解析走既有断点重跑（`ingest` 重跑即可）。

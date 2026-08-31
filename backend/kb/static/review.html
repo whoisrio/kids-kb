@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>知识库 · 复核</title>
+<link rel="stylesheet" href="/static/vendor/katex/katex.min.css">
 <style>
   :root { --line:#e5e7eb; --muted:#6b7280; --bg:#f9fafb; }
   * { box-sizing: border-box; }
@@ -28,8 +29,12 @@
   .doc { color:var(--muted); font-size:13px; }
   .cols { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
   .cols img { width:100%; border:1px solid var(--line); border-radius:6px; background:#fff; }
-  .cols pre { margin:0; white-space:pre-wrap; word-break:break-word; background:var(--bg);
-              padding:12px; border-radius:6px; max-height:520px; overflow:auto; font-family:inherit; }
+  .md { background:var(--bg); padding:12px; border-radius:6px; max-height:520px;
+        overflow:auto; font-family:inherit; }
+  .md p { margin:0 0 8px; }
+  .md p:last-child { margin-bottom:0; }
+  .md ul, .md ol { margin:0 0 8px; padding-left:22px; }
+  .md .katex-display { margin:8px 0; overflow-x:auto; overflow-y:hidden; padding:4px 0; }
   .actions { margin-top:12px; display:flex; gap:8px; }
   .btn { border:none; border-radius:6px; padding:8px 18px; cursor:pointer; font-size:14px; }
   .btn.approve { background:#059669; color:#fff; }
@@ -39,6 +44,10 @@
 </style>
 </head>
 <body>
+<script src="/static/vendor/marked.min.js"></script>
+<script src="/static/vendor/dompurify/purify.min.js"></script>
+<script src="/static/vendor/katex/katex.min.js"></script>
+<script src="/static/render.js"></script>
 <header>
   <h1>知识库 · 复核</h1>
   <nav class="tabs" id="tabs"></nav>
@@ -90,7 +99,9 @@ function card(it) {
     </div>
     <div class="cols">
       <img src="/api/blocks/${it.block_id}/crop" alt="页面裁图">
-      <pre>${esc(it.content_md) || "（空转录）"}</pre>
+      ${it.content_md
+        ? `<div class="md">${renderContent(it.content_md)}</div>`
+        : '<div class="md">（空转录）</div>'}
     </div>
     ${it.status === "pending" ? `
     <div class="actions">

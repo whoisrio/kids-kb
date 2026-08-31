@@ -13,6 +13,7 @@ from typing import Callable
 import psycopg
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from kb.config import load_config
 
@@ -37,6 +38,7 @@ def create_app(get_conn: Callable[[], psycopg.Connection] | None = None) -> Fast
                 c.close()
 
     app = FastAPI(title="kb-review", docs_url=None, redoc_url=None)
+    app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
     @app.get("/api/review")
     def list_reviews(status: str = "pending"):
