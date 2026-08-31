@@ -17,6 +17,7 @@ class Config:
     vision_model: str
     dpi: int = 200
     layout_engine: str = "whole_page"
+    vision_compare_model: str | None = None
 
 
 def load_config(env_path: str | os.PathLike[str] = ".env") -> Config:
@@ -32,4 +33,5 @@ def load_config(env_path: str | os.PathLike[str] = ".env") -> Config:
         vision_model=os.environ.get("KB_VISION_MODEL", "qwen3:4b"),
         dpi=int(os.environ.get("KB_DPI", "200")),
         layout_engine=os.environ.get("KB_LAYOUT_ENGINE", "whole_page"),
+        vision_compare_model=os.environ.get("KB_VISION_COMPARE_MODEL") or None,
     )
