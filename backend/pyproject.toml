@@ -1,0 +1,39 @@
+[project]
+name = "kids-knowledge-base"
+version = "0.1.0"
+description = "扫描版学习资料 PDF 结构化解析流水线（骨架期）"
+requires-python = ">=3.13"
+dependencies = [
+    "pymupdf>=1.28.2",
+    "rapidocr-onnxruntime>=1.4.4",
+    "openai>=1.40.0",
+    "psycopg[binary]>=3.2",
+    "pgvector>=0.3",
+    "python-dotenv>=1.0",
+]
+
+[dependency-groups]
+dev = ["pytest>=8.0"]
+
+[project.optional-dependencies]
+# Apple Silicon Mac：MLX 社区量化版（百度官方无 MLX 路径，此为社区转换）
+ocr-mac = [
+    "jinja2>=3.1.6",
+    "mlx-vlm",
+]
+# Windows + N 卡 / Linux + N 卡：官方 Transformers 推理路径（写死 .cuda()）
+# 仅在该平台 `uv sync --extra ocr-cuda` 时解析，Mac 上不实装
+ocr-cuda = [
+    # 说明：官方 Transformers 推理路径写死 .cuda()，仅 Windows/Linux + N 卡用。
+    # 注意装 CUDA 版 torch 需指定 PyTorch 索引，例如：
+    #   uv sync --extra ocr-cuda --index-url https://download.pytorch.org/whl/cu124
+    # 以下只给下限，避免 uv 在 Mac 锁依赖时因精确版本不存在而失败。
+    "torch>=2.5",
+    "torchvision>=0.20",
+    "transformers>=4.45",
+    "einops>=0.8",
+    "addict>=2.4",
+    "easydict>=1.13",
+    "psutil>=5",
+    # pymupdf 已由核心依赖(>=1.28.2)提供，此处不再重复声明，避免版本冲突。
+]
