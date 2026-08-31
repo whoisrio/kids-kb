@@ -141,3 +141,31 @@ def test_bad_latex_auto_resolves_after_fix(conn, tmp_path):
     with conn.cursor() as cur:
         cur.execute("SELECT status FROM review_queue WHERE reason='bad_latex'")
         assert cur.fetchone()[0] == "approved"
+
+
+def test_check_label_continuity_flags_missing(conn, tmp_path):
+    """第 1 章有 1、3 题缺 2 -> 建 missing_item 复核行；且不属可自动关闭原因。"""
+    import uuid
+
+    from kb.config import Config
+    from kb.qc import CHECKABLE_REASONS, check_label_continuity
+
+    with conn.cursor() as cur:
+        cur.execute("INSERT INTO documents (id, title, source_path) VALUES (%s,'t','/tmp/b.pdf') RETURNING id",
+                    (str(uuid.uuid4()),))
+        doc_id = str(cur.fetchone()[0])
+        cur.execute(
+            "INSERT INTO chapters (document_id, chapter_no, title) VALUES (%s, 1, '竖式谜')",
+            (doc_id,),
+        )
+        for label in ("1", "3"):
+            cur.execute(
+                """INSERT INTO items (id, document_id, content_type, label, content_md, chapter)
+                   VALUES (%s,%s,'exercise',%s,'题','第 1 讲 竖式谜')""",
+                (str(uuid.uuid4()), doc_id, label),
+            )
+    assert "missing_item" not in CHECKABLE_REASONS
+    assert check_label_continuity(conn, doc_id) == 1
+    with conn.cursor() as cur:
+        cur.execute("SELECT reason FROM review_queue WHERE reason LIKE 'missing_item%'")
+        assert "第 1 讲" in cur.fetchone()[0]

@@ -94,3 +94,32 @@ def run_qc(conn, doc_id: str) -> int:
             # 内容已修复的旧复核记录自动关闭（与 PATCH 编辑接口同一语义），队列只反映当前问题
             resolve_block_reviews(conn, block_id)
     return n
+
+
+def check_label_continuity(conn, doc_id: str) -> int:
+    """每章 exercise 题号应连续（1..N），缺号建 missing_item 复核行。返回新增数。"""
+    with conn.cursor() as cur:
+        cur.execute(
+            """SELECT chapter, label FROM items
+               WHERE document_id=%s AND content_type='exercise' AND chapter IS NOT NULL
+               ORDER BY chapter""",
+            (doc_id,),
+        )
+        by_chapter: dict[str, set[int]] = {}
+        for chapter, label in cur.fetchall():
+            if label and label.isdigit():
+                by_chapter.setdefault(chapter, set()).add(int(label))
+        n = 0
+        for chapter, labels in by_chapter.items():
+            missing = sorted(set(range(1, max(labels) + 1)) - labels)
+            for m in missing:
+                reason = f"missing_item:{chapter} 第{m}题"
+                cur.execute("SELECT 1 FROM review_queue WHERE reason=%s", (reason,))
+                if cur.fetchone():
+                    continue
+                cur.execute(
+                    "INSERT INTO review_queue (id, reason) VALUES (%s,%s)",
+                    (str(uuid.uuid4()), reason),
+                )
+                n += 1
+    return n
