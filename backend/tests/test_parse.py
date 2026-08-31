@@ -95,3 +95,16 @@ def test_run_parse_failure_marks_page_failed(conn, parsed_doc):
         cur.execute("SELECT status, parse_error FROM pages WHERE document_id=%s", (doc_id,))
         rows = cur.fetchall()
     assert all(s == "failed" and "模型挂了" in (e or "") for s, e in rows)
+
+
+def test_run_parse_repairs_drifted_page_status(conn, parsed_doc):
+    """历史 bug 可能把已解析页打回 rendered；run_parse 应按块内容自愈页状态。"""
+    from kb.parse import run_parse
+
+    doc_id, cfg = parsed_doc
+    with conn.cursor() as cur:  # 模拟状态漂移：内容在，状态被重置
+        cur.execute("UPDATE pages SET status='rendered'")
+    assert run_parse(conn, cfg, doc_id, client=FakeClient()) == 0  # 无待解析块
+    with conn.cursor() as cur:
+        cur.execute("SELECT status FROM pages WHERE document_id=%s", (doc_id,))
+        assert {r[0] for r in cur.fetchall()} == {"parsed"}

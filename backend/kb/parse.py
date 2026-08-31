@@ -60,4 +60,13 @@ def run_parse(conn, cfg: Config, doc_id: str, client=None) -> int:
             cur.execute("UPDATE blocks SET content_md=%s WHERE id=%s", (text, block_id))
             cur.execute("UPDATE pages SET status='parsed', parse_error=NULL WHERE id=%s", (page_id,))
             n += 1
+        # 自愈历史漂移：块内容齐全的页必为 parsed（与逐块更新同一不变量）
+        cur.execute(
+            """UPDATE pages SET status='parsed', parse_error=NULL
+               WHERE document_id=%s AND status IN ('rendered', 'failed')
+               AND NOT EXISTS (
+                   SELECT 1 FROM blocks b WHERE b.page_id = pages.id AND b.content_md IS NULL
+               )""",
+            (doc_id,),
+        )
     return n
