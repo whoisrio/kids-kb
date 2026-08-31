@@ -24,7 +24,7 @@
 - Create: `tests/test_config.py`
 - Create: `.env.example`
 
-- [ ] **Step 1: 加依赖并写失败测试**
+- [x] **Step 1: 加依赖并写失败测试**
 
 `pyproject.toml` 的 dependencies 改为：
 
@@ -71,12 +71,12 @@ def test_load_config_requires_database_url(tmp_path, monkeypatch):
         load_config(tmp_path / "不存在.env")
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `uv sync && uv run pytest tests/test_config.py -v`
 Expected: FAIL，`ModuleNotFoundError: No module named 'kb'`
 
-- [ ] **Step 3: 实现 config 与包骨架**
+- [x] **Step 3: 实现 config 与包骨架**
 
 `kb/__init__.py`：空文件。
 
@@ -132,12 +132,12 @@ KB_DPI=200
 
 `tests/__init__.py`：空文件。
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
 Run: `uv run pytest tests/test_config.py -v`
 Expected: 2 passed
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add pyproject.toml uv.lock kb/ tests/ .env.example
@@ -154,7 +154,7 @@ git commit -m "feat: kb 包骨架与 .env 配置加载"
 - Create: `tests/conftest.py`
 - Create: `tests/test_db.py`
 
-- [ ] **Step 1: 准备测试库**
+- [x] **Step 1: 准备测试库**
 
 Run: `createdb kb_test`（本地 pg；已存在则跳过）
 并约定测试用库：`export KB_TEST_DATABASE_URL=postgresql://localhost/kb_test`
@@ -210,12 +210,12 @@ def test_migrate_is_idempotent(conn):
     assert migrate(conn) == []
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `uv run pytest tests/test_db.py -v`
 Expected: FAIL，`No module named 'kb.db'`
 
-- [ ] **Step 3: 实现 db.py 与 0001_init.sql**
+- [x] **Step 3: 实现 db.py 与 0001_init.sql**
 
 `kb/db.py`：
 
@@ -346,12 +346,12 @@ CREATE TABLE review_queue (
 
 注意：`CREATE EXTENSION vector` 需要 pgvector 已装入本地 pg；若执行报 `extension "vector" is not available`，先装：`brew install pgvector && createdb 重建或手动 CREATE EXTENSION`。
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
 Run: `uv run pytest tests/test_db.py -v`
 Expected: 2 passed
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add kb/db.py kb/migrations/0001_init.sql tests/conftest.py tests/test_db.py
@@ -366,7 +366,7 @@ git commit -m "feat: pg schema(含 pgvector)与 migration runner"
 - Create: `kb/render.py`
 - Create: `tests/test_render.py`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 `tests/test_render.py`：
 
@@ -438,12 +438,12 @@ def test_render_document_is_idempotent(conn, cfg, scanned_pdf):
         assert cur.fetchone()[0] == 2
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `uv run pytest tests/test_render.py -v`
 Expected: FAIL，`No module named 'kb.render'`
 
-- [ ] **Step 3: 实现 render.py**
+- [x] **Step 3: 实现 render.py**
 
 ```python
 """阶段①渲染：文本层检测 + 每页渲染为 PNG，落库 documents/pages。幂等可重跑。"""
@@ -511,12 +511,12 @@ def render_document(
     return doc_id
 ```
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
 Run: `uv run pytest tests/test_render.py -v`
 Expected: 4 passed
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add kb/render.py tests/test_render.py
@@ -531,7 +531,7 @@ git commit -m "feat: 阶段①渲染与文本层检测，幂等落库"
 - Create: `kb/layout.py`
 - Create: `tests/test_layout.py`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 `tests/test_layout.py`：
 
@@ -575,12 +575,12 @@ def test_run_layout_inserts_blocks_idempotent(doc_id, conn):
     assert run_layout(conn, _id) == 0  # 幂等：已有 blocks 的页跳过
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `uv run pytest tests/test_layout.py -v`
 Expected: FAIL，`No module named 'kb.layout'`
 
-- [ ] **Step 3: 实现 layout.py**
+- [x] **Step 3: 实现 layout.py**
 
 ```python
 """阶段②版面分析：可插拔协议 + 整页占位实现（精度期换 PaddleOCR-VL，接口不变）。"""
@@ -633,12 +633,12 @@ def run_layout(conn, doc_id: str, analyzer: LayoutAnalyzer | None = None) -> int
     return n
 ```
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
 Run: `uv run pytest tests/test_layout.py -v`
 Expected: 2 passed
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add kb/layout.py tests/test_layout.py
@@ -653,7 +653,7 @@ git commit -m "feat: 阶段②版面分析协议与整页占位实现"
 - Create: `kb/parse.py`
 - Create: `tests/test_parse.py`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 `tests/test_parse.py`：
 
@@ -757,12 +757,12 @@ def test_run_parse_failure_marks_page_failed(conn, parsed_doc):
     assert all(s == "failed" and "模型挂了" in (e or "") for s, e in rows)
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `uv run pytest tests/test_parse.py -v`
 Expected: FAIL，`No module named 'kb.parse'`
 
-- [ ] **Step 3: 实现 parse.py**
+- [x] **Step 3: 实现 parse.py**
 
 ```python
 """阶段③解析：视觉模型（OpenAI 兼容端点，本地/远端由配置决定）转录区块图像。"""
@@ -830,12 +830,12 @@ def run_parse(conn, cfg: Config, doc_id: str, client=None) -> int:
     return n
 ```
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
 Run: `uv run pytest tests/test_parse.py -v`
 Expected: 3 passed
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add kb/parse.py tests/test_parse.py
@@ -850,7 +850,7 @@ git commit -m "feat: 阶段③视觉解析，OpenAI 兼容端点，失败不中�
 - Create: `kb/qc.py`
 - Create: `tests/test_qc.py`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 `tests/test_qc.py`：
 
@@ -900,12 +900,12 @@ def test_run_qc_inserts_review_rows(conn, tmp_path):
     assert run_qc(conn, doc_id) == 0  # 幂等
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `uv run pytest tests/test_qc.py -v`
 Expected: FAIL，`No module named 'kb.qc'`
 
-- [ ] **Step 3: 实现 qc.py**
+- [x] **Step 3: 实现 qc.py**
 
 ```python
 """阶段⑤质检（骨架期 lite）：空转录/疑似截断 → review_queue。
@@ -952,12 +952,12 @@ def run_qc(conn, doc_id: str) -> int:
     return n
 ```
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
 Run: `uv run pytest tests/test_qc.py -v`
 Expected: 3 passed
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add kb/qc.py tests/test_qc.py
@@ -973,7 +973,7 @@ git commit -m "feat: 阶段⑤质检 lite，低质 block 进复核队列"
 - Create: `kb/cli.py`
 - Create: `tests/test_pipeline.py`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 `tests/test_pipeline.py`：
 
@@ -1028,12 +1028,12 @@ def test_ingest_end_to_end(conn, tmp_path):
         assert cur.fetchone()[0] == 2
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `uv run pytest tests/test_pipeline.py -v`
 Expected: FAIL，`No module named 'kb.pipeline'`
 
-- [ ] **Step 3: 实现 pipeline.py 与 cli.py**
+- [x] **Step 3: 实现 pipeline.py 与 cli.py**
 
 `kb/pipeline.py`：
 
@@ -1117,12 +1117,12 @@ if __name__ == "__main__":
     main()
 ```
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
 Run: `uv run pytest tests/test_pipeline.py -v`
 Expected: 1 passed；再跑全量 `uv run pytest -v`（约 13 个用例）全绿
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add kb/pipeline.py kb/cli.py tests/test_pipeline.py
@@ -1137,7 +1137,7 @@ git commit -m "feat: 流水线编排与 CLI(migrate/ingest/status)"
 - Create: `kb/golden.py`
 - Create: `tests/test_golden.py`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 `tests/test_golden.py`：
 
@@ -1154,12 +1154,12 @@ def test_char_error_rate():
     assert 0.0 < char_error_rate("abcd", "ab") < 1.0
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `uv run pytest tests/test_golden.py -v`
 Expected: FAIL，`No module named 'kb.golden'`
 
-- [ ] **Step 3: 实现 golden.py**
+- [x] **Step 3: 实现 golden.py**
 
 ```python
 """黄金集工具。
@@ -1252,12 +1252,12 @@ def check(conn, cfg, doc_id: str, golden_dir: Path) -> float:
         check(conn, cfg, args.doc_id, Path(args.dir))
 ```
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
 Run: `uv run pytest tests/test_golden.py -v`
 Expected: 2 passed
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add kb/golden.py kb/cli.py tests/test_golden.py
@@ -1271,7 +1271,7 @@ git commit -m "feat: 黄金集导出/回归工具（CER 比对）"
 **Files:**
 - Modify: `README.md`
 
-- [ ] **Step 1: 建库并迁移**
+- [x] **Step 1: 建库并迁移**
 
 ```bash
 createdb kb 2>/dev/null; cp .env.example .env  # 按需改成真实端点
@@ -1280,7 +1280,7 @@ uv run python -m kb.cli migrate
 
 Expected: 输出 `已执行 migration: ['0001_init.sql']`
 
-- [ ] **Step 2: 用真实 PDF 跑端到端（小范围）**
+- [x] **Step 2: 用真实 PDF 跑端到端（小范围）**
 
 用《7星学霸》前几页验证（该 PDF 前两页是封面等，第 6 页起是正文第 1 讲）：
 
@@ -1294,7 +1294,7 @@ Expected: status 显示 `已解析页数 = 总页数`；`SELECT count(*) FROM re
 
 注：本步骤需要本地 ollama qwen3:4b 在线，或把 `.env` 指向远端端点；150+ 页全量转录耗时较长，可先在 `kb/cli.py ingest` 加 `--start/--end` 参数只跑前几页验证（若加此参数，同步在 `render_document` 里只渲染指定页范围，并补一个测试）。
 
-- [ ] **Step 3: 建黄金集**
+- [x] **Step 3: 建黄金集**
 
 ```bash
 uv run python -m kb.cli golden-extract <doc_id>
@@ -1304,7 +1304,7 @@ uv run python -m kb.cli golden-check <doc_id>
 
 Expected: 关键页 CER 打印输出，作为精度期的基线记录。
 
-- [ ] **Step 4: 写 README 用法**
+- [x] **Step 4: 写 README 用法**
 
 `README.md`：
 
@@ -1327,7 +1327,7 @@ uv run pytest                          # 测试需 KB_TEST_DATABASE_URL
 设计文档：`docs/superpowers/specs/2026-08-31-pdf-parsing-pipeline-design.md`
 ````
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add README.md
