@@ -593,12 +593,14 @@ name = "kids-knowledge-base"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
+    { name = "fastapi" },
     { name = "openai" },
     { name = "pgvector" },
     { name = "psycopg", extra = ["binary"] },
     { name = "pymupdf" },
     { name = "python-dotenv" },
     { name = "rapidocr-onnxruntime" },
+    { name = "uvicorn" },
 ]
 
 [package.optional-dependencies]
@@ -626,6 +628,7 @@ requires-dist = [
     { name = "addict", marker = "extra == 'ocr-cuda'", specifier = ">=2.4" },
     { name = "easydict", marker = "extra == 'ocr-cuda'", specifier = ">=1.13" },
     { name = "einops", marker = "extra == 'ocr-cuda'", specifier = ">=0.8" },
+    { name = "fastapi", specifier = ">=0.115" },
     { name = "jinja2", marker = "extra == 'ocr-mac'", specifier = ">=3.1.6" },
     { name = "mlx-vlm", marker = "extra == 'ocr-mac'" },
     { name = "openai", specifier = ">=1.40.0" },
@@ -638,6 +641,7 @@ requires-dist = [
     { name = "torch", marker = "extra == 'ocr-cuda'", specifier = ">=2.5" },
     { name = "torchvision", marker = "extra == 'ocr-cuda'", specifier = ">=0.20" },
     { name = "transformers", marker = "extra == 'ocr-cuda'", specifier = ">=4.45" },
+    { name = "uvicorn", specifier = ">=0.30" },
 ]
 provides-extras = ["ocr-mac", "ocr-cuda"]
 

@@ -42,6 +42,9 @@ def main() -> None:
     p_ingest.add_argument("--start", type=int, default=1, help="起始页(1-based，含)")
     p_ingest.add_argument("--end", type=int, default=None, help="结束页(1-based，含)，默认到末页")
     sub.add_parser("status")
+    p_review = sub.add_parser("review", help="启动复核 web 页")
+    p_review.add_argument("--host", default="127.0.0.1")
+    p_review.add_argument("--port", type=int, default=8765)
     p_golden = sub.add_parser("golden-extract")
     p_golden.add_argument("doc_id")
     p_golden.add_argument("--dir", default="golden")
@@ -49,6 +52,12 @@ def main() -> None:
     p_check.add_argument("doc_id")
     p_check.add_argument("--dir", default="golden")
     args = ap.parse_args()
+
+    if args.cmd == "review":
+        import uvicorn
+        from kb.review_api import create_app
+        uvicorn.run(create_app(), host=args.host, port=args.port)
+        return
 
     cfg = load_config()
     conn = connect(cfg.database_url)

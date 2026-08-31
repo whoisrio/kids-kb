@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>知识库 · 复核</title>
+<style>
+  :root { --line:#e5e7eb; --muted:#6b7280; --bg:#f9fafb; }
+  * { box-sizing: border-box; }
+  body { margin:0; font:14px/1.7 -apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
+         color:#111827; background:var(--bg); }
+  header { position:sticky; top:0; background:#fff; border-bottom:1px solid var(--line);
+           padding:12px 20px; display:flex; gap:20px; align-items:center; z-index:10; }
+  h1 { font-size:16px; margin:0; font-weight:600; }
+  .tabs { display:flex; gap:4px; }
+  .tabs button { border:none; background:none; padding:6px 12px; border-radius:6px;
+                 cursor:pointer; color:var(--muted); font-size:13px; }
+  .tabs button.active { background:#111827; color:#fff; }
+  .tabs .n { opacity:.7; margin-left:2px; }
+  main { max-width:1100px; margin:0 auto; padding:20px; }
+  .card { background:#fff; border:1px solid var(--line); border-radius:10px;
+          padding:16px; margin-bottom:16px; }
+  .meta { display:flex; gap:8px; align-items:center; margin-bottom:12px; flex-wrap:wrap; }
+  .badge { background:#fef3c7; color:#92400e; border-radius:4px; padding:2px 8px; font-size:12px; }
+  .badge.approved { background:#dcfce7; color:#166534; }
+  .badge.rejected { background:#fee2e2; color:#991b1b; }
+  .badge.pending { background:#e0e7ff; color:#3730a3; }
+  .doc { color:var(--muted); font-size:13px; }
+  .cols { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+  .cols img { width:100%; border:1px solid var(--line); border-radius:6px; background:#fff; }
+  .cols pre { margin:0; white-space:pre-wrap; word-break:break-word; background:var(--bg);
+              padding:12px; border-radius:6px; max-height:520px; overflow:auto; font-family:inherit; }
+  .actions { margin-top:12px; display:flex; gap:8px; }
+  .btn { border:none; border-radius:6px; padding:8px 18px; cursor:pointer; font-size:14px; }
+  .btn.approve { background:#059669; color:#fff; }
+  .btn.reject { background:#dc2626; color:#fff; }
+  .btn:disabled { opacity:.5; cursor:default; }
+  .empty { text-align:center; color:var(--muted); padding:60px 0; }
+</style>
+</head>
+<body>
+<header>
+  <h1>知识库 · 复核</h1>
+  <nav class="tabs" id="tabs"></nav>
+</header>
+<main id="list"><div class="empty">加载中…</div></main>
+<script>
+const TABS = [["pending","待复核"], ["approved","已通过"], ["rejected","已打回"]];
+const LABEL = { pending:"待复核", approved:"已通过", rejected:"已打回" };
+let status = "pending";
+
+function esc(s) {
+  const d = document.createElement("div");
+  d.textContent = s ?? "";
+  return d.innerHTML;
+}
+
+async function refresh() {
+  const data = await (await fetch("/api/review?status=" + status)).json();
+  renderTabs(data.counts);
+  const list = document.getElementById("list");
+  list.innerHTML = "";
+  if (!data.items.length) {
+    list.innerHTML = '<div class="empty">无记录</div>';
+    return;
+  }
+  for (const it of data.items) list.appendChild(card(it));
+}
+
+function renderTabs(counts) {
+  const nav = document.getElementById("tabs");
+  nav.innerHTML = "";
+  for (const [s, label] of TABS) {
+    const b = document.createElement("button");
+    b.innerHTML = `${label}<span class="n">${counts[s] ?? 0}</span>`;
+    if (s === status) b.classList.add("active");
+    b.onclick = () => { status = s; refresh(); };
+    nav.appendChild(b);
+  }
+}
+
+function card(it) {
+  const d = document.createElement("div");
+  d.className = "card";
+  d.innerHTML = `
+    <div class="meta">
+      <span class="badge">${esc(it.reason)}</span>
+      <span class="badge ${it.status}">${LABEL[it.status]}</span>
+      <span class="doc">${esc(it.doc_title)} · 第 ${it.page_no} 页</span>
+    </div>
+    <div class="cols">
+      <img src="/api/blocks/${it.block_id}/crop" alt="页面裁图">
+      <pre>${esc(it.content_md) || "（空转录）"}</pre>
+    </div>
+    ${it.status === "pending" ? `
+    <div class="actions">
+      <button class="btn approve">✓ 通过</button>
+      <button class="btn reject">✗ 打回</button>
+    </div>` : ""}`;
+  const on = (sel, action) => {
+    const btn = d.querySelector(sel);
+    if (btn) btn.onclick = () => act(it.id, action, btn);
+  };
+  on(".btn.approve", "approve");
+  on(".btn.reject", "reject");
+  return d;
+}
+
+async function act(id, action, btn) {
+  btn.disabled = true;
+  const resp = await fetch(`/api/review/${id}/${action}`, { method: "POST" });
+  if (!resp.ok) { btn.disabled = false; alert("操作失败: " + resp.status); return; }
+  refresh();
+}
+
+refresh();
+</script>
+</body>
+</html>

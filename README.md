@@ -38,3 +38,13 @@ uv run pytest                          # 测试需 KB_TEST_DATABASE_URL（如 po
 
 设计文档：`docs/superpowers/specs/2026-08-31-pdf-parsing-pipeline-design.md`
 实施计划：`docs/superpowers/plans/2026-08-31-pdf-pipeline-phase1.md`
+
+## 人工复核（最简 web 页）
+
+```bash
+cd backend && uv run python -m kb.cli review   # http://127.0.0.1:8765
+```
+
+待复核/已通过/已打回三个页签；每条记录左侧裁图、右侧转录文本并排；
+「✓ 通过 / ✗ 打回」直接回写 `review_queue.status`。
+打回后的重解析走既有断点重跑（`ingest` 重跑即可）。
