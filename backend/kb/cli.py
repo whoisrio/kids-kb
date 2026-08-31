@@ -51,6 +51,10 @@ def main() -> None:
     p_check = sub.add_parser("golden-check")
     p_check.add_argument("doc_id")
     p_check.add_argument("--dir", default="golden")
+    p_check.add_argument("--level", default="page", choices=["page", "block"])
+    p_anno = sub.add_parser("golden-annotate")
+    p_anno.add_argument("doc_id")
+    p_anno.add_argument("--dir", default="golden")
     args = ap.parse_args()
 
     if args.cmd == "review":
@@ -77,8 +81,15 @@ def main() -> None:
         out = extract(conn, args.doc_id, Path(args.dir))
         print(f"导出 {len(out)} 页黄金稿，请人工校对: {args.dir}/{args.doc_id}/")
     elif args.cmd == "golden-check":
-        from kb.golden import check
-        check(conn, cfg, args.doc_id, Path(args.dir))
+        from kb.golden import check, check_blocks
+        if args.level == "block":
+            check_blocks(conn, args.doc_id, Path(args.dir))
+        else:
+            check(conn, cfg, args.doc_id, Path(args.dir))
+    elif args.cmd == "golden-annotate":
+        from kb.golden import annotate
+        out = annotate(conn, args.doc_id, Path(args.dir))
+        print(f"导出 {len(out)} 页区块标注底稿，请人工校对: {args.dir}/{args.doc_id}/")
 
 
 if __name__ == "__main__":
