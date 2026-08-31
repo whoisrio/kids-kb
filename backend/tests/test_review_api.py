@@ -101,3 +101,52 @@ def test_index_serves_review_page(client):
     assert resp.status_code == 200
     assert "text/html" in resp.headers["content-type"]
     assert "复核" in resp.text
+
+
+def test_patch_block_content_updates_db(client, seeded, conn):
+    block_id, r_empty, r_trunc = seeded
+    resp = client.patch(f"/api/blocks/{block_id}", json={"content_md": "修正后的转录。"})
+    assert resp.status_code == 200
+    # seeded 的两条行（empty/maybe_truncated）与内容本就不符，PATCH 后按"可检测行失效即关闭"语义被自动关闭
+    assert resp.json() == {"id": block_id, "content_md": "修正后的转录。", "resolved_reviews": 2}
+    with conn.cursor() as cur:
+        cur.execute("SELECT content_md FROM blocks WHERE id=%s", (block_id,))
+        assert cur.fetchone()[0] == "修正后的转录。"
+        cur.execute("SELECT status FROM review_queue WHERE id IN (%s,%s)", (r_empty, r_trunc))
+        assert {r[0] for r in cur.fetchall()} == {"approved"}
+
+
+def test_patch_auto_resolves_empty_review(client, seeded, conn):
+    block_id, _r1, _r2 = seeded
+    with conn.cursor() as cur:  # 再加一条 empty 行（内容置空，模拟真实的空转录遗留）
+        cur.execute("UPDATE blocks SET content_md='' WHERE id=%s", (block_id,))
+        cur.execute("INSERT INTO review_queue (block_id, reason) VALUES (%s,'empty')", (block_id,))
+    resp = client.patch(f"/api/blocks/{block_id}", json={"content_md": "人工修复的内容。"})
+    # 修复后：新 empty 行 + seeded 的 empty/maybe_truncated 两条失效行，共关闭 3 条
+    assert resp.json()["resolved_reviews"] == 3
+    with conn.cursor() as cur:
+        cur.execute("SELECT status FROM review_queue WHERE block_id=%s", (block_id,))
+        assert {r[0] for r in cur.fetchall()} == {"approved"}
+
+
+def test_patch_keeps_custom_reason_review(client, seeded, conn):
+    block_id, _r1, _r2 = seeded
+    with conn.cursor() as cur:
+        cur.execute("INSERT INTO review_queue (block_id, reason) VALUES (%s,'幻觉前缀')", (block_id,))
+    resp = client.patch(f"/api/blocks/{block_id}", json={"content_md": "改了别的段落，幻觉还在。"})
+    # seeded 的 empty/maybe_truncated 两条失效行被关闭；自定义原因行必须人工显式处理
+    assert resp.json()["resolved_reviews"] == 2
+    with conn.cursor() as cur:
+        cur.execute("SELECT status FROM review_queue WHERE reason='幻觉前缀'")
+        assert cur.fetchone()[0] == "pending"  # 自定义原因必须人工显式处理
+
+
+def test_patch_missing_block_404(client):
+    resp = client.patch("/api/blocks/00000000-0000-0000-0000-000000000000",
+                        json={"content_md": "x"})
+    assert resp.status_code == 404
+
+
+def test_patch_invalid_body_422(client, seeded):
+    block_id, _r1, _r2 = seeded
+    assert client.patch(f"/api/blocks/{block_id}", json={}).status_code == 422

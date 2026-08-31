@@ -14,10 +14,17 @@ import psycopg
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
 
 from kb.config import load_config
 
 STATIC_DIR = Path(__file__).parent / "static"
+
+
+class BlockContent(BaseModel):
+    """人工编辑转录的请求体。"""
+
+    content_md: str
 
 
 def create_app(get_conn: Callable[[], psycopg.Connection] | None = None) -> FastAPI:
@@ -91,6 +98,22 @@ def create_app(get_conn: Callable[[], psycopg.Connection] | None = None) -> Fast
     @app.post("/api/review/{review_id}/reject")
     def reject(review_id: str):
         return _act(review_id, "rejected")
+
+    @app.patch("/api/blocks/{block_id}")
+    def update_block(block_id: str, body: BlockContent):
+        """人工修正转录内容；机器可检测的复核记录（空/截断）修复后自动关闭，自定义原因不动。"""
+        from kb.qc import resolve_block_reviews
+        with conn_ctx() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "UPDATE blocks SET content_md=%s WHERE id=%s RETURNING id, content_md",
+                    (body.content_md, block_id),
+                )
+                row = cur.fetchone()
+            if not row:
+                raise HTTPException(status_code=404, detail="block 不存在")
+            resolved = resolve_block_reviews(conn, block_id)
+        return {"id": str(row[0]), "content_md": row[1], "resolved_reviews": resolved}
 
     @app.get("/api/blocks/{block_id}/crop")
     def block_crop(block_id: str):

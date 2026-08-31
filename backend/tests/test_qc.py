@@ -72,3 +72,33 @@ def test_run_qc_auto_resolves_stale_review_rows(conn, tmp_path):
     with conn.cursor() as cur:
         cur.execute("SELECT status FROM review_queue")
         assert cur.fetchone()[0] == "approved"
+
+
+def test_run_qc_keeps_custom_reason_rows(conn, tmp_path):
+    """人工插入的自定义原因复核行不能被 run_qc 自动关闭——机器只能关闭自己可检测的原因。"""
+    from kb.config import Config
+    from kb.layout import run_layout
+    from kb.qc import run_qc
+    from kb.render import render_document
+
+    cfg = Config(
+        database_url="postgresql://localhost/kb_test",
+        storage_dir=tmp_path / "storage",
+        vision_base_url="http://localhost:11434/v1",
+        vision_api_key="ollama",
+        vision_model="qwen3:4b",
+    )
+    p = tmp_path / "s.pdf"
+    d = fitz.open()
+    d.new_page()
+    d.save(p)
+    doc_id = render_document(conn, cfg, p, title="t")
+    run_layout(conn, doc_id)
+    with conn.cursor() as cur:
+        cur.execute("UPDATE pages SET status='parsed'")
+        cur.execute("UPDATE blocks SET content_md='内容正常。'")
+        cur.execute("INSERT INTO review_queue (block_id, reason) SELECT id, '幻觉前缀' FROM blocks")
+    assert run_qc(conn, doc_id) == 0  # 不新增
+    with conn.cursor() as cur:
+        cur.execute("SELECT status FROM review_queue WHERE reason='幻觉前缀'")
+        assert cur.fetchone()[0] == "pending"  # 自定义行存活
