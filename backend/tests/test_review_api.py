@@ -150,3 +150,16 @@ def test_patch_missing_block_404(client):
 def test_patch_invalid_body_422(client, seeded):
     block_id, _r1, _r2 = seeded
     assert client.patch(f"/api/blocks/{block_id}", json={}).status_code == 422
+
+
+def test_list_reviews_includes_blockless_rows(client, conn):
+    """missing_item 这类无块复核行也要能列出（LEFT JOIN）。"""
+    with conn.cursor() as cur:
+        cur.execute(
+            "INSERT INTO review_queue (reason) VALUES ('missing_item:第 1 讲 第2题')"
+        )
+    data = client.get("/api/review").json()
+    assert data["counts"]["pending"] == 1
+    it = data["items"][0]
+    assert it["reason"] == "missing_item:第 1 讲 第2题"
+    assert it["block_id"] is None and it["content_md"] is None

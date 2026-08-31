@@ -55,6 +55,10 @@ def main() -> None:
     p_anno = sub.add_parser("golden-annotate")
     p_anno.add_argument("doc_id")
     p_anno.add_argument("--dir", default="golden")
+    p_struct = sub.add_parser("structure")
+    p_struct.add_argument("doc_id")
+    p_struct.add_argument("--toc-pages", default=None,
+                          help="目录物理页码，逗号分隔，如 5,6；不给则自动探测")
     args = ap.parse_args()
 
     if args.cmd == "review":
@@ -90,6 +94,29 @@ def main() -> None:
         from kb.golden import annotate
         out = annotate(conn, args.doc_id, Path(args.dir))
         print(f"导出 {len(out)} 页区块标注底稿，请人工校对: {args.dir}/{args.doc_id}/")
+    elif args.cmd == "structure":
+        from kb.qc import check_label_continuity
+        from kb.structure import pair_items, structure_chapter
+        from kb.toc import calibrate_pages, extract_toc
+
+        toc_pages = [int(x) for x in args.toc_pages.split(",")] if args.toc_pages else None
+        n_toc = extract_toc(conn, cfg, args.doc_id, toc_pages=toc_pages)
+        n_cal = calibrate_pages(conn, args.doc_id)
+        print(f"目录: {n_toc} 章入库, {n_cal} 章完成页码校准")
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT chapter_no FROM chapters WHERE document_id=%s ORDER BY chapter_no",
+                (args.doc_id,),
+            )
+            chapters = [r[0] for r in cur.fetchall()]
+        total = 0
+        for no in chapters:
+            try:
+                total += structure_chapter(conn, cfg, args.doc_id, no)
+            except SystemExit as e:
+                print(f"第 {no} 章跳过: {e}")
+        print(f"条目: {total} 条入库; 配对 {pair_items(conn, args.doc_id)} 处; "
+              f"题号质检新增 {check_label_continuity(conn, args.doc_id)} 条")
 
 
 if __name__ == "__main__":

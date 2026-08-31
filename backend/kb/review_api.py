@@ -57,9 +57,9 @@ def create_app(get_conn: Callable[[], psycopg.Connection] | None = None) -> Fast
                 f"""SELECT r.id, r.reason, r.status, r.created_at,
                            d.title AS doc_title, p.page_no, b.id AS block_id, b.content_md
                     FROM review_queue r
-                    JOIN blocks b ON b.id = r.block_id
-                    JOIN pages p ON p.id = b.page_id
-                    JOIN documents d ON d.id = p.document_id
+                    LEFT JOIN blocks b ON b.id = r.block_id
+                    LEFT JOIN pages p ON p.id = b.page_id
+                    LEFT JOIN documents d ON d.id = p.document_id
                     {where}
                     ORDER BY r.created_at""",
                 params,
@@ -70,7 +70,8 @@ def create_app(get_conn: Callable[[], psycopg.Connection] | None = None) -> Fast
         items = [
             {
                 "id": str(r[0]), "reason": r[1], "status": r[2], "created_at": r[3].isoformat(),
-                "doc_title": r[4], "page_no": r[5], "block_id": str(r[6]), "content_md": r[7],
+                "doc_title": r[4], "page_no": r[5],
+                "block_id": str(r[6]) if r[6] else None, "content_md": r[7],
             }
             for r in rows
         ]

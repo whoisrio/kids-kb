@@ -103,7 +103,7 @@ function card(it) {
       <span class="doc">${esc(it.doc_title)} · 第 ${it.page_no} 页</span>
     </div>
     <div class="cols">
-      <img src="/api/blocks/${it.block_id}/crop" alt="页面裁图">
+      ${it.block_id ? `<img src="/api/blocks/${it.block_id}/crop" alt="页面裁图">` : ""}
       ${it.content_md
         ? `<div class="md">${renderContent(it.content_md)}</div>`
         : '<div class="md">（空转录）</div>'}
