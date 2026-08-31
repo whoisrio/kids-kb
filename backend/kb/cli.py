@@ -15,6 +15,19 @@ from kb.db import connect, migrate
 from kb.pipeline import ingest
 
 
+def list_documents(conn) -> list[tuple]:
+    """每本书的解析进度（标题、状态、已解析页/总页）。"""
+    with conn.cursor() as cur:
+        cur.execute(
+            """SELECT d.title, d.status,
+                      count(p.id) FILTER (WHERE p.status='parsed') AS parsed,
+                      count(p.id) AS total
+               FROM documents d LEFT JOIN pages p ON p.document_id=d.id
+               GROUP BY d.title, d.status ORDER BY min(d.created_at)"""
+        )
+        return cur.fetchall()
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(prog="kb")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -48,16 +61,8 @@ def main() -> None:
                         start=args.start, end=args.end)
         print(f"完成 document_id={doc_id}")
     elif args.cmd == "status":
-        with conn.cursor() as cur:
-            cur.execute(
-                """SELECT d.title, d.status,
-                          count(p.id) FILTER (WHERE p.status='parsed') AS parsed,
-                          count(p.id) AS total
-                   FROM documents d LEFT JOIN pages p ON p.document_id=d.id
-                   GROUP BY d.title, d.status ORDER BY d.created_at"""
-            )
-            for title, status, parsed, total in cur.fetchall():
-                print(f"{title}\t{status}\t{parsed}/{total} 页已解析")
+        for title, status, parsed, total in list_documents(conn):
+            print(f"{title}\t{status}\t{parsed}/{total} 页已解析")
     elif args.cmd == "golden-extract":
         from kb.golden import extract
         out = extract(conn, args.doc_id, Path(args.dir))

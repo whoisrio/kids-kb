@@ -41,3 +41,34 @@ def test_run_qc_inserts_review_rows(conn, tmp_path):
         cur.execute("SELECT reason FROM review_queue")
         assert cur.fetchone()[0] == "empty"
     assert run_qc(conn, doc_id) == 0  # 幂等
+
+
+def test_run_qc_auto_resolves_stale_review_rows(conn, tmp_path):
+    from kb.config import Config
+    from kb.layout import run_layout
+    from kb.qc import run_qc
+    from kb.render import render_document
+
+    cfg = Config(
+        database_url="postgresql://localhost/kb_test",
+        storage_dir=tmp_path / "storage",
+        vision_base_url="http://localhost:11434/v1",
+        vision_api_key="ollama",
+        vision_model="qwen3:4b",
+    )
+    p = tmp_path / "s.pdf"
+    d = fitz.open()
+    d.new_page()
+    d.save(p)
+    doc_id = render_document(conn, cfg, p, title="t")
+    run_layout(conn, doc_id)
+    with conn.cursor() as cur:  # 先失败 -> 产生 empty 复核行
+        cur.execute("UPDATE pages SET status='failed', parse_error='x'")
+    assert run_qc(conn, doc_id) == 1
+    with conn.cursor() as cur:  # 重试成功 -> 复核行应自动关闭
+        cur.execute("UPDATE pages SET status='parsed', parse_error=NULL")
+        cur.execute("UPDATE blocks SET content_md='完整内容。'")
+    assert run_qc(conn, doc_id) == 0
+    with conn.cursor() as cur:
+        cur.execute("SELECT status FROM review_queue")
+        assert cur.fetchone()[0] == "approved"

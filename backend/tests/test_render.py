@@ -80,3 +80,13 @@ def test_render_document_page_range(conn, cfg, tmp_path):
     with conn.cursor() as cur:
         cur.execute("SELECT count(*) FROM pages WHERE document_id=%s", (doc_id,))
         assert cur.fetchone()[0] == 4
+
+
+def test_render_document_does_not_reset_parsed_pages(conn, cfg, scanned_pdf):
+    doc_id = render_document(conn, cfg, scanned_pdf, title="测试卷", doc_type="exam")
+    with conn.cursor() as cur:
+        cur.execute("UPDATE pages SET status='parsed' WHERE document_id=%s", (doc_id,))
+    render_document(conn, cfg, scanned_pdf, title="测试卷", doc_type="exam")
+    with conn.cursor() as cur:
+        cur.execute("SELECT DISTINCT status FROM pages WHERE document_id=%s", (doc_id,))
+        assert {r[0] for r in cur.fetchall()} == {"parsed"}

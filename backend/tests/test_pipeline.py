@@ -46,3 +46,24 @@ def test_ingest_end_to_end(conn, tmp_path):
         assert {r[0] for r in cur.fetchall()} == {"parsed"}
         cur.execute("SELECT count(*) FROM blocks WHERE content_md='转录结果'")
         assert cur.fetchone()[0] == 2
+
+
+def test_list_documents_status_query(conn, tmp_path):
+    from kb.cli import list_documents
+    from kb.render import render_document
+    from kb.config import Config
+
+    cfg = Config(
+        database_url="postgresql://localhost/kb_test",
+        storage_dir=tmp_path / "storage",
+        vision_base_url="http://localhost:11434/v1",
+        vision_api_key="ollama",
+        vision_model="qwen3:4b",
+    )
+    p = tmp_path / "b.pdf"
+    d = fitz.open()
+    d.new_page()
+    d.save(p)
+    render_document(conn, cfg, p, title="书A")
+    rows = list_documents(conn)
+    assert rows == [("书A", "rendered", 0, 1)]

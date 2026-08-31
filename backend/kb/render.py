@@ -48,7 +48,7 @@ def render_document(
     pages_dir.mkdir(parents=True, exist_ok=True)
     with conn.cursor() as cur:
         cur.execute(
-            "SELECT page_no FROM pages WHERE document_id=%s AND status='rendered'",
+            "SELECT page_no FROM pages WHERE document_id=%s AND status IN ('rendered','parsed')",
             (doc_id,),
         )
         done = {r[0] for r in cur.fetchall()}

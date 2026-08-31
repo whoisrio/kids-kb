@@ -17,7 +17,7 @@ def check_content(content: str | None) -> list[str]:
 
 
 def run_qc(conn, doc_id: str) -> int:
-    """对低质 block 建复核记录（同一 block 同一原因不重复）。返回新增条数。"""
+    """对低质 block 建复核记录（同一 block 同一原因不重复）；内容修复后自动关闭旧记录。返回新增条数。"""
     with conn.cursor() as cur:
         cur.execute(
             """SELECT b.id, b.content_md FROM blocks b
@@ -27,16 +27,24 @@ def run_qc(conn, doc_id: str) -> int:
         )
         n = 0
         for block_id, content in cur.fetchall():
-            for reason in check_content(content):
-                cur.execute(
-                    """SELECT 1 FROM review_queue WHERE block_id=%s AND reason=%s""",
-                    (block_id, reason),
-                )
-                if cur.fetchone():
+            reasons = check_content(content)
+            cur.execute(
+                "SELECT reason, status FROM review_queue WHERE block_id=%s",
+                (block_id,),
+            )
+            existing = {reason for reason, _status in cur.fetchall() if _status == "pending"}
+            for reason in reasons:
+                if reason in existing:
                     continue
                 cur.execute(
                     "INSERT INTO review_queue (id, block_id, reason) VALUES (%s,%s,%s)",
                     (str(uuid.uuid4()), block_id, reason),
                 )
                 n += 1
+            # 内容已修复的旧复核记录自动关闭，保持队列只反映当前问题
+            for stale in existing - set(reasons):
+                cur.execute(
+                    "UPDATE review_queue SET status='approved' WHERE block_id=%s AND reason=%s AND status='pending'",
+                    (block_id, stale),
+                )
     return n
