@@ -39,3 +39,8 @@ ocr-cuda = [
     "psutil>=5",
     # pymupdf 已由核心依赖(>=1.28.2)提供，此处不再重复声明，避免版本冲突。
 ]
+# 版面分析（精度期 2a）；paddlepaddle macOS arm64 cp313 wheel 已确认存在
+layout = [
+    "paddlepaddle>=3.3",
+    "paddleocr[doc-parser]>=3.7",
+]

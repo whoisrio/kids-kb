@@ -16,6 +16,7 @@ class Config:
     vision_api_key: str
     vision_model: str
     dpi: int = 200
+    layout_engine: str = "whole_page"
 
 
 def load_config(env_path: str | os.PathLike[str] = ".env") -> Config:
@@ -30,4 +31,5 @@ def load_config(env_path: str | os.PathLike[str] = ".env") -> Config:
         vision_api_key=os.environ.get("KB_VISION_API_KEY", "ollama"),
         vision_model=os.environ.get("KB_VISION_MODEL", "qwen3:4b"),
         dpi=int(os.environ.get("KB_DPI", "200")),
+        layout_engine=os.environ.get("KB_LAYOUT_ENGINE", "whole_page"),
     )

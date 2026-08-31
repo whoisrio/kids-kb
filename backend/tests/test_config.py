@@ -18,3 +18,11 @@ def test_load_config_requires_database_url(tmp_path, monkeypatch):
     monkeypatch.delenv("KB_DATABASE_URL", raising=False)
     with pytest.raises(SystemExit):
         load_config(tmp_path / "不存在.env")
+
+
+def test_load_config_layout_engine(tmp_path, monkeypatch):
+    monkeypatch.setenv("KB_DATABASE_URL", "postgresql://localhost/kb_test")
+    monkeypatch.delenv("KB_LAYOUT_ENGINE", raising=False)
+    assert load_config(tmp_path / "不存在.env").layout_engine == "whole_page"
+    monkeypatch.setenv("KB_LAYOUT_ENGINE", "paddleocr")
+    assert load_config(tmp_path / "不存在.env").layout_engine == "paddleocr"

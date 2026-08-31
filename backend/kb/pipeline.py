@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from kb.config import Config
-from kb.layout import run_layout
+from kb.layout import make_layout_analyzer, run_layout
 from kb.parse import run_parse
 from kb.qc import run_qc
 from kb.render import render_document
@@ -14,7 +14,7 @@ def ingest(conn, cfg: Config, pdf_path, title: str,
            start: int = 1, end: int | None = None) -> str:
     doc_id = render_document(conn, cfg, pdf_path, title, subject, grade, doc_type,
                              start=start, end=end)
-    run_layout(conn, doc_id)
+    run_layout(conn, doc_id, analyzer=make_layout_analyzer(cfg))
     run_parse(conn, cfg, doc_id, client=client)
     run_qc(conn, doc_id)
     return doc_id
