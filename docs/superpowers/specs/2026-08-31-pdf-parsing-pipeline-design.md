@@ -88,8 +88,8 @@ PyMuPDF 渲染每页为图片（~200dpi），页面图存档。
 | 渲染 + 文本层检测 | PyMuPDF（已装） | 本地 | ~200dpi |
 | 版面分析 | PaddleOCR-VL-1.5（HuggingFace `PaddlePaddle/PaddleOCR-VL-1.5`） | 本地（Mac CPU/MPS） | 黄金集实测不达标则换：MinerU 2.5 / 远端 VLM 带坐标解析 |
 | 纯文本区块 OCR | rapidocr-onnxruntime（已装） | 本地 | |
-| 硬区域解析（公式/竖式/图形） | 远端视觉模型 qwen3.8-27b（现有渠道） | 远端 | 黄金集不达标再升级：百炼 qwen3-vl-max / Mathpix |
-| 结构化拆分 | 远端 qwen3.8-27b（纯文本调用） | 远端 | 备选本地 qwen3:4b（黄金集验证后决定） |
+| 硬区域解析（公式/竖式/图形） | 视觉模型，本地/远端由 .env 配置切换（当前默认：远端 qwen3.8-27b，支持视觉，可直接吃页图/裁图） | 本地或远端 | 黄金集不达标再升级：百炼 qwen3-vl-max / Mathpix |
+| 结构化拆分 | 纯文本模型，本地/远端同由 .env 配置（当前默认：远端 qwen3.8-27b） | 本地或远端 | |
 | Embedding | bge-m3（fastembed 加载） | 本地 | 1024 维，中文检索效果好的开源模型 |
 | 数据库 | PostgreSQL（本地已有实例）+ pgvector 扩展 | 本地 | schema 用 SQL migration 文件管理 |
 
