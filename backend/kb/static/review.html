@@ -358,10 +358,8 @@ async function openPage(pageId) {
 
   function itemsHtml() {
     if (!data.items.length) return '<div class="hint">本页暂无整理后的条目</div>';
-    // 起于本页的条目排前面；跨页条目显式标注，避免"前一页内容串过来"的误读
-    const sorted = [...data.items].sort((a, b) =>
-      (a.pages[0] === data.page_no ? 0 : 1) - (b.pages[0] === data.page_no ? 0 : 1));
-    return sorted.map(it => {
+    // 后端已按条目在本页的版面位置排序（续页内容在该页顶部就排最前）；跨页条目显式标注
+    return data.items.map(it => {
       const last = it.pages[it.pages.length - 1];
       const cross = it.pages.length > 1
         ? `<span class="badge">${it.pages[0] === data.page_no

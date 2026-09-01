@@ -203,13 +203,15 @@ def create_app(get_conn: Callable[[], psycopg.Connection] | None = None) -> Fast
                 (page_id, page_id),
             )
             reviews = cur.fetchall()
-            # 落在该页的条目（按 item_blocks 溯源关联），附条目实际覆盖的页码列表
+            # 落在该页的条目（按 item_blocks 溯源关联），附条目实际覆盖的页码列表；
+            # pos = 该条目落在本页的块的阅读序位置，前端按它排序（与版面顺序一致）
             cur.execute(
                 """WITH here AS (
-                       SELECT DISTINCT i.id FROM items i
+                       SELECT i.id, min(b.created_at) AS pos FROM items i
                        JOIN item_blocks ib ON ib.item_id = i.id
                        JOIN blocks b ON b.id = ib.block_id
                        WHERE b.page_id = %s
+                       GROUP BY i.id
                    )
                    SELECT i.id, i.content_type, i.label, i.content_md, i.qc_status,
                           (SELECT array_agg(DISTINCT p2.page_no ORDER BY p2.page_no)
@@ -218,7 +220,7 @@ def create_app(get_conn: Callable[[], psycopg.Connection] | None = None) -> Fast
                            JOIN pages p2 ON p2.id = b2.page_id
                            WHERE ib2.item_id = i.id) AS pages
                    FROM items i JOIN here h ON h.id = i.id
-                   ORDER BY i.label""",
+                   ORDER BY h.pos""",
                 (page_id,),
             )
             items = cur.fetchall()

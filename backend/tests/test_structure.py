@@ -128,3 +128,10 @@ def test_pair_items_links_answers(conn, doc_with_chapter):
     with conn.cursor() as cur:
         cur.execute("SELECT paired_item_id FROM items WHERE content_type='exercise'")
         assert cur.fetchone()[0] is not None
+
+
+def test_structure_prompt_requires_fidelity():
+    """拆条 prompt 必须含忠于原文约束（防模型改写/脑补续写）。"""
+    from kb.structure import STRUCTURE_PROMPT
+    assert "忠于源块原文" in STRUCTURE_PROMPT
+    assert "严禁改写" in STRUCTURE_PROMPT
