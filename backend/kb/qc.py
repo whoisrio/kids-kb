@@ -18,25 +18,28 @@ _MATH_RE = re.compile(r"\$\$([\s\S]+?)\$\$|\$([^$\n]+?)\$")
 CHECKABLE_REASONS = frozenset({"empty", "maybe_truncated", "bad_latex",
                                "layout_gap", "layout_overlap"})
 _LAYOUT_REASONS = ("layout_gap", "layout_overlap")
-_GAP_COVERAGE = 0.6   # 块 bbox 覆盖页面积低于此比例视为漏切
+_GAP_BAND = 0.3       # 连续无块纵向带超过页高此比例视为漏切
 _OVERLAP_RATIO = 0.5  # 相交面积超过较小块此比例视为重叠切错
 
 
 def check_page_layout(bboxes: list[tuple], page_w: float, page_h: float) -> list[str]:
-    """版面忠实度：块覆盖不足 -> layout_gap；块间大面积重叠 -> layout_overlap。
-    无 bbox（骨架期整页块）不检查。覆盖率用网格离散法，块数少时足够准且实现简单。"""
+    """版面忠实度：整带漏切 -> layout_gap；块间大面积重叠 -> layout_overlap。
+
+    无 bbox（骨架期整页块）不检查。漏切判定不用面积覆盖率（紧贴文字的 bbox
+    在密集页面也只有 ~20% 覆盖，面积法全是误报），改用最大纵向空白带占比。
+    """
     if not bboxes or page_w <= 0 or page_h <= 0:
         return []
-    gx, gy = 50, 70
-    cells = set()
-    for x0, y0, x1, y1 in bboxes:
-        cx0, cx1 = max(0, int(x0 / page_w * gx)), min(gx - 1, int(x1 / page_w * gx))
-        cy0, cy1 = max(0, int(y0 / page_h * gy)), min(gy - 1, int(y1 / page_h * gy))
-        for cx in range(cx0, cx1 + 1):
-            for cy in range(cy0, cy1 + 1):
-                cells.add((cx, cy))
     reasons = []
-    if len(cells) / (gx * gy) < _GAP_COVERAGE:
+    # 最大纵向空白带：块沿 y 轴排序扫描，超过页高 30% 的连续无块区域视为漏切
+    intervals = sorted((max(0.0, y0), min(page_h, y1)) for _x0, y0, _x1, y1 in bboxes)
+    cursor, max_gap = 0.0, 0.0
+    for y0, y1 in intervals:
+        if y0 > cursor:
+            max_gap = max(max_gap, y0 - cursor)
+        cursor = max(cursor, y1)
+    max_gap = max(max_gap, page_h - cursor)
+    if max_gap / page_h > _GAP_BAND:
         reasons.append("layout_gap")
     areas = [max(0.0, x1 - x0) * max(0.0, y1 - y0) for x0, y0, x1, y1 in bboxes]
     for i, a in enumerate(bboxes):

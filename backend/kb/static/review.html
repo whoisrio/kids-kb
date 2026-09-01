@@ -18,34 +18,48 @@
                  cursor:pointer; color:var(--muted); font-size:13px; }
   .tabs button.active { background:#111827; color:#fff; }
   .tabs .n { opacity:.7; margin-left:2px; }
-  main { max-width:1100px; margin:0 auto; padding:20px; }
+  main { max-width:1280px; margin:0 auto; padding:20px; }
   .card { background:#fff; border:1px solid var(--line); border-radius:10px;
           padding:16px; margin-bottom:16px; }
-  .meta { display:flex; gap:8px; align-items:center; margin-bottom:12px; flex-wrap:wrap; }
+  .card.page { display:flex; gap:16px; cursor:pointer; }
+  .card.page:hover { border-color:#93c5fd; }
+  .card.page img { width:120px; border:1px solid var(--line); border-radius:6px; }
+  .meta { display:flex; gap:8px; align-items:center; margin-bottom:8px; flex-wrap:wrap; }
   .badge { background:#fef3c7; color:#92400e; border-radius:4px; padding:2px 8px; font-size:12px; }
-  .badge.approved { background:#dcfce7; color:#166534; }
-  .badge.rejected { background:#fee2e2; color:#991b1b; }
-  .badge.pending { background:#e0e7ff; color:#3730a3; }
   .doc { color:var(--muted); font-size:13px; }
-  .cols { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
-  .cols img { width:100%; border:1px solid var(--line); border-radius:6px; background:#fff; }
-  .md { background:var(--bg); padding:12px; border-radius:6px; max-height:520px;
+  .detail { display:grid; grid-template-columns:minmax(0,7fr) minmax(0,5fr); gap:16px;
+            align-items:start; }
+  .pagewrap { position:relative; background:#fff; border:1px solid var(--line);
+              border-radius:10px; overflow:hidden; }
+  .pagewrap img { display:block; width:100%; }
+  .bbox { position:absolute; border:1.5px dashed #9ca3af; border-radius:2px; cursor:pointer; }
+  .bbox:hover { border-color:#2563eb; background:rgba(37,99,235,.06); }
+  .bbox.has-issue { border:2px solid #dc2626; background:rgba(220,38,38,.07); }
+  .bbox.selected { border:2.5px solid #2563eb; background:rgba(37,99,235,.10); }
+  .panel { background:#fff; border:1px solid var(--line); border-radius:10px; padding:16px; }
+  .md { background:var(--bg); padding:12px; border-radius:6px; max-height:420px;
         overflow:auto; font-family:inherit; }
   .md p { margin:0 0 8px; }
   .md p:last-child { margin-bottom:0; }
   .md ul, .md ol { margin:0 0 8px; padding-left:22px; }
   .md .katex-display { margin:8px 0; overflow-x:auto; overflow-y:hidden; padding:4px 0; }
-  .actions { margin-top:12px; display:flex; gap:8px; }
+  .actions { margin-top:12px; display:flex; gap:8px; flex-wrap:wrap; }
   .btn { border:none; border-radius:6px; padding:8px 18px; cursor:pointer; font-size:14px; }
   .btn.approve { background:#059669; color:#fff; }
   .btn.reject { background:#dc2626; color:#fff; }
   .btn.plain { background:#e5e7eb; color:#111827; }
   .btn:disabled { opacity:.5; cursor:default; }
-  .editor { width:100%; min-height:260px; font:13px/1.6 ui-monospace,Menlo,monospace;
+  .editor { width:100%; min-height:240px; font:13px/1.6 ui-monospace,Menlo,monospace;
             padding:10px; border:1px solid var(--line); border-radius:6px;
             resize:vertical; box-sizing:border-box; }
   .hint { color:var(--muted); font-size:12px; align-self:center; }
   .empty { text-align:center; color:var(--muted); padding:60px 0; }
+  .blockitem { padding:6px 10px; border:1px solid var(--line); border-radius:6px;
+               margin-bottom:6px; cursor:pointer; font-size:13px; }
+  .blockitem:hover { border-color:#93c5fd; }
+  .blockitem.selected { border-color:#2563eb; background:#eff6ff; }
+  .blockitem.has-issue { border-color:#fca5a5; }
+  .blockitem .t { color:var(--muted); font-size:12px; margin-right:6px; }
 </style>
 </head>
 <body>
@@ -59,8 +73,7 @@
 </header>
 <main id="list"><div class="empty">加载中…</div></main>
 <script>
-const TABS = [["pending","待复核"], ["approved","已通过"], ["rejected","已打回"]];
-const LABEL = { pending:"待复核", approved:"已通过", rejected:"已打回" };
+const TABS = [["pending", "待复核"], ["approved", "已通过"]];
 let status = "pending";
 
 function esc(s) {
@@ -70,15 +83,19 @@ function esc(s) {
 }
 
 async function refresh() {
-  const data = await (await fetch("/api/review?status=" + status)).json();
-  renderTabs(data.counts);
+  const otherStatus = status === "pending" ? "approved" : "pending";
+  const [cur, other] = await Promise.all([
+    fetch("/api/pages?status=" + status).then(r => r.json()),
+    fetch("/api/pages?status=" + otherStatus).then(r => r.json()),
+  ]);
+  renderTabs({ [status]: cur.items.length, [otherStatus]: other.items.length });
   const list = document.getElementById("list");
   list.innerHTML = "";
-  if (!data.items.length) {
+  if (!cur.items.length) {
     list.innerHTML = '<div class="empty">无记录</div>';
     return;
   }
-  for (const it of data.items) list.appendChild(card(it));
+  for (const it of cur.items) list.appendChild(pageCard(it));
 }
 
 function renderTabs(counts) {
@@ -93,81 +110,164 @@ function renderTabs(counts) {
   }
 }
 
-function card(it) {
+function pageCard(it) {
   const d = document.createElement("div");
-  d.className = "card";
+  d.className = "card page";
   d.innerHTML = `
-    <div class="meta">
-      <span class="badge">${esc(it.reason)}</span>
-      <span class="badge ${it.status}">${LABEL[it.status]}</span>
-      <span class="doc">${esc(it.doc_title)} · 第 ${it.page_no} 页</span>
-    </div>
-    <div class="cols">
-      ${it.block_id ? `<img src="/api/blocks/${it.block_id}/crop" alt="页面裁图">` : ""}
-      ${it.content_md
-        ? `<div class="md">${renderContent(it.content_md)}</div>`
-        : '<div class="md">（空转录）</div>'}
-    </div>
-    ${it.status === "pending" ? `
-    <div class="actions">
-      <button class="btn approve">✓ 通过</button>
-      <button class="btn plain edit">✎ 编辑</button>
-      <button class="btn reject">✗ 打回</button>
-    </div>` : ""}`;
-  const on = (sel, action) => {
-    const btn = d.querySelector(sel);
-    if (btn) btn.onclick = () => act(it.id, action, btn);
-  };
-  on(".btn.approve", "approve");
-  on(".btn.reject", "reject");
-  const editBtn = d.querySelector(".btn.edit");
-  if (editBtn) editBtn.onclick = () => enterEdit(d, it);
+    <img src="/api/pages/${it.page_id}/image" alt="第 ${it.page_no} 页" loading="lazy">
+    <div>
+      <div class="meta">
+        <span class="doc">${esc(it.doc_title)} · 第 ${it.page_no} 页</span>
+        ${it.pending_reasons.map(r => `<span class="badge">${esc(r)}</span>`).join("")}
+      </div>
+    </div>`;
+  d.onclick = () => openPage(it.page_id);
   return d;
 }
 
-function enterEdit(cardEl, it) {
-  const md = cardEl.querySelector(".md");
-  const original = it.content_md || "";
-  md.innerHTML = "";
-  const ta = document.createElement("textarea");
-  ta.className = "editor";
-  ta.value = original;
-  md.appendChild(ta);
-  const bar = document.createElement("div");
-  bar.className = "actions";
-  bar.innerHTML = '<button class="btn approve">保存</button>' +
-                  '<button class="btn plain">取消</button>' +
-                  '<span class="hint"></span>';
-  md.appendChild(bar);
-  const [saveBtn, cancelBtn] = bar.querySelectorAll("button");
-  const hint = bar.querySelector(".hint");
-  cancelBtn.onclick = () => {
-    md.innerHTML = original ? renderContent(original) : "（空转录）";
+async function openPage(pageId) {
+  const data = await (await fetch("/api/pages/" + pageId)).json();
+  const issueBlocks = new Set(
+    data.reviews.filter(r => r.status === "pending" && r.block_id).map(r => r.block_id));
+  const pageRows = data.reviews.filter(r => r.status === "pending" && !r.block_id);
+
+  const list = document.getElementById("list");
+  list.innerHTML = "";
+  const wrap = document.createElement("div");
+  wrap.innerHTML = `
+    <div class="meta">
+      <button class="btn plain" id="back">← 返回列表</button>
+      <span class="doc">${esc(data.doc_title)} · 第 ${data.page_no} 页</span>
+      ${pageRows.map(r => `<span class="badge">${esc(r.reason)}</span>`).join("")}
+    </div>
+    <div class="detail">
+      <div class="pagewrap">
+        <img src="/api/pages/${pageId}/image" id="pageimg">
+        <div id="overlays"></div>
+      </div>
+      <div class="panel" id="panel"></div>
+    </div>
+    <div class="actions">
+      <button class="btn approve" id="approve">✓ 整页通过</button>
+      <button class="btn reject" id="reject">✗ 打回本页</button>
+    </div>`;
+  list.appendChild(wrap);
+  wrap.querySelector("#back").onclick = refresh;
+  wrap.querySelector("#approve").onclick = async (e) => {
+    e.target.disabled = true;
+    const resp = await fetch(`/api/pages/${pageId}/approve`, { method: "POST" });
+    if (resp.ok) refresh(); else { e.target.disabled = false; alert("操作失败: " + resp.status); }
   };
-  saveBtn.onclick = async () => {
-    saveBtn.disabled = true;
-    const resp = await fetch(`/api/blocks/${it.block_id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ content_md: ta.value }),
+  wrap.querySelector("#reject").onclick = async (e) => {
+    const reason = prompt("打回原因（会生成页级复核行，机器不自动关闭）：");
+    if (!reason) return;
+    e.target.disabled = true;
+    const resp = await fetch(`/api/pages/${pageId}/reject`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reason }),
     });
-    if (!resp.ok) {
-      saveBtn.disabled = false;
-      hint.textContent = "保存失败: " + resp.status;
+    if (resp.ok) refresh(); else { e.target.disabled = false; alert("操作失败: " + resp.status); }
+  };
+
+  const img = wrap.querySelector("#pageimg");
+  const overlays = wrap.querySelector("#overlays");
+  const panel = wrap.querySelector("#panel");
+  const blockItems = [];
+
+  function select(block) {
+    overlays.querySelectorAll(".bbox").forEach(el => el.classList.remove("selected"));
+    blockItems.forEach(el => el.classList.remove("selected"));
+    if (block) {
+      const ov = overlays.querySelector(`[data-bid="${block.id}"]`);
+      if (ov) ov.classList.add("selected");
+      const bi = blockItems.find(el => el.dataset.bid === block.id);
+      if (bi) { bi.classList.add("selected"); bi.scrollIntoView({ block: "nearest" }); }
+    }
+    renderPanel(block);
+  }
+
+  function renderPanel(block) {
+    if (!block) {
+      panel.innerHTML = '<div class="hint">点击页面上或下方的块查看/编辑内容</div>' +
+        blockListHtml();
+      bindBlockItems();
       return;
     }
-    const data = await resp.json();
-    saveBtn.disabled = false;
-    alert(`已保存，自动关闭 ${data.resolved_reviews} 条复核记录`);
-    refresh();
-  };
-}
+    const rows = data.reviews.filter(r => r.block_id === block.id);
+    panel.innerHTML = `
+      <div class="meta">
+        <span class="badge">${esc(block.block_type)}</span>
+        ${rows.map(r => `<span class="badge">${esc(r.reason)}（${esc(r.status)}）</span>`).join("")}
+      </div>
+      <div class="md">${block.content_md ? renderContent(block.content_md) : "（无文本内容，以图为准）"}</div>
+      <div class="actions"><button class="btn plain" id="edit">✎ 编辑</button></div>
+      <div style="margin-top:14px">${blockListHtml()}</div>`;
+    panel.querySelector("#edit").onclick = () => enterEdit(block);
+    bindBlockItems();
+  }
 
-async function act(id, action, btn) {
-  btn.disabled = true;
-  const resp = await fetch(`/api/review/${id}/${action}`, { method: "POST" });
-  if (!resp.ok) { btn.disabled = false; alert("操作失败: " + resp.status); return; }
-  refresh();
+  function blockListHtml() {
+    return data.blocks.map((b, i) => `
+      <div class="blockitem ${issueBlocks.has(b.id) ? "has-issue" : ""}" data-bid="${b.id}">
+        <span class="t">${i + 1} · ${esc(b.block_type)}</span>${esc((b.content_md || "").slice(0, 40)) || "（空）"}
+      </div>`).join("");
+  }
+
+  function bindBlockItems() {
+    blockItems.length = 0;
+    panel.querySelectorAll(".blockitem").forEach(el => {
+      blockItems.push(el);
+      el.onclick = () => select(data.blocks.find(b => b.id === el.dataset.bid));
+    });
+  }
+
+  function enterEdit(block) {
+    const md = panel.querySelector(".md");
+    const original = block.content_md || "";
+    md.innerHTML = "";
+    const ta = document.createElement("textarea");
+    ta.className = "editor";
+    ta.value = original;
+    md.appendChild(ta);
+    const bar = panel.querySelector(".actions");
+    bar.innerHTML = '<button class="btn approve" id="save">保存</button>' +
+                    '<button class="btn plain" id="cancel">取消</button>' +
+                    '<span class="hint"></span>';
+    const hint = bar.querySelector(".hint");
+    bar.querySelector("#cancel").onclick = () => renderPanel(block);
+    bar.querySelector("#save").onclick = async (e) => {
+      e.target.disabled = true;
+      const resp = await fetch(`/api/blocks/${block.id}`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content_md: ta.value }),
+      });
+      if (!resp.ok) { e.target.disabled = false; hint.textContent = "保存失败: " + resp.status; return; }
+      const r = await resp.json();
+      block.content_md = r.content_md;
+      hint.textContent = r.new_reviews ? `已保存，新发现 ${r.new_reviews} 个问题待复核` : "已保存";
+      e.target.disabled = false;
+      renderPanel(block);
+    };
+  }
+
+  img.addEventListener("load", () => {
+    overlays.innerHTML = "";
+    for (const b of data.blocks) {
+      if (!b.bbox || !data.width || !data.height) continue;
+      const el = document.createElement("div");
+      el.className = "bbox" + (issueBlocks.has(b.id) ? " has-issue" : "");
+      el.dataset.bid = b.id;
+      el.style.left = (b.bbox[0] / data.width * 100) + "%";
+      el.style.top = (b.bbox[1] / data.height * 100) + "%";
+      el.style.width = ((b.bbox[2] - b.bbox[0]) / data.width * 100) + "%";
+      el.style.height = ((b.bbox[3] - b.bbox[1]) / data.height * 100) + "%";
+      el.title = b.block_type;
+      el.onclick = () => select(b);
+      overlays.appendChild(el);
+    }
+  });
+
+  select(null);
 }
 
 refresh();

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import base64
+import re
 from pathlib import Path
 
 from openai import OpenAI
@@ -15,8 +16,18 @@ TRANSCRIBE_PROMPT = (
     "如果页面含多个栏块，请按顺序逐块列出。\n"
     "特别注意：如果内容包含数学公式、表达式、算式、符号等，"
     "必须一律使用 LaTeX 表达--行内公式用 $...$，独立公式块用 $$...$$，"
-    "确保公式可被标准 LaTeX 渲染器正确还原。"
+    "公式必须能被 KaTeX 渲染：只用常见命令，禁止用 \\cline、\\textcircled、\\rule "
+    "（横线用 \\hline，圈起来的字符用 \\boxed{}）。"
 )
+
+
+def normalize_latex(content: str) -> str:
+    """把模型常用但 KaTeX 不支持的命令归一化为可渲染写法（确定性，不进复核队列）。"""
+    out = re.sub(r"\\cline\{[^}]*\}", r"\\hline", content)
+    out = re.sub(r"\\textcircled\{([^{}]*)\}", r"\\boxed{\1}", out)
+    out = re.sub(r"\\overline\{\\rule\{[^}]*\}\{[^}]*\}\}", r"\\hline", out)
+    out = re.sub(r"@\{[^}]*\}", "", out)  # array 列声明装饰符，KaTeX 不支持
+    return out
 
 
 def transcribe_image(client, model: str, image_path, prompt: str = TRANSCRIBE_PROMPT) -> str:
@@ -84,7 +95,8 @@ def run_parse(conn, cfg: Config, doc_id: str, client=None, ocr=None) -> int:
                     (str(e)[:500], page_id),
                 )
                 continue
-            cur.execute("UPDATE blocks SET content_md=%s WHERE id=%s", (text, block_id))
+            cur.execute("UPDATE blocks SET content_md=%s WHERE id=%s",
+                        (normalize_latex(text), block_id))
             cur.execute("UPDATE pages SET status='parsed', parse_error=NULL WHERE id=%s", (page_id,))
             n += 1
         # 自愈历史漂移：块内容齐全的页必为 parsed（与逐块更新同一不变量）
