@@ -63,6 +63,11 @@ def main() -> None:
                              help="PaddleOCR-VL 整管线重处理指定页（破坏性：删旧块+相交章节 items）")
     p_repro.add_argument("doc_id")
     p_repro.add_argument("--pages", required=True, help="物理页码范围，如 9-15 或 9,10,11")
+    p_embed = sub.add_parser("embed", help="approved 条目向量化（bge-m3 -> pgvector）")
+    p_embed.add_argument("doc_id", nargs="?", default=None)
+    p_search = sub.add_parser("search", help="语义检索")
+    p_search.add_argument("query")
+    p_search.add_argument("--top-k", type=int, default=5)
     args = ap.parse_args()
 
     if args.cmd == "review":
@@ -134,6 +139,14 @@ def main() -> None:
         stats = reprocess_pages_paddleocr(conn, cfg, args.doc_id, page_nos)
         print(f"重处理页 {page_nos[0]}-{page_nos[-1]}: {stats['blocks']} 块入库, "
               f"{stats['items_deleted']} 条旧 item 已删（请重跑 structure 重建）")
+    elif args.cmd == "embed":
+        from kb.embed import embed_approved_items
+        print(f"新增向量: {embed_approved_items(conn, cfg, args.doc_id)} 条")
+    elif args.cmd == "search":
+        from kb.embed import search
+        for h in search(conn, cfg, args.query, top_k=args.top_k):
+            print(f"{h['score']:.3f}\t{h.get('doc_title')} · {h.get('chapter')} · "
+                  f"{h.get('label')}\t{(h['content_md'] or '')[:60]}")
 
 
 if __name__ == "__main__":

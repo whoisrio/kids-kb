@@ -19,6 +19,8 @@ class Config:
     layout_engine: str = "whole_page"
     vision_compare_model: str | None = None
     structure_model: str | None = None
+    embed_base_url: str = "http://localhost:11434"
+    embed_model: str = "bge-m3"
 
 
 def load_config(env_path: str | os.PathLike[str] = ".env") -> Config:
@@ -36,4 +38,6 @@ def load_config(env_path: str | os.PathLike[str] = ".env") -> Config:
         layout_engine=os.environ.get("KB_LAYOUT_ENGINE", "whole_page"),
         vision_compare_model=os.environ.get("KB_VISION_COMPARE_MODEL") or None,
         structure_model=os.environ.get("KB_STRUCTURE_MODEL") or None,
+        embed_base_url=os.environ.get("KB_EMBED_BASE_URL", "http://localhost:11434"),
+        embed_model=os.environ.get("KB_EMBED_MODEL", "bge-m3"),
     )

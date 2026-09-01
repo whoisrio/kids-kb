@@ -73,7 +73,7 @@
 </header>
 <main id="list"><div class="empty">加载中…</div></main>
 <script>
-const TABS = [["pending", "待复核"], ["approved", "已通过"], ["items", "条目"]];
+const TABS = [["pending", "待复核"], ["approved", "已通过"], ["items", "条目"], ["search", "检索"]];
 let status = "pending";
 
 function esc(s) {
@@ -84,6 +84,7 @@ function esc(s) {
 
 async function refresh() {
   if (status === "items") return refreshItems();
+  if (status === "search") return renderSearch();
   const otherStatus = status === "pending" ? "approved" : "pending";
   const [cur, other] = await Promise.all([
     fetch("/api/pages?status=" + status).then(r => r.json()),
@@ -144,6 +145,51 @@ function pendingItemCard(it) {
     if (resp.ok) refresh(); else { e.target.disabled = false; alert("操作失败: " + resp.status); }
   };
   return d;
+}
+
+function renderSearch() {
+  renderTabs({});
+  const list = document.getElementById("list");
+  list.innerHTML = `
+    <div class="card">
+      <div class="meta">
+        <input id="q" placeholder="语义检索，如：除法竖式谜 倒推法"
+               style="flex:1;padding:8px 12px;border:1px solid var(--line);border-radius:6px;font-size:14px">
+        <button class="btn approve" id="go">检索</button>
+      </div>
+      <div id="hits"></div>
+    </div>`;
+  const go = async () => {
+    const q = list.querySelector("#q").value.trim();
+    if (!q) return;
+    const hitsEl = list.querySelector("#hits");
+    hitsEl.innerHTML = '<div class="hint">检索中…</div>';
+    const resp = await fetch("/api/search", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ query: q, top_k: 8 }),
+    });
+    if (!resp.ok) { hitsEl.innerHTML = "检索失败: " + resp.status; return; }
+    const hits = (await resp.json()).items;
+    hitsEl.innerHTML = hits.length ? "" : '<div class="empty">无结果（确认过的条目才会进向量库）</div>';
+    for (const h of hits) {
+      const d = document.createElement("div");
+      d.className = "card";
+      d.style.cursor = "pointer";
+      d.innerHTML = `
+        <div class="meta">
+          <span class="badge">${h.score.toFixed(3)}</span>
+          <span class="doc">${esc(h.doc_title || "")} · ${esc(h.chapter || "")}</span>
+          <span class="badge">${esc(h.label || "?")}</span>
+          <span class="badge">${esc(h.content_type || "")}</span>
+          ${(h.tags || []).map(t => `<span class="badge">${esc(t)}</span>`).join("")}
+        </div>
+        <div class="md">${renderContent((h.content_md || "").slice(0, 600))}</div>`;
+      d.onclick = () => openItem(h.item_id);
+      hitsEl.appendChild(d);
+    }
+  };
+  list.querySelector("#go").onclick = go;
+  list.querySelector("#q").onkeydown = (e) => { if (e.key === "Enter") go(); };
 }
 
 async function refreshItems() {

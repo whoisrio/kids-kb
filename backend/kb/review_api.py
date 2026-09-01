@@ -370,6 +370,7 @@ def create_app(get_conn: Callable[[], psycopg.Connection] | None = None,
 
     @app.patch("/api/items/{item_id}")
     def update_item(item_id: str, body: BlockContent):
+        from kb.embed import invalidate_chunk
         from kb.grounding import sync_item_grounding
         with conn_ctx() as conn:
             with conn.cursor() as cur:
@@ -381,6 +382,7 @@ def create_app(get_conn: Callable[[], psycopg.Connection] | None = None,
             if not row:
                 raise HTTPException(status_code=404, detail="item 不存在")
             new_rows = sync_item_grounding(conn, item_id)  # 编辑后重算接地
+            invalidate_chunk(conn, item_id)  # 内容变了，旧向量作废
         return {"id": str(row[0]), "content_md": body.content_md, "new_reviews": new_rows}
 
     @app.post("/api/items/{item_id}/approve")
@@ -445,5 +447,18 @@ def create_app(get_conn: Callable[[], psycopg.Connection] | None = None,
             if not cur.fetchone():
                 raise HTTPException(status_code=404, detail="page 不存在")
         return {"page_id": page_id, "adopted_source": source}
+
+    @app.post("/api/search")
+    def api_search(body: dict):
+        """语义检索：query -> bge-m3 -> pgvector top-k。filters 可选 meta 精确过滤。"""
+        from kb.embed import search
+        query = (body.get("query") or "").strip()
+        if not query:
+            raise HTTPException(status_code=422, detail="query 不能为空")
+        with conn_ctx() as conn:
+            hits = search(conn, load_config(), query,
+                          top_k=int(body.get("top_k", 5)),
+                          filters=body.get("filters"))
+        return {"items": hits}
 
     return app
