@@ -59,6 +59,10 @@ def main() -> None:
     p_struct.add_argument("doc_id")
     p_struct.add_argument("--toc-pages", default=None,
                           help="目录物理页码，逗号分隔，如 5,6；不给则自动探测")
+    p_repro = sub.add_parser("reprocess",
+                             help="PaddleOCR-VL 整管线重处理指定页（破坏性：删旧块+相交章节 items）")
+    p_repro.add_argument("doc_id")
+    p_repro.add_argument("--pages", required=True, help="物理页码范围，如 9-15 或 9,10,11")
     args = ap.parse_args()
 
     if args.cmd == "review":
@@ -117,6 +121,17 @@ def main() -> None:
                 print(f"第 {no} 章跳过: {e}")
         print(f"条目: {total} 条入库; 配对 {pair_items(conn, args.doc_id)} 处; "
               f"题号质检新增 {check_label_continuity(conn, args.doc_id)} 条")
+    elif args.cmd == "reprocess":
+        from kb.reprocess import reprocess_pages_paddleocr
+
+        if "-" in args.pages:
+            a, b = args.pages.split("-", 1)
+            page_nos = list(range(int(a), int(b) + 1))
+        else:
+            page_nos = [int(x) for x in args.pages.split(",")]
+        stats = reprocess_pages_paddleocr(conn, cfg, args.doc_id, page_nos)
+        print(f"重处理页 {page_nos[0]}-{page_nos[-1]}: {stats['blocks']} 块入库, "
+              f"{stats['items_deleted']} 条旧 item 已删（请重跑 structure 重建）")
 
 
 if __name__ == "__main__":
