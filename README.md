@@ -56,7 +56,18 @@ uv run python -m kb.cli structure <doc_id> [--toc-pages 5]   # 目录页不给�
 - 目录页经视觉模型解析进 `chapters` 表：章节/印刷页码/分类(taxonomy)/思想方法(tags)，是该书词表的唯一事实来源；
 - `calibrate_pages` 用章节标题在块文本中的首次出现定位物理页范围（印刷页码≠物理页码；目录页含所有标题，搜索时排除）；
 - 按章节窗口（非单页）喂文本模型拆条，跨页题目天然合并；taxonomy/tags 从该章词表注入，模型不自由发挥；
-- `pair_items` 按 label 精确配对 answer ↔ exercise/example；题号连续性检查（`missing_item`）进复核队列（不自动关闭）。
+- `pair_items` 按 label 精确配对 answer ↔ exercise/example；题号连续性检查（`missing_item`，支持纯数字与 "3-1" 式分组题号）进复核队列（不自动关闭）。
+
+## 版面质量返工：PaddleOCR-VL 整管线重处理
+
+PP-DocLayoutV2 对密集数学页切块过碎（20-30 块/页、阅读顺序断）时，整管线（PP-DocLayoutV3 + PaddleOCR-VL-1.5）重处理指定页：
+
+```bash
+KB_LAYOUT_ENGINE=paddleocr uv run --extra layout python -m kb.cli reprocess <doc_id> --pages 9-15
+# 然后对空内容块（竖式图等）补转录：run_parse 会自动拾取 content_md IS NULL 的块
+```
+
+破坏性操作：删指定页旧块（级联复核行）与页码相交章节的 items，需重跑 `structure` 重建。实测 ~1-3 分钟/页。
 
 设计文档：`docs/superpowers/specs/2026-08-31-pdf-parsing-pipeline-design.md`
 实施计划：`docs/superpowers/plans/2026-08-31-pdf-pipeline-phase1.md`（骨架期）、
