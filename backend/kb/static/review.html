@@ -89,14 +89,36 @@ async function refresh() {
     fetch("/api/pages?status=" + status).then(r => r.json()),
     fetch("/api/pages?status=" + otherStatus).then(r => r.json()),
   ]);
-  renderTabs({ [status]: cur.items.length, [otherStatus]: other.items.length });
+  const pendingItems = status === "pending"
+    ? (await fetch("/api/items?status=pending").then(r => r.json())).items : [];
+  renderTabs({ [status]: cur.items.length + pendingItems.length,
+               [otherStatus]: other.items.length });
   const list = document.getElementById("list");
   list.innerHTML = "";
-  if (!cur.items.length) {
+  if (!cur.items.length && !pendingItems.length) {
     list.innerHTML = '<div class="empty">无记录</div>';
     return;
   }
   for (const it of cur.items) list.appendChild(pageCard(it));
+  if (pendingItems.length) {
+    const h = document.createElement("div");
+    h.className = "meta";
+    h.style.marginTop = "18px";
+    h.innerHTML = "<b>条目问题</b>";
+    list.appendChild(h);
+    for (const it of pendingItems) {
+      const d = document.createElement("div");
+      d.className = "card page";
+      d.innerHTML = `
+        <div class="meta" style="margin:0">
+          <span class="doc">${esc(it.doc_title)} · ${esc(it.chapter || "")}</span>
+          <span class="badge">${esc(it.label || "?")}</span>
+          ${it.pending_reasons.map(r => `<span class="badge">${esc(r)}</span>`).join("")}
+        </div>`;
+      d.onclick = () => openItem(it.id);
+      list.appendChild(d);
+    }
+  }
 }
 
 async function refreshItems() {

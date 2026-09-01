@@ -268,19 +268,30 @@ def create_app(get_conn: Callable[[], psycopg.Connection] | None = None) -> Fast
     # ---- 条目级：LLM 整理结果（章节拆条）的可视化与人工确认 ----
 
     @app.get("/api/items")
-    def list_items(doc_id: str | None = None):
+    def list_items(doc_id: str | None = None, status: str | None = None):
         where, params = ("WHERE i.document_id = %s", [doc_id]) if doc_id else ("", [])
+        if status == "pending":  # 有 pending 复核行的条目（打回的条目在待复核页可见）
+            where += (" AND " if where else "WHERE ") + "pr.reasons IS NOT NULL"
+        elif status:
+            raise HTTPException(status_code=422, detail="status 取值: pending")
         with conn_ctx() as conn, conn.cursor() as cur:
             cur.execute(
-                f"""SELECT i.id, i.content_type, i.label, i.chapter, i.qc_status, d.title
-                    FROM items i JOIN documents d ON d.id = i.document_id
+                f"""SELECT i.id, i.content_type, i.label, i.chapter, i.qc_status, d.title,
+                           pr.reasons
+                    FROM items i
+                    JOIN documents d ON d.id = i.document_id
+                    LEFT JOIN LATERAL (
+                        SELECT array_agg(r.reason ORDER BY r.created_at) AS reasons
+                        FROM review_queue r
+                        WHERE r.item_id = i.id AND r.status = 'pending'
+                    ) pr ON true
                     {where} ORDER BY d.title, i.chapter, i.created_at""",
                 params,
             )
             rows = cur.fetchall()
         return {"items": [
             {"id": str(r[0]), "content_type": r[1], "label": r[2], "chapter": r[3],
-             "qc_status": r[4], "doc_title": r[5]}
+             "qc_status": r[4], "doc_title": r[5], "pending_reasons": r[6] or []}
             for r in rows
         ]}
 
