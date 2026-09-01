@@ -107,8 +107,8 @@ def test_patch_block_content_updates_db(client, seeded, conn):
     block_id, r_empty, r_trunc = seeded
     resp = client.patch(f"/api/blocks/{block_id}", json={"content_md": "修正后的转录。"})
     assert resp.status_code == 200
-    # seeded 的两条行（empty/maybe_truncated）与内容本就不符，PATCH 后按"可检测行失效即关闭"语义被自动关闭
-    assert resp.json() == {"id": block_id, "content_md": "修正后的转录。", "resolved_reviews": 2}
+    # 编辑没引入新问题 -> 不建行；seeded 的两条失效行（empty/maybe_truncated）被自动关闭
+    assert resp.json() == {"id": block_id, "content_md": "修正后的转录。", "new_reviews": 0}
     with conn.cursor() as cur:
         cur.execute("SELECT content_md FROM blocks WHERE id=%s", (block_id,))
         assert cur.fetchone()[0] == "修正后的转录。"
@@ -122,9 +122,8 @@ def test_patch_auto_resolves_empty_review(client, seeded, conn):
         cur.execute("UPDATE blocks SET content_md='' WHERE id=%s", (block_id,))
         cur.execute("INSERT INTO review_queue (block_id, reason) VALUES (%s,'empty')", (block_id,))
     resp = client.patch(f"/api/blocks/{block_id}", json={"content_md": "人工修复的内容。"})
-    # 修复后：新 empty 行 + seeded 的 empty/maybe_truncated 两条失效行，共关闭 3 条
-    assert resp.json()["resolved_reviews"] == 3
-    with conn.cursor() as cur:
+    assert resp.json()["new_reviews"] == 0
+    with conn.cursor() as cur:  # 修复后三条失效行全部自动关闭
         cur.execute("SELECT status FROM review_queue WHERE block_id=%s", (block_id,))
         assert {r[0] for r in cur.fetchall()} == {"approved"}
 
@@ -135,10 +134,24 @@ def test_patch_keeps_custom_reason_review(client, seeded, conn):
         cur.execute("INSERT INTO review_queue (block_id, reason) VALUES (%s,'幻觉前缀')", (block_id,))
     resp = client.patch(f"/api/blocks/{block_id}", json={"content_md": "改了别的段落，幻觉还在。"})
     # seeded 的 empty/maybe_truncated 两条失效行被关闭；自定义原因行必须人工显式处理
-    assert resp.json()["resolved_reviews"] == 2
+    assert resp.json()["new_reviews"] == 0
     with conn.cursor() as cur:
         cur.execute("SELECT status FROM review_queue WHERE reason='幻觉前缀'")
         assert cur.fetchone()[0] == "pending"  # 自定义原因必须人工显式处理
+
+
+def test_patch_creates_row_when_edit_introduces_issue(client, seeded, conn):
+    """已通过的页面人工改坏了也要能被发现：编辑引入截断 -> 新建 maybe_truncated 行。"""
+    block_id, _r1, _r2 = seeded
+    with conn.cursor() as cur:  # 清掉 seeded 行，模拟该块当前零问题的"已通过"状态
+        cur.execute("DELETE FROM review_queue WHERE block_id=%s", (block_id,))
+    resp = client.patch(f"/api/blocks/{block_id}", json={"content_md": "这句没说完，"})
+    assert resp.status_code == 200
+    assert resp.json()["new_reviews"] == 1
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT reason FROM review_queue WHERE block_id=%s AND status='pending'", (block_id,))
+        assert cur.fetchall() == [("maybe_truncated",)]
 
 
 def test_patch_missing_block_404(client):

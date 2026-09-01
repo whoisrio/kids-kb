@@ -140,12 +140,12 @@ def test_check_content_flags_bad_latex():
 
 
 def test_bad_latex_auto_resolves_after_fix(conn, tmp_path):
-    """bad_latex 属可机器复判原因：修复后 resolve_block_reviews 自动关闭。"""
+    """bad_latex 属可机器复判原因：修复后 sync_block_reviews 自动关闭。"""
     import pymupdf as fitz
 
     from kb.config import Config
     from kb.layout import run_layout
-    from kb.qc import resolve_block_reviews
+    from kb.qc import sync_block_reviews
     from kb.render import render_document
 
     cfg = Config(
@@ -166,7 +166,7 @@ def test_bad_latex_auto_resolves_after_fix(conn, tmp_path):
         block_id = str(cur.fetchone()[0])
         cur.execute("INSERT INTO review_queue (block_id, reason) VALUES (%s,'bad_latex')", (block_id,))
         cur.execute("UPDATE blocks SET content_md='修好了 $\\frac{1}{2}$' WHERE id=%s", (block_id,))
-    assert resolve_block_reviews(conn, block_id) == 1
+    sync_block_reviews(conn, block_id)
     with conn.cursor() as cur:
         cur.execute("SELECT status FROM review_queue WHERE reason='bad_latex'")
         assert cur.fetchone()[0] == "approved"

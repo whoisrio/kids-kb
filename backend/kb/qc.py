@@ -78,27 +78,41 @@ def check_content(content: str | None) -> list[str]:
     return reasons
 
 
-def resolve_block_reviews(conn, block_id: str) -> int:
-    """内容修复后，关闭不再成立的【可检测】复核记录。返回关闭数。"""
+def sync_block_reviews(conn, block_id: str) -> int:
+    """块内容变化后同步复核行：新增当前可检测问题，关闭已修复的可检测行。
+    run_qc 与 PATCH 编辑接口共用同一语义；自定义原因不动。返回新增条数。"""
     with conn.cursor() as cur:
-        cur.execute("SELECT content_md FROM blocks WHERE id=%s", (block_id,))
+        cur.execute("SELECT content_md, block_type FROM blocks WHERE id=%s", (block_id,))
         row = cur.fetchone()
         if not row:
             return 0
-        reasons = set(check_content(row[0]))
+        content, block_type = row
+        reasons = check_content(content)
+        # figure 块的内容就是裁图本身（如竖式图），空 content_md 不是缺陷
+        if block_type == "figure":
+            reasons = [r for r in reasons if r != "empty"]
         cur.execute(
             "SELECT reason FROM review_queue WHERE block_id=%s AND status='pending'",
             (block_id,),
         )
-        stale = [r[0] for r in cur.fetchall()
-                 if r[0] in CHECKABLE_REASONS and r[0] not in reasons]
-        for reason in stale:
+        existing = {r[0] for r in cur.fetchall()}
+        n = 0
+        for reason in reasons:
+            if reason in existing:
+                continue
             cur.execute(
-                "UPDATE review_queue SET status='approved' "
-                "WHERE block_id=%s AND reason=%s AND status='pending'",
-                (block_id, reason),
+                "INSERT INTO review_queue (id, block_id, reason) VALUES (%s,%s,%s)",
+                (str(uuid.uuid4()), block_id, reason),
             )
-        return len(stale)
+            n += 1
+        for reason in existing - set(reasons):
+            if reason in CHECKABLE_REASONS:
+                cur.execute(
+                    "UPDATE review_queue SET status='approved' "
+                    "WHERE block_id=%s AND reason=%s AND status='pending'",
+                    (block_id, reason),
+                )
+        return n
 
 
 def _page_image_size(image_path: str) -> tuple[float, float] | None:
@@ -121,26 +135,8 @@ def run_qc(conn, doc_id: str) -> int:
             (doc_id,),
         )
         n = 0
-        for block_id, content, block_type in cur.fetchall():
-            reasons = check_content(content)
-            # figure 块的内容就是裁图本身（如竖式图），空 content_md 不是缺陷
-            if block_type == "figure":
-                reasons = [r for r in reasons if r != "empty"]
-            cur.execute(
-                "SELECT reason, status FROM review_queue WHERE block_id=%s",
-                (block_id,),
-            )
-            existing = {reason for reason, _status in cur.fetchall() if _status == "pending"}
-            for reason in reasons:
-                if reason in existing:
-                    continue
-                cur.execute(
-                    "INSERT INTO review_queue (id, block_id, reason) VALUES (%s,%s,%s)",
-                    (str(uuid.uuid4()), block_id, reason),
-                )
-                n += 1
-            # 内容已修复的旧复核记录自动关闭（与 PATCH 编辑接口同一语义），队列只反映当前问题
-            resolve_block_reviews(conn, block_id)
+        for block_id, _content, _btype in cur.fetchall():
+            n += sync_block_reviews(conn, block_id)
         # 页级版面检查：覆盖/重叠可复算，进 CHECKABLE 集合自动关闭
         cur.execute(
             """SELECT id, image_path FROM pages

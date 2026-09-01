@@ -102,8 +102,8 @@ def create_app(get_conn: Callable[[], psycopg.Connection] | None = None) -> Fast
 
     @app.patch("/api/blocks/{block_id}")
     def update_block(block_id: str, body: BlockContent):
-        """人工修正转录内容；机器可检测的复核记录（空/截断）修复后自动关闭，自定义原因不动。"""
-        from kb.qc import resolve_block_reviews
+        """人工修正转录内容；同步复核行：可检测问题修复后自动关闭，编辑引入的新问题也会建行。"""
+        from kb.qc import sync_block_reviews
         with conn_ctx() as conn:
             with conn.cursor() as cur:
                 cur.execute(
@@ -113,8 +113,8 @@ def create_app(get_conn: Callable[[], psycopg.Connection] | None = None) -> Fast
                 row = cur.fetchone()
             if not row:
                 raise HTTPException(status_code=404, detail="block 不存在")
-            resolved = resolve_block_reviews(conn, block_id)
-        return {"id": str(row[0]), "content_md": row[1], "resolved_reviews": resolved}
+            new_rows = sync_block_reviews(conn, block_id)
+        return {"id": str(row[0]), "content_md": row[1], "new_reviews": new_rows}
 
     @app.get("/api/blocks/{block_id}/crop")
     def block_crop(block_id: str):

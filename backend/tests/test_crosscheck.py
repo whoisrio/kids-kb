@@ -75,14 +75,14 @@ def test_crosscheck_quiet_when_consistent(conn, doc_with_blocks):
 
 def test_llm_disagree_not_auto_closed(conn, doc_with_blocks):
     """llm_disagree 不在 CHECKABLE_REASONS：内容再编辑也不自动关闭。"""
-    from kb.qc import resolve_block_reviews
+    from kb.qc import sync_block_reviews
 
     doc_id, cfg = doc_with_blocks
     with conn.cursor() as cur:
         cur.execute("INSERT INTO review_queue (block_id, reason) SELECT id, 'llm_disagree' FROM blocks")
         cur.execute("SELECT id FROM blocks")
         block_id = str(cur.fetchone()[0])
-    assert resolve_block_reviews(conn, block_id) == 0
+    sync_block_reviews(conn, block_id)
     with conn.cursor() as cur:
         cur.execute("SELECT status FROM review_queue WHERE reason='llm_disagree'")
         assert cur.fetchone()[0] == "pending"
