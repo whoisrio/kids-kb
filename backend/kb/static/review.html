@@ -358,12 +358,20 @@ async function openPage(pageId) {
 
   function itemsHtml() {
     if (!data.items.length) return '<div class="hint">本页暂无整理后的条目</div>';
-    return data.items.map(it => `
+    // 起于本页的条目排前面；跨页条目显式标注，避免"前一页内容串过来"的误读
+    const sorted = [...data.items].sort((a, b) =>
+      (a.pages[0] === data.page_no ? 0 : 1) - (b.pages[0] === data.page_no ? 0 : 1));
+    return sorted.map(it => {
+      const last = it.pages[it.pages.length - 1];
+      const cross = it.pages.length > 1
+        ? `<span class="badge">${it.pages[0] === data.page_no
+            ? `跨页 ${it.pages[0]}-${last}` : `续自第 ${it.pages[0]} 页`}</span>` : "";
+      return `
       <div class="blockitem" data-iid="${it.id}">
-        <span class="t">${esc(it.label || "?")} · ${esc(it.content_type)} · ${esc(it.qc_status)}</span>
+        <span class="t">${esc(it.label || "?")} · ${esc(it.content_type)} · ${esc(it.qc_status)}</span>${cross}
       </div>
-      <div class="md" style="margin-bottom:14px">${it.content_md ? renderContent(it.content_md) : "（空）"}</div>
-    `).join("");
+      <div class="md" style="margin-bottom:14px">${it.content_md ? renderContent(it.content_md) : "（空）"}</div>`;
+    }).join("");
   }
 
   function bindPanelTabs() {
@@ -408,8 +416,13 @@ async function openPage(pageId) {
   }
 
   function blockListHtml() {
-    return data.blocks.map((b, i) => `
-      <div class="blockitem ${issueBlocks.has(b.id) ? "has-issue" : ""}" data-bid="${b.id}">
+    // 装饰性块（页眉/页脚/空内容）沉底灰显，正文块在前
+    const deco = b => (b.block_type === "header" || b.block_type === "footer" || !b.content_md) ? 1 : 0;
+    const sorted = data.blocks.map((b, i) => [b, i])
+      .sort((x, y) => deco(x[0]) - deco(y[0]) || x[1] - y[1]);
+    return sorted.map(([b, i]) => `
+      <div class="blockitem ${issueBlocks.has(b.id) ? "has-issue" : ""}" data-bid="${b.id}"
+           ${deco(b) ? 'style="opacity:.55"' : ""}>
         <span class="t">${i + 1} · ${esc(b.block_type)}</span>${esc((b.content_md || "").slice(0, 40)) || "（空）"}
       </div>`).join("");
   }

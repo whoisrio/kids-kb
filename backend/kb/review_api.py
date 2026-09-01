@@ -203,13 +203,21 @@ def create_app(get_conn: Callable[[], psycopg.Connection] | None = None) -> Fast
                 (page_id, page_id),
             )
             reviews = cur.fetchall()
-            # 落在该页的条目（按 item_blocks 溯源关联），前端"区块/整理后"切换用
+            # 落在该页的条目（按 item_blocks 溯源关联），附条目实际覆盖的页码列表
             cur.execute(
-                """SELECT DISTINCT i.id, i.content_type, i.label, i.content_md, i.qc_status
-                   FROM items i
-                   JOIN item_blocks ib ON ib.item_id = i.id
-                   JOIN blocks b ON b.id = ib.block_id
-                   WHERE b.page_id=%s
+                """WITH here AS (
+                       SELECT DISTINCT i.id FROM items i
+                       JOIN item_blocks ib ON ib.item_id = i.id
+                       JOIN blocks b ON b.id = ib.block_id
+                       WHERE b.page_id = %s
+                   )
+                   SELECT i.id, i.content_type, i.label, i.content_md, i.qc_status,
+                          (SELECT array_agg(DISTINCT p2.page_no ORDER BY p2.page_no)
+                           FROM item_blocks ib2
+                           JOIN blocks b2 ON b2.id = ib2.block_id
+                           JOIN pages p2 ON p2.id = b2.page_id
+                           WHERE ib2.item_id = i.id) AS pages
+                   FROM items i JOIN here h ON h.id = i.id
                    ORDER BY i.label""",
                 (page_id,),
             )
@@ -236,7 +244,7 @@ def create_app(get_conn: Callable[[], psycopg.Connection] | None = None) -> Fast
             ],
             "items": [
                 {"id": str(i[0]), "content_type": i[1], "label": i[2],
-                 "content_md": i[3], "qc_status": i[4]}
+                 "content_md": i[3], "qc_status": i[4], "pages": i[5] or []}
                 for i in items
             ],
         }

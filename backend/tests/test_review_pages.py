@@ -101,11 +101,20 @@ def test_page_detail_includes_covering_items(client, doc2, conn):
     data = client.get(f"/api/pages/{page_id}").json()
     assert [i["label"] for i in data["items"]] == ["例1"]
     assert data["items"][0]["content_md"].startswith("**例1**")
-    with conn.cursor() as cur:  # 页 2 无任何条目的块 -> 空
+    assert data["items"][0]["pages"] == [1]  # 条目实际覆盖的页（跨页标识用）
+    with conn.cursor() as cur:  # 例1 再加一个第 2 页的块 -> 跨页 [1,2]
         cur.execute("SELECT id FROM pages WHERE page_no=2")
         page2 = str(cur.fetchone()[0])
+        cur.execute("SELECT id FROM blocks WHERE page_id=%s", (page2,))
+        b2 = str(cur.fetchone()[0])
+        cur.execute(
+            "INSERT INTO item_blocks (item_id, block_id, role) VALUES (%s,%s,'solution')",
+            (item_id, b2),
+        )
+    data = client.get(f"/api/pages/{page_id}").json()
+    assert data["items"][0]["pages"] == [1, 2]
     data2 = client.get(f"/api/pages/{page2}").json()
-    assert data2["items"] == []
+    assert [i["label"] for i in data2["items"]] == ["例1"]  # 跨页条目也出现在第 2 页
 
 
 def test_page_image_served(client, doc2, conn):
