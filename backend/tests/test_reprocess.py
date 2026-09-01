@@ -124,3 +124,40 @@ def test_reprocess_keeps_unaffected_chapter_items(conn, doc3):
     with conn.cursor() as cur:
         cur.execute("SELECT count(*) FROM items")
         assert cur.fetchone()[0] == 1  # 不相交章节的 items 保留
+
+
+def test_reprocess_upgrades_star_vertical_arithmetic_to_vlm(conn, doc3):
+    """VL 直出的疑似竖式文本块（多行星号/方框）不信任：改标 formula + 内容置 NULL，
+    留给 run_parse 用视觉模型升级转录。"""
+    from kb.reprocess import reprocess_pages_paddleocr
+
+    doc_id, cfg = doc3
+    star_block = {"block_label": "text", "block_bbox": [0, 0, 100, 100],
+                  "block_content": "我你他\n×你我他\n***我\n***你\n******"}
+    stats = reprocess_pages_paddleocr(conn, cfg, doc_id, [2],
+                                      pipeline=FakeVL([star_block]))
+    assert stats["blocks"] == 1
+    with conn.cursor() as cur:
+        cur.execute(
+            """SELECT b.block_type, b.content_md FROM blocks b
+               JOIN pages p ON p.id=b.page_id WHERE p.page_no=2""")
+        assert cur.fetchall() == [("formula", None)]
+
+
+def test_reprocess_keeps_normal_text_block(conn, doc3):
+    """普通文字块不误升级：只一行含符号或纯文字都保持 text + VL 直出内容。"""
+    from kb.reprocess import reprocess_pages_paddleocr
+
+    doc_id, cfg = doc3
+    blocks = [
+        {"block_label": "text", "block_bbox": [0, 0, 100, 40],
+         "block_content": "在下面的竖式中，不同的汉字表示不同的数字。"},
+        {"block_label": "text", "block_bbox": [0, 50, 100, 90],
+         "block_content": "由 9×4=36 推出除数个位为 4"},  # 只一行含 ×，不算竖式
+    ]
+    reprocess_pages_paddleocr(conn, cfg, doc_id, [2], pipeline=FakeVL(blocks))
+    with conn.cursor() as cur:
+        cur.execute(
+            """SELECT b.block_type, b.content_md IS NOT NULL FROM blocks b
+               JOIN pages p ON p.id=b.page_id WHERE p.page_no=2 ORDER BY b.created_at""")
+        assert cur.fetchall() == [("text", True), ("text", True)]

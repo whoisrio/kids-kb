@@ -2,11 +2,14 @@
 
 触发场景：PP-DocLayoutV2 切块过碎/转录质量差，人工复核无价值。
 整管线输出自带 block_content（公式已是 LaTeX），块内容直接入库，不再走分级解析。
+例外：VL 把竖式谜识别成星号占位文本时（多行含 □＊*× 的 text 块）不可信，
+改标 formula 且内容置 NULL，由 run_parse 用视觉模型升级转录。
 破坏性（调用前需用户确认）：删指定页全部块（级联删 item_blocks/复核行），
 并删页码范围相交章节的 items，由调用方随后重跑 structure 重建。
 """
 from __future__ import annotations
 
+import re
 import uuid
 from pathlib import Path
 
@@ -14,6 +17,16 @@ from psycopg.types.json import Jsonb
 
 from kb.config import Config
 from kb.layout import crop_image, map_block_label
+
+_MATH_MARK_RE = re.compile(r"[□＊*×✕☐]")
+
+
+def _needs_vlm_upgrade(block_type: str, content: str) -> bool:
+    """VL 直出的 text 块若多行含竖式符号，说明竖式被误识别成星号占位文本。"""
+    if block_type != "text":
+        return False
+    hits = sum(1 for line in content.splitlines() if _MATH_MARK_RE.search(line))
+    return hits >= 2
 
 
 def _parsing_blocks(output) -> list[dict]:
@@ -58,14 +71,16 @@ def reprocess_pages_paddleocr(conn, cfg: Config, doc_id: str, page_nos: list[int
                 bbox = tuple(b.get("block_bbox") or (0, 0, 0, 0))
                 crop = out_dir / f"b{i:03d}.png"
                 crop_image(image_path, bbox, crop)
+                block_type = map_block_label(b.get("block_label"))
+                content = (b.get("block_content") or "").strip() or None
+                if content and _needs_vlm_upgrade(block_type, content):
+                    block_type, content = "formula", None  # 星号竖式不可信，升级 VLM 重转录
                 cur.execute(
                     """INSERT INTO blocks (id, page_id, block_type, bbox, crop_path,
                                          content_md, source_model)
                        VALUES (%s,%s,%s,%s,%s,%s,'paddleocr-vl-1.5')""",
-                    # 整管线没产出内容的块（如竖式图）落 NULL，留给 run_parse 补转录
-                    (str(uuid.uuid4()), page_id, map_block_label(b.get("block_label")),
-                     Jsonb([float(v) for v in bbox]), str(crop),
-                     (b.get("block_content") or "").strip() or None),
+                    (str(uuid.uuid4()), page_id, block_type,
+                     Jsonb([float(v) for v in bbox]), str(crop), content),
                 )
                 stats["blocks"] += 1
             cur.execute(
