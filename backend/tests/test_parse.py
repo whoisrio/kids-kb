@@ -59,8 +59,9 @@ def test_transcribe_image_calls_openai_compatible_api(tmp_path):
 
     img = tmp_path / "p.png"
     img.write_bytes(b"\x89PNG fake")
-    text = transcribe_image(FakeClient(), "qwen3:4b", img)
+    text, usage = transcribe_image(FakeClient(), "qwen3:4b", img)
     assert text == "转录结果 $1+1=2$"
+    assert usage == (None, None)  # 假客户端无 usage 时容忍 None
 
 
 def test_run_parse_fills_block_content_and_marks_page(conn, parsed_doc):

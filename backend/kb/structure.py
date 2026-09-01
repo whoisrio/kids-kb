@@ -10,6 +10,7 @@ import uuid
 from openai import OpenAI
 
 from kb.config import Config
+from kb.metering import extract_usage, record_llm_call
 from kb.toc import _parse_json_array
 
 _SKIP_TYPES = ("header", "footer")
@@ -75,6 +76,7 @@ def structure_chapter(conn, cfg: Config, doc_id: str, chapter_no: int, client=No
         resp = client.chat.completions.create(
             model=model, messages=[{"role": "user", "content": prompt}], max_tokens=8192,
         )
+        record_llm_call(conn, doc_id, "structure", model, extract_usage(resp))
         entries = _parse_json_array(resp.choices[0].message.content)
         n = 0
         for entry in entries:

@@ -59,8 +59,9 @@ def reprocess_pages_paddleocr(conn, cfg: Config, doc_id: str, page_nos: list[int
                 crop = out_dir / f"b{i:03d}.png"
                 crop_image(image_path, bbox, crop)
                 cur.execute(
-                    """INSERT INTO blocks (id, page_id, block_type, bbox, crop_path, content_md)
-                       VALUES (%s,%s,%s,%s,%s,%s)""",
+                    """INSERT INTO blocks (id, page_id, block_type, bbox, crop_path,
+                                         content_md, source_model)
+                       VALUES (%s,%s,%s,%s,%s,%s,'paddleocr-vl-1.5')""",
                     # 整管线没产出内容的块（如竖式图）落 NULL，留给 run_parse 补转录
                     (str(uuid.uuid4()), page_id, map_block_label(b.get("block_label")),
                      Jsonb([float(v) for v in bbox]), str(crop),

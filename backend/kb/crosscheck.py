@@ -13,6 +13,7 @@ from openai import OpenAI
 
 from kb.config import Config
 from kb.golden import char_error_rate
+from kb.metering import record_llm_call
 from kb.parse import transcribe_image
 
 _ALWAYS_TYPES = {"formula", "figure", "table"}
@@ -51,7 +52,8 @@ def run_llm_crosscheck(conn, cfg: Config, doc_id: str, compare_client=None,
             )
             if cur.fetchone():
                 continue  # 幂等：已有记录不重复比对
-            second = transcribe_image(client, cfg.vision_compare_model, crop_path)
+            second, usage = transcribe_image(client, cfg.vision_compare_model, crop_path)
+            record_llm_call(conn, doc_id, "crosscheck", cfg.vision_compare_model, usage)
             if char_error_rate(content, second) <= threshold:
                 continue
             cur.execute(

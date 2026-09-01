@@ -8,6 +8,7 @@ from pathlib import Path
 from openai import OpenAI
 
 from kb.config import Config
+from kb.metering import record_llm_call
 
 TRANSCRIBE_PROMPT = (
     "请完整转录这张页面上的所有文字内容，保持原有阅读顺序"
@@ -30,7 +31,10 @@ def normalize_latex(content: str) -> str:
     return out
 
 
-def transcribe_image(client, model: str, image_path, prompt: str = TRANSCRIBE_PROMPT) -> str:
+def transcribe_image(client, model: str, image_path, prompt: str = TRANSCRIBE_PROMPT):
+    """转录图像 -> (text, (prompt_tokens, completion_tokens))。usage 缺失时为 (None, None)。"""
+    from kb.metering import extract_usage
+
     b64 = base64.b64encode(Path(image_path).read_bytes()).decode("ascii")
     resp = client.chat.completions.create(
         model=model,
@@ -43,7 +47,7 @@ def transcribe_image(client, model: str, image_path, prompt: str = TRANSCRIBE_PR
         }],
         max_tokens=4096,
     )
-    return resp.choices[0].message.content
+    return resp.choices[0].message.content, extract_usage(resp)
 
 
 # 走本地 rapidocr 的区块类型；其余（formula/figure/table/page）走视觉模型
@@ -86,17 +90,22 @@ def run_parse(conn, cfg: Config, doc_id: str, client=None, ocr=None) -> int:
         for block_id, crop_path, page_id, block_type in rows:
             try:
                 if block_type in _OCRABLE_TYPES:
-                    text = ocr(crop_path)
+                    text, source, usage = ocr(crop_path), "rapidocr", (None, None)
                 else:
-                    text = transcribe_image(client, cfg.vision_model, crop_path)
+                    text, usage = transcribe_image(client, cfg.vision_model, crop_path)
+                    source = cfg.vision_model
+                    record_llm_call(conn, doc_id, "transcribe", cfg.vision_model, usage)
             except Exception as e:  # noqa: BLE001 - 单块失败不中断
                 cur.execute(
                     "UPDATE pages SET status='failed', parse_error=%s WHERE id=%s",
                     (str(e)[:500], page_id),
                 )
                 continue
-            cur.execute("UPDATE blocks SET content_md=%s WHERE id=%s",
-                        (normalize_latex(text), block_id))
+            cur.execute(
+                """UPDATE blocks SET content_md=%s, source_model=%s,
+                       prompt_tokens=%s, completion_tokens=%s WHERE id=%s""",
+                (normalize_latex(text), source, usage[0], usage[1], block_id),
+            )
             cur.execute("UPDATE pages SET status='parsed', parse_error=NULL WHERE id=%s", (page_id,))
             n += 1
         # 自愈历史漂移：块内容齐全的页必为 parsed（与逐块更新同一不变量）

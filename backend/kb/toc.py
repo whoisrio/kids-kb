@@ -12,6 +12,7 @@ import uuid
 from openai import OpenAI
 
 from kb.config import Config
+from kb.metering import record_llm_call
 from kb.parse import transcribe_image
 
 TOC_PROMPT = (
@@ -63,7 +64,8 @@ def extract_toc(conn, cfg: Config, doc_id: str, client=None,
             row = cur.fetchone()
             if not row:
                 continue
-            text = transcribe_image(client, model, row[0], prompt=TOC_PROMPT)
+            text, usage = transcribe_image(client, model, row[0], prompt=TOC_PROMPT)
+            record_llm_call(conn, doc_id, "toc", model, usage)
             for entry in _parse_json_array(text):
                 cur.execute(
                     """INSERT INTO chapters (id, document_id, chapter_no, title,
