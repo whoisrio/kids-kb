@@ -75,9 +75,20 @@ def structure_chapter(conn, cfg: Config, doc_id: str, chapter_no: int, client=No
             taxonomy=taxonomy or "未知", tags="、".join(tags or []) or "无",
             blocks_text=blocks_text,
         )
-        resp = client.chat.completions.create(
-            model=model, messages=[{"role": "user", "content": prompt}], max_tokens=8192,
-        )
+        import time
+
+        resp = None
+        for attempt in (1, 2):  # 远端偶发断连（长输出时尤甚），重试一次
+            try:
+                resp = client.chat.completions.create(
+                    model=model, messages=[{"role": "user", "content": prompt}],
+                    max_tokens=8192,
+                )
+                break
+            except Exception:  # noqa: BLE001 - 连接类错误重试，解析错误不重试
+                if attempt == 2:
+                    raise
+                time.sleep(3)
         record_llm_call(conn, doc_id, "structure", model, extract_usage(resp))
         entries = _parse_json_array(resp.choices[0].message.content)
         n = 0

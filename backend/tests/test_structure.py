@@ -135,3 +135,35 @@ def test_structure_prompt_requires_fidelity():
     from kb.structure import STRUCTURE_PROMPT
     assert "忠于源块原文" in STRUCTURE_PROMPT
     assert "严禁改写" in STRUCTURE_PROMPT
+
+
+def test_structure_retries_on_connection_error(conn, doc_with_chapter):
+    """远端断连（APIConnectionError 类）重试一次，不直接炸掉整章。"""
+    from kb.structure import structure_chapter
+
+    doc_id, cfg, _blocks = doc_with_chapter
+    calls = []
+
+    class FlakyChat:
+        class completions:
+            @staticmethod
+            def create(model, messages, max_tokens):
+                calls.append(1)
+                if len(calls) == 1:
+                    raise ConnectionError("Server disconnected")
+                class M:
+                    content = ITEMS_JSON
+
+                class C:
+                    message = M()
+
+                class R:
+                    choices = [C()]
+
+                return R()
+
+    class FlakyClient:
+        chat = FlakyChat()
+
+    n = structure_chapter(conn, cfg, doc_id, 1, client=FlakyClient())
+    assert n == 2 and len(calls) == 2
