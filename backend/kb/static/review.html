@@ -104,21 +104,45 @@ async function refresh() {
     const h = document.createElement("div");
     h.className = "meta";
     h.style.marginTop = "18px";
-    h.innerHTML = "<b>条目问题</b>";
+    h.innerHTML = "<b>条目问题（解析结果的 markdown 呈现）</b>";
     list.appendChild(h);
-    for (const it of pendingItems) {
-      const d = document.createElement("div");
-      d.className = "card page";
-      d.innerHTML = `
-        <div class="meta" style="margin:0">
-          <span class="doc">${esc(it.doc_title)} · ${esc(it.chapter || "")}</span>
-          <span class="badge">${esc(it.label || "?")}</span>
-          ${it.pending_reasons.map(r => `<span class="badge">${esc(r)}</span>`).join("")}
-        </div>`;
-      d.onclick = () => openItem(it.id);
-      list.appendChild(d);
-    }
+    for (const it of pendingItems) list.appendChild(pendingItemCard(it));
   }
+}
+
+function pendingItemCard(it) {
+  const d = document.createElement("div");
+  d.className = "card";
+  d.innerHTML = `
+    <div class="meta">
+      <span class="doc">${esc(it.doc_title)} · ${esc(it.chapter || "")}</span>
+      <span class="badge">${esc(it.label || "?")}</span>
+      <span class="badge">${esc(it.content_type)}</span>
+      ${it.pending_reasons.map(r => `<span class="badge" style="background:#fee2e2;color:#991b1b">${esc(r)}</span>`).join("")}
+    </div>
+    <div class="md">${it.content_md ? renderContent(it.content_md) : "（空）"}</div>
+    <div class="actions">
+      <button class="btn approve" data-act="approve">✓ 确认</button>
+      <button class="btn plain" data-act="detail">展开/编辑</button>
+      <button class="btn reject" data-act="reject">✗ 打回</button>
+    </div>`;
+  d.querySelector('[data-act="detail"]').onclick = () => openItem(it.id);
+  d.querySelector('[data-act="approve"]').onclick = async (e) => {
+    e.target.disabled = true;
+    const resp = await fetch(`/api/items/${it.id}/approve`, { method: "POST" });
+    if (resp.ok) refresh(); else { e.target.disabled = false; alert("操作失败: " + resp.status); }
+  };
+  d.querySelector('[data-act="reject"]').onclick = async (e) => {
+    const reason = prompt("打回原因（如：串章/漏题/公式错）：");
+    if (!reason) return;
+    e.target.disabled = true;
+    const resp = await fetch(`/api/items/${it.id}/reject`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reason }),
+    });
+    if (resp.ok) refresh(); else { e.target.disabled = false; alert("操作失败: " + resp.status); }
+  };
+  return d;
 }
 
 async function refreshItems() {

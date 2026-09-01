@@ -107,11 +107,15 @@ def test_reject_item_creates_item_level_row(client, doc_with_items, conn):
 
 
 def test_pending_items_endpoint(client, doc_with_items, conn):
-    """有 pending 复核行的条目要能列出来（否则打回的条目在待复核页不可见）。"""
+    """待复核条目 = qc_status 待确认或有 pending 复核行；返回 content_md 供 markdown 呈现。"""
     doc_id, item_id = doc_with_items
-    assert client.get("/api/items?status=pending").json()["items"] == []  # 初始无
+    items = client.get("/api/items?status=pending").json()["items"]
+    assert len(items) == 2  # fixture 两条 qc_status 都是 pending
+    assert items[0]["content_md"].startswith("**例1**")
     client.post(f"/api/items/{item_id}/reject", json={"reason": "串章"})
     items = client.get("/api/items?status=pending").json()["items"]
-    assert len(items) == 1
-    assert items[0]["id"] == item_id
-    assert items[0]["pending_reasons"] == ["串章"]
+    assert next(i for i in items if i["id"] == item_id)["pending_reasons"] == ["串章"]
+    # 全部确认后待复核条目清零（有打回行的除外——上面那条 reject 已被 approve 连带关闭）
+    client.post(f"/api/items/{item_id}/approve")
+    items = client.get("/api/items?status=pending").json()["items"]
+    assert [i["label"] for i in items] == ["1-1"]

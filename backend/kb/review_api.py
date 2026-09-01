@@ -270,14 +270,15 @@ def create_app(get_conn: Callable[[], psycopg.Connection] | None = None) -> Fast
     @app.get("/api/items")
     def list_items(doc_id: str | None = None, status: str | None = None):
         where, params = ("WHERE i.document_id = %s", [doc_id]) if doc_id else ("", [])
-        if status == "pending":  # 有 pending 复核行的条目（打回的条目在待复核页可见）
-            where += (" AND " if where else "WHERE ") + "pr.reasons IS NOT NULL"
+        if status == "pending":  # 待复核条目：qc_status 待确认，或有 pending 复核行
+            where += (" AND " if where else "WHERE ") + (
+                "(i.qc_status = 'pending' OR pr.reasons IS NOT NULL)")
         elif status:
             raise HTTPException(status_code=422, detail="status 取值: pending")
         with conn_ctx() as conn, conn.cursor() as cur:
             cur.execute(
                 f"""SELECT i.id, i.content_type, i.label, i.chapter, i.qc_status, d.title,
-                           pr.reasons
+                           pr.reasons, i.content_md
                     FROM items i
                     JOIN documents d ON d.id = i.document_id
                     LEFT JOIN LATERAL (
@@ -291,7 +292,8 @@ def create_app(get_conn: Callable[[], psycopg.Connection] | None = None) -> Fast
             rows = cur.fetchall()
         return {"items": [
             {"id": str(r[0]), "content_type": r[1], "label": r[2], "chapter": r[3],
-             "qc_status": r[4], "doc_title": r[5], "pending_reasons": r[6] or []}
+             "qc_status": r[4], "doc_title": r[5], "pending_reasons": r[6] or [],
+             "content_md": r[7]}
             for r in rows
         ]}
 
