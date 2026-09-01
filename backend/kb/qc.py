@@ -1,5 +1,5 @@
 """阶段⑤质检（骨架期 lite）：空转录/疑似截断 -> review_queue。
-精度期扩展：LaTeX 编译检查、题号连续性、置信分阈值分流。"""
+精度期扩展：LaTeX 编译检查、题号连续性、置信分阈值分流、页级版面忠实度（覆盖/重叠）。"""
 from __future__ import annotations
 
 import json
@@ -8,12 +8,47 @@ import subprocess
 import uuid
 from pathlib import Path
 
+import pymupdf as fitz
+
 _TRUNCATION_ENDINGS = ("…", "...", "，", "、", "；", "：")
 _KATEX_CHECK = Path(__file__).parent.parent / "scripts" / "katex_check.cjs"
 _MATH_RE = re.compile(r"\$\$([\s\S]+?)\$\$|\$([^$\n]+?)\$")
 
 # 机器可检测的原因：只有这些允许自动关闭；人工插入的自定义原因必须人显式 通过/打回
-CHECKABLE_REASONS = frozenset({"empty", "maybe_truncated", "bad_latex"})
+CHECKABLE_REASONS = frozenset({"empty", "maybe_truncated", "bad_latex",
+                               "layout_gap", "layout_overlap"})
+_LAYOUT_REASONS = ("layout_gap", "layout_overlap")
+_GAP_COVERAGE = 0.6   # 块 bbox 覆盖页面积低于此比例视为漏切
+_OVERLAP_RATIO = 0.5  # 相交面积超过较小块此比例视为重叠切错
+
+
+def check_page_layout(bboxes: list[tuple], page_w: float, page_h: float) -> list[str]:
+    """版面忠实度：块覆盖不足 -> layout_gap；块间大面积重叠 -> layout_overlap。
+    无 bbox（骨架期整页块）不检查。覆盖率用网格离散法，块数少时足够准且实现简单。"""
+    if not bboxes or page_w <= 0 or page_h <= 0:
+        return []
+    gx, gy = 50, 70
+    cells = set()
+    for x0, y0, x1, y1 in bboxes:
+        cx0, cx1 = max(0, int(x0 / page_w * gx)), min(gx - 1, int(x1 / page_w * gx))
+        cy0, cy1 = max(0, int(y0 / page_h * gy)), min(gy - 1, int(y1 / page_h * gy))
+        for cx in range(cx0, cx1 + 1):
+            for cy in range(cy0, cy1 + 1):
+                cells.add((cx, cy))
+    reasons = []
+    if len(cells) / (gx * gy) < _GAP_COVERAGE:
+        reasons.append("layout_gap")
+    areas = [max(0.0, x1 - x0) * max(0.0, y1 - y0) for x0, y0, x1, y1 in bboxes]
+    for i, a in enumerate(bboxes):
+        for j in range(i + 1, len(bboxes)):
+            b = bboxes[j]
+            iw = max(0.0, min(a[2], b[2]) - max(a[0], b[0]))
+            ih = max(0.0, min(a[3], b[3]) - max(a[1], b[1]))
+            smaller = min(areas[i], areas[j])
+            if smaller > 0 and iw * ih > _OVERLAP_RATIO * smaller:
+                reasons.append("layout_overlap")
+                return reasons
+    return reasons
 
 
 def check_latex(content: str) -> bool:
@@ -66,8 +101,18 @@ def resolve_block_reviews(conn, block_id: str) -> int:
         return len(stale)
 
 
+def _page_image_size(image_path: str) -> tuple[float, float] | None:
+    p = Path(image_path)
+    if not p.is_absolute():
+        p = Path.cwd() / p
+    if not p.exists():
+        return None
+    pix = fitz.Pixmap(str(p))
+    return pix.width, pix.height
+
+
 def run_qc(conn, doc_id: str) -> int:
-    """对低质 block 建复核记录（同一 block 同一原因不重复）；内容修复后自动关闭旧记录。返回新增条数。"""
+    """对低质 block/版面问题建复核记录（同源不重复）；修复后自动关闭旧记录。返回新增条数。"""
     with conn.cursor() as cur:
         cur.execute(
             """SELECT b.id, b.content_md, b.block_type FROM blocks b
@@ -96,6 +141,40 @@ def run_qc(conn, doc_id: str) -> int:
                 n += 1
             # 内容已修复的旧复核记录自动关闭（与 PATCH 编辑接口同一语义），队列只反映当前问题
             resolve_block_reviews(conn, block_id)
+        # 页级版面检查：覆盖/重叠可复算，进 CHECKABLE 集合自动关闭
+        cur.execute(
+            """SELECT id, image_path FROM pages
+               WHERE document_id=%s AND status IN ('parsed', 'failed')""",
+            (doc_id,),
+        )
+        for page_id, image_path in cur.fetchall():
+            cur.execute(
+                "SELECT bbox FROM blocks WHERE page_id=%s AND bbox IS NOT NULL",
+                (page_id,),
+            )
+            bboxes = [tuple(r[0]) for r in cur.fetchall()]
+            size = _page_image_size(image_path)
+            reasons = check_page_layout(bboxes, *size) if size else []
+            cur.execute(
+                "SELECT reason FROM review_queue WHERE page_id=%s AND status='pending'",
+                (page_id,),
+            )
+            existing = {r[0] for r in cur.fetchall()}
+            for reason in reasons:
+                if reason in existing:
+                    continue
+                cur.execute(
+                    "INSERT INTO review_queue (id, page_id, reason) VALUES (%s,%s,%s)",
+                    (str(uuid.uuid4()), page_id, reason),
+                )
+                n += 1
+            for reason in existing - set(reasons):
+                if reason in _LAYOUT_REASONS:  # 只关可复算的版面原因，人工自定义行不动
+                    cur.execute(
+                        "UPDATE review_queue SET status='approved' "
+                        "WHERE page_id=%s AND reason=%s AND status='pending'",
+                        (page_id, reason),
+                    )
     return n
 
 
