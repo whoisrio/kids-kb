@@ -160,3 +160,14 @@ def test_calibrate_pages_leaves_null_when_not_found(conn, doc_with_toc):
     with conn.cursor() as cur:
         cur.execute("SELECT page_start FROM chapters")
         assert all(r[0] is None for r in cur.fetchall())
+
+
+def test_parse_json_array_tolerates_latex_backslashes():
+    """模型在 JSON 字符串里直接写 LaTeX（\\square 等非法转义）时，清洗后仍能解析。"""
+    from kb.toc import _parse_json_array
+    raw = '[{"content_md": "$\\\\square 7$"}, {"content_md": "正常"}]'
+    # 模拟模型输出：\\square 写成了单反斜杠（非法 JSON 转义）
+    raw = raw.replace("\\\\square", "\\square")
+    data = _parse_json_array(raw)
+    assert data[0]["content_md"] == "$\\square 7$"
+    assert data[1]["content_md"] == "正常"

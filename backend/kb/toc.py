@@ -27,9 +27,17 @@ TOC_PROMPT = (
 
 
 def _parse_json_array(text: str) -> list[dict]:
-    """剥掉 markdown 代码围栏后解析 JSON 数组。"""
+    """剥掉 markdown 代码围栏后解析 JSON 数组。
+
+    模型常在字符串里直接写 LaTeX（\\s \\p 这类非法 JSON 转义），
+    首轮解析失败时把非法反斜杠转义后重试。
+    """
     cleaned = re.sub("`" * 3 + "(?:json)?", "", text).strip()
-    return json.loads(cleaned)
+    try:
+        return json.loads(cleaned)
+    except json.JSONDecodeError:
+        fixed = re.sub(r'\\(?![\\"/bfnrtu])', r"\\\\", cleaned)
+        return json.loads(fixed)
 
 
 def _detect_toc_pages(cur, doc_id: str) -> list[int]:
