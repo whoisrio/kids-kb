@@ -147,7 +147,7 @@ def create_app(get_conn: Callable[[], psycopg.Connection] | None = None) -> Fast
     def list_pages(status: str = "pending", doc_id: str | None = None):
         if status not in ("pending", "approved"):
             raise HTTPException(status_code=422, detail="status 取值: pending/approved")
-        having = "HAVING count(r.id) > 0" if status == "pending" else "HAVING count(r.id) = 0"
+        having = "pr.n > 0" if status == "pending" else "coalesce(pr.n, 0) = 0"
         params: list = []
         doc_filter = ""
         if doc_id:
@@ -155,16 +155,18 @@ def create_app(get_conn: Callable[[], psycopg.Connection] | None = None) -> Fast
             params.append(doc_id)
         with conn_ctx() as conn, conn.cursor() as cur:
             cur.execute(
-                f"""SELECT p.id, p.page_no, d.title,
-                           array_agg(r.reason ORDER BY r.created_at) FILTER (WHERE r.id IS NOT NULL)
+                f"""SELECT p.id, p.page_no, d.title, pr.reasons
                     FROM pages p
                     JOIN documents d ON d.id = p.document_id
-                    LEFT JOIN blocks b ON b.page_id = p.id
-                    LEFT JOIN review_queue r ON r.status = 'pending'
-                         AND (r.block_id = b.id OR r.page_id = p.id)
-                    WHERE p.status = 'parsed' {doc_filter}
-                    GROUP BY p.id, p.page_no, d.title
-                    {having}
+                    LEFT JOIN LATERAL (
+                        SELECT count(*) AS n,
+                               array_agg(r.reason ORDER BY r.created_at) AS reasons
+                        FROM review_queue r
+                        WHERE r.status = 'pending' AND (
+                            r.page_id = p.id OR r.block_id IN (
+                                SELECT id FROM blocks WHERE page_id = p.id))
+                    ) pr ON true
+                    WHERE p.status = 'parsed' {doc_filter} AND {having}
                     ORDER BY d.title, p.page_no""",
                 params,
             )

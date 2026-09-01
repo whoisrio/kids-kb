@@ -112,3 +112,22 @@ def test_approve_page_closes_its_pending_rows(client, doc2, conn):
             (page_id, page_id),
         )
         assert cur.fetchone()[0] == 0
+
+
+def test_pending_reasons_not_duplicated_by_block_fanout(client, doc2, conn):
+    """页级复核行 × N 个块的 JOIN 扇出不能把同一 reason 重复 N 次。"""
+    with conn.cursor() as cur:
+        cur.execute("SELECT id FROM pages WHERE page_no=1")
+        page_id = str(cur.fetchone()[0])
+        cur.execute(
+            """INSERT INTO blocks (page_id, block_type, crop_path, content_md)
+               SELECT %s, 'text', '/tmp/x.png', '块' FROM generate_series(1, 5)""",
+            (page_id,),
+        )
+        cur.execute(
+            "INSERT INTO review_queue (page_id, reason) VALUES (%s,'layout_overlap')",
+            (page_id,),
+        )
+    items = client.get("/api/pages?status=pending").json()["items"]
+    page1 = next(i for i in items if i["page_no"] == 1)
+    assert sorted(page1["pending_reasons"]) == ["empty", "layout_overlap"]
