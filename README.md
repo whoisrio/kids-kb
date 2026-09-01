@@ -62,8 +62,13 @@ uv run python -m kb.cli structure <doc_id> [--toc-pages 5]   # 目录页不给�
 
 ```bash
 uv run python -m kb.cli embed            # approved 条目 -> bge-m3 -> pgvector（幂等）
-uv run python -m kb.cli search "除法竖式 倒推法"   # 语义检索 top-k
+uv run python -m kb.cli search "除法竖式 倒推法"                    # 混合检索（默认 hybrid）
+uv run python -m kb.cli search "..." --mode vector --rerank        # 单向量 / 加 cross-encoder 重排
 ```
+
+- 混合检索：向量（bge-m3）+ BM25（纯 Python，CJK 字符二元分词）按 RRF(k=60) 融合；
+  `--rerank` 用本地 FlagEmbedding 加载 bge-reranker-v2-m3 重排候选（ollama 无 rerank 接口，
+  依赖 `uv sync --extra rerank`；注意多个 extra 要一起 sync：`--extra layout --extra rerank`）
 
 - 向量化单元 = 条目（chunk 挂 `item_id`），只有人工确认（`qc_status='approved'`）的条目进库；
   条目被编辑后旧向量自动失效，下次 `embed` 重建
