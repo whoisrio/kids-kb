@@ -27,6 +27,12 @@ class BlockContent(BaseModel):
     content_md: str
 
 
+class PageReject(BaseModel):
+    """页级人工打回的请求体。"""
+
+    reason: str
+
+
 def create_app(get_conn: Callable[[], psycopg.Connection] | None = None) -> FastAPI:
     """get_conn 可注入测试连接（不关闭）；默认每个请求从 .env 配置开新连接并关闭。"""
     own = get_conn is None
@@ -134,5 +140,127 @@ def create_app(get_conn: Callable[[], psycopg.Connection] | None = None) -> Fast
     @app.get("/")
     def index():
         return FileResponse(STATIC_DIR / "review.html", media_type="text/html")
+
+    # ---- 页级复核：状态由复核行推导（有 pending 行=待复核，干净 parsed 页=已通过）----
+
+    @app.get("/api/pages")
+    def list_pages(status: str = "pending", doc_id: str | None = None):
+        if status not in ("pending", "approved"):
+            raise HTTPException(status_code=422, detail="status 取值: pending/approved")
+        having = "HAVING count(r.id) > 0" if status == "pending" else "HAVING count(r.id) = 0"
+        params: list = []
+        doc_filter = ""
+        if doc_id:
+            doc_filter = "AND p.document_id = %s"
+            params.append(doc_id)
+        with conn_ctx() as conn, conn.cursor() as cur:
+            cur.execute(
+                f"""SELECT p.id, p.page_no, d.title,
+                           array_agg(r.reason ORDER BY r.created_at) FILTER (WHERE r.id IS NOT NULL)
+                    FROM pages p
+                    JOIN documents d ON d.id = p.document_id
+                    LEFT JOIN blocks b ON b.page_id = p.id
+                    LEFT JOIN review_queue r ON r.status = 'pending'
+                         AND (r.block_id = b.id OR r.page_id = p.id)
+                    WHERE p.status = 'parsed' {doc_filter}
+                    GROUP BY p.id, p.page_no, d.title
+                    {having}
+                    ORDER BY d.title, p.page_no""",
+                params,
+            )
+            rows = cur.fetchall()
+        return {"items": [
+            {"page_id": str(r[0]), "page_no": r[1], "doc_title": r[2],
+             "pending_reasons": r[3] or []}
+            for r in rows
+        ]}
+
+    @app.get("/api/pages/{page_id}")
+    def page_detail(page_id: str):
+        import pymupdf as fitz
+        with conn_ctx() as conn, conn.cursor() as cur:
+            cur.execute(
+                """SELECT p.page_no, p.image_path, d.title FROM pages p
+                   JOIN documents d ON d.id = p.document_id WHERE p.id=%s""",
+                (page_id,),
+            )
+            page = cur.fetchone()
+            if not page:
+                raise HTTPException(status_code=404, detail="page 不存在")
+            cur.execute(
+                """SELECT id, block_type, bbox, content_md FROM blocks
+                   WHERE page_id=%s ORDER BY created_at, id""",
+                (page_id,),
+            )
+            blocks = cur.fetchall()
+            cur.execute(
+                """SELECT r.id, r.reason, r.status, r.block_id FROM review_queue r
+                   LEFT JOIN blocks b ON b.id = r.block_id
+                   WHERE r.page_id=%s OR b.page_id=%s ORDER BY r.created_at""",
+                (page_id, page_id),
+            )
+            reviews = cur.fetchall()
+        path = Path(page[1])
+        if not path.is_absolute():
+            path = Path.cwd() / path
+        width = height = 0
+        if path.exists():
+            pix = fitz.Pixmap(str(path))
+            width, height = pix.width, pix.height
+        return {
+            "page_id": page_id, "page_no": page[0], "doc_title": page[2],
+            "width": width, "height": height,
+            "blocks": [
+                {"id": str(b[0]), "block_type": b[1], "bbox": b[2], "content_md": b[3]}
+                for b in blocks
+            ],
+            "reviews": [
+                {"id": str(r[0]), "reason": r[1], "status": r[2],
+                 "block_id": str(r[3]) if r[3] else None}
+                for r in reviews
+            ],
+        }
+
+    @app.get("/api/pages/{page_id}/image")
+    def page_image(page_id: str):
+        with conn_ctx() as conn, conn.cursor() as cur:
+            cur.execute("SELECT image_path FROM pages WHERE id=%s", (page_id,))
+            row = cur.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="page 不存在")
+        path = Path(row[0])
+        if not path.is_absolute():
+            path = Path.cwd() / path
+        if not path.exists():
+            raise HTTPException(status_code=404, detail=f"页图缺失: {row[0]}")
+        return FileResponse(path, media_type="image/png")
+
+    @app.post("/api/pages/{page_id}/reject")
+    def reject_page(page_id: str, body: PageReject):
+        """已通过页发现问题 -> 页级自定义复核行（不锚定块，机器不自动关闭）。"""
+        import uuid
+        with conn_ctx() as conn, conn.cursor() as cur:
+            cur.execute("SELECT 1 FROM pages WHERE id=%s", (page_id,))
+            if not cur.fetchone():
+                raise HTTPException(status_code=404, detail="page 不存在")
+            cur.execute(
+                "INSERT INTO review_queue (id, page_id, reason) VALUES (%s,%s,%s) RETURNING id",
+                (str(uuid.uuid4()), page_id, body.reason),
+            )
+            row_id = cur.fetchone()[0]
+        return {"id": str(row_id), "status": "pending"}
+
+    @app.post("/api/pages/{page_id}/approve")
+    def approve_page(page_id: str):
+        """整页通过：关闭该页所有 pending 行（块级+页级）。"""
+        with conn_ctx() as conn, conn.cursor() as cur:
+            cur.execute(
+                """UPDATE review_queue SET status='approved' WHERE status='pending' AND (
+                       page_id=%s OR block_id IN (SELECT id FROM blocks WHERE page_id=%s))
+                   RETURNING id""",
+                (page_id, page_id),
+            )
+            n = len(cur.fetchall())
+        return {"id": page_id, "resolved": n}
 
     return app
