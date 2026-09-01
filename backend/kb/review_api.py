@@ -456,9 +456,14 @@ def create_app(get_conn: Callable[[], psycopg.Connection] | None = None,
         if not query:
             raise HTTPException(status_code=422, detail="query 不能为空")
         with conn_ctx() as conn:
+            reranker = None
+            if body.get("rerank"):
+                from kb.rerank import get_reranker
+                reranker = get_reranker()
             hits = search(conn, load_config(), query,
                           top_k=int(body.get("top_k", 5)),
-                          filters=body.get("filters"))
+                          filters=body.get("filters"),
+                          mode=body.get("mode", "hybrid"), reranker=reranker)
         return {"items": hits}
 
     return app

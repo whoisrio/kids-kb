@@ -64,24 +64,58 @@ def invalidate_chunk(conn, item_id: str) -> None:
         cur.execute("DELETE FROM chunks WHERE item_id=%s", (item_id,))
 
 
-def search(conn, cfg: Config, query: str, top_k: int = 5,
-           filters: dict | None = None, client=None) -> list[dict]:
-    """语义检索：query 过 embedding，余弦距离 top-k；filters 按键精确匹配 meta。"""
-    vec = embed_texts(cfg, [query], client=client)[0]
-    clauses, params = [], []
-    for key, val in (filters or {}).items():
-        clauses.append("c.meta->>%s = %s")
-        params += [key, val]
-    where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
+def _vector_hits(conn, vec: list[float], top_n: int) -> list[dict]:
     with conn.cursor() as cur:
         cur.execute(
-            f"""SELECT c.item_id, c.content_md, c.meta,
-                       1 - (c.embedding <=> %s::vector) AS score
-                FROM chunks c {where}
-                ORDER BY c.embedding <=> %s::vector LIMIT %s""",
-            [vec, *params, vec, top_k],
+            """SELECT c.item_id, c.content_md, c.meta,
+                      1 - (c.embedding <=> %s::vector) AS score
+               FROM chunks c ORDER BY c.embedding <=> %s::vector LIMIT %s""",
+            (vec, vec, top_n),
         )
         return [
             {"item_id": str(r[0]), "content_md": r[1], "score": float(r[3]), **r[2]}
             for r in cur.fetchall()
         ]
+
+
+def _meta_match(hit: dict, filters: dict | None) -> bool:
+    return all(hit.get(k) == v for k, v in (filters or {}).items())
+
+
+def search(conn, cfg: Config, query: str, top_k: int = 5,
+           filters: dict | None = None, client=None, mode: str = "hybrid",
+           reranker=None) -> list[dict]:
+    """检索：mode=vector|bm25|hybrid（RRF k=60 融合）；reranker 注入 cross-encoder
+    （如 kb.reranker.get_reranker()，bge-reranker-v2-m3 本地 Python 加载）时重排候选。"""
+    candidates: list[dict]
+    if mode == "vector":
+        vec = embed_texts(cfg, [query], client=client)[0]
+        candidates = _vector_hits(conn, vec, max(top_k, 20))
+    elif mode == "bm25":
+        from kb.lexical import bm25_search
+        candidates = bm25_search(conn, query, top_k=max(top_k, 20))
+    else:  # hybrid: RRF
+        from kb.lexical import bm25_search
+        vec = embed_texts(cfg, [query], client=client)[0]
+        vec_hits = _vector_hits(conn, vec, 20)
+        lex_hits = bm25_search(conn, query, top_k=20)
+        rrf: dict[str, dict] = {}
+        for rank, h in enumerate(vec_hits):
+            e = rrf.setdefault(h["item_id"], {**h, "score": 0.0})
+            e["score"] += 1 / (60 + rank + 1)
+        for rank, h in enumerate(lex_hits):
+            e = rrf.setdefault(h["item_id"], {**h, "score": 0.0})
+            e["score"] += 1 / (60 + rank + 1)
+        candidates = sorted(rrf.values(), key=lambda h: -h["score"])
+    candidates = [h for h in candidates if _meta_match(h, filters)]
+    if reranker is not None and candidates:
+        pool = candidates[: max(top_k, 10)]
+        pairs = [(query, h["content_md"]) for h in pool]
+        scores = reranker.compute_score(pairs)
+        if not isinstance(scores, list):  # 单对时库返回标量
+            scores = [scores]
+        for h, s in zip(pool, scores, strict=True):
+            h["rerank_score"] = float(s)
+        pool.sort(key=lambda h: -h["rerank_score"])
+        candidates = pool
+    return candidates[:top_k]

@@ -108,7 +108,7 @@ def test_search_returns_nearest_with_meta(conn, doc_chapter):
                VALUES (%s,%s,'乘法练习','{"label": "9-9", "chapter": "第 1 讲 乘除法竖式谜"}', %s)""",
             (other, doc_id, "[" + ",".join(["-1"] * 1024) + "]"),
         )
-    hits = search(conn, cfg, "竖式谜怎么解", client=_FakeEmbed())
+    hits = search(conn, cfg, "竖式谜怎么解", mode="vector", client=_FakeEmbed())
     assert hits[0]["label"] == "例1"  # _FakeEmbed 的全 1 向量最近
     assert hits[0]["chapter"] == "第 1 讲 乘除法竖式谜"
     assert hits[0]["score"] > 0.9

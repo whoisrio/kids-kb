@@ -44,3 +44,9 @@ layout = [
     "paddlepaddle>=3.3",
     "paddleocr[doc-parser]>=3.7",
 ]
+# 检索重排：bge-reranker-v2-m3 cross-encoder 本地 Python 加载（ollama 无 rerank 接口）
+rerank = [
+    "FlagEmbedding>=1.3",
+    "torch>=2.5",
+    "transformers>=4.45",
+]

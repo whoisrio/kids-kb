@@ -68,6 +68,9 @@ def main() -> None:
     p_search = sub.add_parser("search", help="语义检索")
     p_search.add_argument("query")
     p_search.add_argument("--top-k", type=int, default=5)
+    p_search.add_argument("--mode", default="hybrid", choices=["vector", "bm25", "hybrid"])
+    p_search.add_argument("--rerank", action="store_true",
+                          help="用本地 bge-reranker-v2-m3 重排（需 uv sync --extra rerank）")
     args = ap.parse_args()
 
     if args.cmd == "review":
@@ -144,8 +147,14 @@ def main() -> None:
         print(f"新增向量: {embed_approved_items(conn, cfg, args.doc_id)} 条")
     elif args.cmd == "search":
         from kb.embed import search
-        for h in search(conn, cfg, args.query, top_k=args.top_k):
-            print(f"{h['score']:.3f}\t{h.get('doc_title')} · {h.get('chapter')} · "
+        reranker = None
+        if args.rerank:
+            from kb.rerank import get_reranker
+            reranker = get_reranker()
+        for h in search(conn, cfg, args.query, top_k=args.top_k,
+                        mode=args.mode, reranker=reranker):
+            score = h.get("rerank_score") or h.get("score") or h.get("bm25") or 0.0
+            print(f"{score:.3f}\t{h.get('doc_title')} · {h.get('chapter')} · "
                   f"{h.get('label')}\t{(h['content_md'] or '')[:60]}")
 
 
