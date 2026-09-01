@@ -202,6 +202,16 @@ def create_app(get_conn: Callable[[], psycopg.Connection] | None = None) -> Fast
                 (page_id, page_id),
             )
             reviews = cur.fetchall()
+            # 覆盖该页的条目（整理后的 markdown），前端"区块/整理后"切换用
+            cur.execute(
+                """SELECT i.id, i.content_type, i.label, i.content_md, i.qc_status
+                   FROM items i JOIN pages p ON p.document_id = i.document_id
+                   WHERE p.id=%s AND i.page_start <= p.page_no
+                     AND p.page_no <= i.page_end
+                   ORDER BY i.created_at""",
+                (page_id,),
+            )
+            items = cur.fetchall()
         path = Path(page[1])
         if not path.is_absolute():
             path = Path.cwd() / path
@@ -220,6 +230,11 @@ def create_app(get_conn: Callable[[], psycopg.Connection] | None = None) -> Fast
                 {"id": str(r[0]), "reason": r[1], "status": r[2],
                  "block_id": str(r[3]) if r[3] else None}
                 for r in reviews
+            ],
+            "items": [
+                {"id": str(i[0]), "content_type": i[1], "label": i[2],
+                 "content_md": i[3], "qc_status": i[4]}
+                for i in items
             ],
         }
 

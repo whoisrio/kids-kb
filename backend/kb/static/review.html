@@ -346,15 +346,50 @@ async function openPage(pageId) {
     renderPanel(block);
   }
 
+  let panelMode = "blocks";
+
+  function panelTabs() {
+    return `<div class="tabs" style="margin-bottom:10px">
+      <button class="${panelMode === "blocks" ? "active" : ""}" data-mode="blocks">区块</button>
+      <button class="${panelMode === "items" ? "active" : ""}" data-mode="items">整理后 (${data.items.length})</button>
+    </div>`;
+  }
+
+  function itemsHtml() {
+    if (!data.items.length) return '<div class="hint">本页暂无整理后的条目</div>';
+    return data.items.map(it => `
+      <div class="blockitem" data-iid="${it.id}">
+        <span class="t">${esc(it.label || "?")} · ${esc(it.content_type)} · ${esc(it.qc_status)}</span>
+      </div>
+      <div class="md" style="margin-bottom:14px">${it.content_md ? renderContent(it.content_md) : "（空）"}</div>
+    `).join("");
+  }
+
+  function bindPanelTabs() {
+    panel.querySelectorAll(".tabs [data-mode]").forEach(b => {
+      b.onclick = () => { panelMode = b.dataset.mode; renderPanel(null); };
+    });
+    panel.querySelectorAll("[data-iid]").forEach(el => {
+      el.onclick = () => openItem(el.dataset.iid);
+    });
+  }
+
   function renderPanel(block) {
+    if (panelMode === "items") {
+      panel.innerHTML = panelTabs() + itemsHtml();
+      bindPanelTabs();
+      return;
+    }
     if (!block) {
-      panel.innerHTML = '<div class="hint">点击页面上或下方的块查看/编辑内容</div>' +
+      panel.innerHTML = panelTabs() +
+        '<div class="hint">点击页面上或下方的块查看/编辑内容</div>' +
         blockListHtml();
+      bindPanelTabs();
       bindBlockItems();
       return;
     }
     const rows = data.reviews.filter(r => r.block_id === block.id);
-    panel.innerHTML = `
+    panel.innerHTML = panelTabs() + `
       <div class="meta">
         <span class="badge">${esc(block.block_type)}</span>
         ${rows.map(r => `<span class="badge">${esc(r.reason)}（${esc(r.status)}）</span>`).join("")}
@@ -363,6 +398,7 @@ async function openPage(pageId) {
       <div class="actions"><button class="btn plain" id="edit">✎ 编辑</button></div>
       <div style="margin-top:14px">${blockListHtml()}</div>`;
     panel.querySelector("#edit").onclick = () => enterEdit(block);
+    bindPanelTabs();
     bindBlockItems();
   }
 

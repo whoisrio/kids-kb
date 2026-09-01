@@ -71,6 +71,33 @@ def test_page_detail_blocks_and_rows(client, doc2, conn):
     assert data["reviews"][0]["reason"] == "empty"
 
 
+def test_page_detail_includes_covering_items(client, doc2, conn):
+    """页详情带覆盖该页的条目（整理后的 markdown），供"区块/整理后"切换呈现。"""
+    with conn.cursor() as cur:
+        cur.execute("SELECT document_id, id FROM pages WHERE page_no=1")
+        doc_id, page_id = cur.fetchone()
+        cur.execute(
+            """INSERT INTO items (id, document_id, content_type, label, content_md,
+                                  chapter, page_start, page_end)
+               VALUES (%s,%s,'example','例1','**例1** 整理后内容','第 1 讲',1,2)""",
+            (str(uuid.uuid4()), doc_id),
+        )
+    data = client.get(f"/api/pages/{page_id}").json()
+    assert len(data["items"]) == 1
+    assert data["items"][0]["label"] == "例1"
+    assert data["items"][0]["content_md"].startswith("**例1**")
+    with conn.cursor() as cur:  # 页 2 也在 1-2 范围内；范围外不收录
+        cur.execute("SELECT id FROM pages WHERE page_no=2")
+        page2 = str(cur.fetchone()[0])
+        cur.execute(
+            """INSERT INTO items (id, document_id, content_type, label, content_md, page_start, page_end)
+               VALUES (%s,%s,'example','例9','别的章',5,9)""",
+            (str(uuid.uuid4()), doc_id),
+        )
+    data2 = client.get(f"/api/pages/{page2}").json()
+    assert [i["label"] for i in data2["items"]] == ["例1"]
+
+
 def test_page_image_served(client, doc2, conn):
     with conn.cursor() as cur:
         cur.execute("SELECT id FROM pages WHERE page_no=2")
