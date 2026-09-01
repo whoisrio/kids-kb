@@ -99,6 +99,7 @@ def main() -> None:
         out = annotate(conn, args.doc_id, Path(args.dir))
         print(f"导出 {len(out)} 页区块标注底稿，请人工校对: {args.dir}/{args.doc_id}/")
     elif args.cmd == "structure":
+        from kb.grounding import run_grounding
         from kb.qc import check_label_continuity
         from kb.structure import pair_items, structure_chapter
         from kb.toc import calibrate_pages, extract_toc
@@ -120,7 +121,8 @@ def main() -> None:
             except SystemExit as e:
                 print(f"第 {no} 章跳过: {e}")
         print(f"条目: {total} 条入库; 配对 {pair_items(conn, args.doc_id)} 处; "
-              f"题号质检新增 {check_label_continuity(conn, args.doc_id)} 条")
+              f"题号质检新增 {check_label_continuity(conn, args.doc_id)} 条; "
+              f"接地检查新增 {run_grounding(conn, args.doc_id)} 条")
     elif args.cmd == "reprocess":
         from kb.reprocess import reprocess_pages_paddleocr
 

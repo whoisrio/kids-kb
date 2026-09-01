@@ -365,15 +365,18 @@ def create_app(get_conn: Callable[[], psycopg.Connection] | None = None) -> Fast
 
     @app.patch("/api/items/{item_id}")
     def update_item(item_id: str, body: BlockContent):
-        with conn_ctx() as conn, conn.cursor() as cur:
-            cur.execute(
-                "UPDATE items SET content_md=%s WHERE id=%s RETURNING id",
-                (body.content_md, item_id),
-            )
-            row = cur.fetchone()
-        if not row:
-            raise HTTPException(status_code=404, detail="item 不存在")
-        return {"id": str(row[0]), "content_md": body.content_md}
+        from kb.grounding import sync_item_grounding
+        with conn_ctx() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "UPDATE items SET content_md=%s WHERE id=%s RETURNING id",
+                    (body.content_md, item_id),
+                )
+                row = cur.fetchone()
+            if not row:
+                raise HTTPException(status_code=404, detail="item 不存在")
+            new_rows = sync_item_grounding(conn, item_id)  # 编辑后重算接地
+        return {"id": str(row[0]), "content_md": body.content_md, "new_reviews": new_rows}
 
     @app.post("/api/items/{item_id}/approve")
     def approve_item(item_id: str):
