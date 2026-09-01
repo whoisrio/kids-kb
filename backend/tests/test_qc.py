@@ -43,6 +43,35 @@ def test_run_qc_inserts_review_rows(conn, tmp_path):
     assert run_qc(conn, doc_id) == 0  # 幂等
 
 
+def test_run_qc_skips_empty_for_figure_blocks(conn, tmp_path):
+    """figure 块的内容就是裁图本身（如竖式图），空 content_md 是正常态，不进复核队列。"""
+    from kb.config import Config
+    from kb.layout import run_layout
+    from kb.qc import run_qc
+    from kb.render import render_document
+
+    cfg = Config(
+        database_url="postgresql://localhost/kb_test",
+        storage_dir=tmp_path / "storage",
+        vision_base_url="http://localhost:11434/v1",
+        vision_api_key="ollama",
+        vision_model="qwen3:4b",
+    )
+    p = tmp_path / "s.pdf"
+    d = fitz.open()
+    d.new_page()
+    d.save(p)
+    doc_id = render_document(conn, cfg, p, title="t")
+    run_layout(conn, doc_id)
+    with conn.cursor() as cur:
+        cur.execute("UPDATE pages SET status='parsed'")
+        cur.execute("UPDATE blocks SET block_type='figure', content_md=''")
+    assert run_qc(conn, doc_id) == 0
+    with conn.cursor() as cur:
+        cur.execute("SELECT count(*) FROM review_queue")
+        assert cur.fetchone()[0] == 0
+
+
 def test_run_qc_auto_resolves_stale_review_rows(conn, tmp_path):
     from kb.config import Config
     from kb.layout import run_layout

@@ -70,14 +70,17 @@ def run_qc(conn, doc_id: str) -> int:
     """对低质 block 建复核记录（同一 block 同一原因不重复）；内容修复后自动关闭旧记录。返回新增条数。"""
     with conn.cursor() as cur:
         cur.execute(
-            """SELECT b.id, b.content_md FROM blocks b
+            """SELECT b.id, b.content_md, b.block_type FROM blocks b
                JOIN pages p ON p.id = b.page_id
                WHERE p.document_id=%s AND p.status IN ('parsed', 'failed')""",
             (doc_id,),
         )
         n = 0
-        for block_id, content in cur.fetchall():
+        for block_id, content, block_type in cur.fetchall():
             reasons = check_content(content)
+            # figure 块的内容就是裁图本身（如竖式图），空 content_md 不是缺陷
+            if block_type == "figure":
+                reasons = [r for r in reasons if r != "empty"]
             cur.execute(
                 "SELECT reason, status FROM review_queue WHERE block_id=%s",
                 (block_id,),
