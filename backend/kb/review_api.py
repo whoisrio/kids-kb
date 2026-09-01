@@ -306,7 +306,7 @@ def create_app(get_conn: Callable[[], psycopg.Connection] | None = None) -> Fast
         with conn_ctx() as conn, conn.cursor() as cur:
             cur.execute(
                 f"""SELECT i.id, i.content_type, i.label, i.chapter, i.qc_status, d.title,
-                           pr.reasons, i.content_md
+                           pr.reasons, i.content_md, i.source_model
                     FROM items i
                     JOIN documents d ON d.id = i.document_id
                     LEFT JOIN LATERAL (
@@ -321,7 +321,7 @@ def create_app(get_conn: Callable[[], psycopg.Connection] | None = None) -> Fast
         return {"items": [
             {"id": str(r[0]), "content_type": r[1], "label": r[2], "chapter": r[3],
              "qc_status": r[4], "doc_title": r[5], "pending_reasons": r[6] or [],
-             "content_md": r[7]}
+             "content_md": r[7], "source_model": r[8]}
             for r in rows
         ]}
 

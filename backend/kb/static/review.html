@@ -118,6 +118,7 @@ function pendingItemCard(it) {
       <span class="doc">${esc(it.doc_title)} · ${esc(it.chapter || "")}</span>
       <span class="badge">${esc(it.label || "?")}</span>
       <span class="badge">${esc(it.content_type)}</span>
+      <span class="doc">整理: ${esc(it.source_model || "?")}</span>
       ${it.pending_reasons.map(r => `<span class="badge" style="background:#fee2e2;color:#991b1b">${esc(r)}</span>`).join("")}
     </div>
     <div class="md">${it.content_md ? renderContent(it.content_md) : "（空）"}</div>
@@ -172,7 +173,7 @@ async function refreshItems() {
       <div class="meta" style="margin:0">
         <span class="badge">${esc(it.label || "?")}</span>
         <span class="badge">${esc(it.content_type)}</span>
-        <span class="doc">qc: ${esc(it.qc_status)}</span>
+        <span class="doc">整理: ${esc(it.source_model || "?")} · qc: ${esc(it.qc_status)}</span>
       </div>`;
     d.onclick = () => openItem(it.id);
     list.appendChild(d);
@@ -427,7 +428,7 @@ async function openPage(pageId) {
     return sorted.map(([b, i]) => `
       <div class="blockitem ${issueBlocks.has(b.id) ? "has-issue" : ""}" data-bid="${b.id}"
            ${rank(b) === 2 ? 'style="opacity:.55"' : ""}>
-        <span class="t">${i + 1} · ${esc(b.block_type)}</span>${issueReason[b.id]
+        <span class="t">${i + 1} · ${esc(b.block_type)} · ${esc(b.source_model || "?")}</span>${issueReason[b.id]
           ? `<span class="badge" style="background:#fee2e2;color:#991b1b">${esc(issueReason[b.id])}</span>` : ""}
         ${esc((b.content_md || "").slice(0, 40)) || "（空）"}
       </div>`).join("");
