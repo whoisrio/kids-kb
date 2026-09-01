@@ -74,12 +74,14 @@ KB_LAYOUT_ENGINE=paddleocr uv run --extra layout python -m kb.cli reprocess <doc
 `2026-08-31-pdf-pipeline-phase2a-layout.md`（版面+分级解析）、
 `2026-08-31-pdf-pipeline-phase2b-structure.md`（结构化拆分）
 
-## 人工复核（最简 web 页）
+## 人工复核（页级 web 页）
 
 ```bash
 cd backend && uv run python -m kb.cli review   # http://127.0.0.1:8765
 ```
 
-待复核/已通过/已打回三个页签；每条记录左侧裁图、右侧转录文本并排；
-转录渲染为可读 Markdown + LaTeX（KaTeX，本地静态资产，DOMPurify 消毒）；「✓ 通过 / ✗ 打回」直接回写 `review_queue.status`。
-打回后的重解析走既有断点重跑（`ingest` 重跑即可）。
+以页为单位：待复核 = 有 pending 复核行的页；已通过 = 干净的 parsed 页（自动归入，无需逐页点）。
+点进页详情看整页扫描图 + 区块 bbox 高亮（红框=有问题），点击块在右侧查看/编辑转录
+（Markdown + KaTeX 渲染）；「✓ 整页通过」关掉该页全部 pending 行，「✗ 打回本页」建页级
+自定义行。已通过的页仍可编辑（改坏了会自动新建可检测行）和打回。
+版面类问题（layout_gap/layout_overlap）重跑版面后机器复算自动关闭。
