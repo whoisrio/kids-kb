@@ -177,3 +177,47 @@ def test_pending_reasons_not_duplicated_by_block_fanout(client, doc2, conn):
     items = client.get("/api/pages?status=pending").json()["items"]
     page1 = next(i for i in items if i["page_no"] == 1)
     assert sorted(page1["pending_reasons"]) == ["empty", "layout_overlap"]
+
+
+class _VLChat:
+    class completions:
+        @staticmethod
+        def create(model, messages, max_tokens):
+            class M:
+                content = "# 整页\n转录内容"
+
+            class C:
+                message = M()
+
+            class R:
+                choices = [C()]
+
+            return R()
+
+
+class _VLClient:
+    chat = _VLChat()
+
+
+def test_manual_page_vlm_and_adopt(conn, doc2):
+    """人工在复核页发起整页 VLM 解析；然后选择采用整页版。"""
+    from fastapi.testclient import TestClient
+
+    client = TestClient(create_app(lambda: conn, vlm_client=_VLClient()))
+    with conn.cursor() as cur:
+        cur.execute("SELECT id FROM pages WHERE page_no=1")
+        page_id = str(cur.fetchone()[0])
+
+    resp = client.post(f"/api/pages/{page_id}/page-vlm")
+    assert resp.status_code == 200
+    detail = client.get(f"/api/pages/{page_id}").json()
+    assert detail["page_md"].startswith("# 整页")
+    assert detail["page_md_model"] and detail["adopted_source"] == "blocks"
+
+    resp = client.post(f"/api/pages/{page_id}/adopt", json={"source": "page_md"})
+    assert resp.status_code == 200
+    detail = client.get(f"/api/pages/{page_id}").json()
+    assert detail["adopted_source"] == "page_md"
+
+    assert client.post(f"/api/pages/{page_id}/adopt",
+                       json={"source": "bogus"}).status_code == 422

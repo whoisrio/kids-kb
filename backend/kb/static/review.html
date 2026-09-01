@@ -352,10 +352,54 @@ async function openPage(pageId) {
 
   function panelTabs() {
     const issueTag = issueBlocks.size ? ` · ${issueBlocks.size} 问题` : "";
+    const vlmTag = data.page_md ? "" : "（未生成）";
     return `<div class="tabs" style="margin-bottom:10px">
       <button class="${panelMode === "blocks" ? "active" : ""}" data-mode="blocks">区块${issueTag}</button>
       <button class="${panelMode === "items" ? "active" : ""}" data-mode="items">整理后 (${data.items.length})</button>
+      <button class="${panelMode === "pageMd" ? "active" : ""}" data-mode="pageMd">整页转录${vlmTag}</button>
     </div>`;
+  }
+
+  function pageMdHtml() {
+    const adoptBtns = `
+      <div class="actions">
+        <button class="btn plain" id="runvlm">🔄 ${data.page_md ? "重新" : ""}远端整页解析</button>
+        ${data.page_md ? (data.adopted_source === "page_md"
+          ? '<button class="btn plain" id="adopt-blocks">改用切块版</button><span class="hint">当前采用：整页转录</span>'
+          : '<button class="btn approve" id="adopt-pagemd">✓ 采用整页版</button><span class="hint">当前采用：切块</span>')
+          : ""}
+      </div>`;
+    const body = data.page_md
+      ? `<div class="md">${renderContent(data.page_md)}</div>`
+      : '<div class="hint">本页还没有整页转录。点上方按钮用远端模型解析整页。</div>';
+    return `<div class="meta">
+        <span class="doc">模型: ${esc(data.page_md_model || "-")}</span>
+      </div>${body}${adoptBtns}`;
+  }
+
+  function bindPageMd() {
+    panel.querySelector("#runvlm").onclick = async (e) => {
+      e.target.disabled = true;
+      e.target.textContent = "解析中（远端整页，约 1 分钟）…";
+      const resp = await fetch(`/api/pages/${pageId}/page-vlm`, { method: "POST" });
+      if (resp.ok) { openPage(pageId); } else {
+        e.target.disabled = false; e.target.textContent = "🔄 远端整页解析";
+        alert("解析失败: " + resp.status);
+      }
+    };
+    const adoptMd = panel.querySelector("#adopt-pagemd");
+    if (adoptMd) adoptMd.onclick = () => adopt("page_md");
+    const adoptBlocks = panel.querySelector("#adopt-blocks");
+    if (adoptBlocks) adoptBlocks.onclick = () => adopt("blocks");
+  }
+
+  async function adopt(source) {
+    const resp = await fetch(`/api/pages/${pageId}/adopt`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ source }),
+    });
+    if (resp.ok) { data.adopted_source = source; renderPanel(null); }
+    else alert("操作失败: " + resp.status);
   }
 
   function itemsHtml() {
@@ -387,6 +431,12 @@ async function openPage(pageId) {
     if (panelMode === "items") {
       panel.innerHTML = panelTabs() + itemsHtml();
       bindPanelTabs();
+      return;
+    }
+    if (panelMode === "pageMd") {
+      panel.innerHTML = panelTabs() + pageMdHtml();
+      bindPanelTabs();
+      bindPageMd();
       return;
     }
     if (!block) {

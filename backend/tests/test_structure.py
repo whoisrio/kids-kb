@@ -167,3 +167,46 @@ def test_structure_retries_on_connection_error(conn, doc_with_chapter):
 
     n = structure_chapter(conn, cfg, doc_id, 1, client=FlakyClient())
     assert n == 2 and len(calls) == 2
+
+
+def test_structure_uses_page_md_for_adopted_pages(conn, doc_with_chapter):
+    """采用整页版的页：章节窗口用 page_md 替代该页块文本。"""
+    from kb.structure import structure_chapter
+
+    doc_id, cfg, blocks = doc_with_chapter
+    with conn.cursor() as cur:  # 第 2 页（章首页）采用整页版
+        cur.execute("SELECT id FROM pages WHERE page_no=2")
+        pid = str(cur.fetchone()[0])
+        cur.execute(
+            "UPDATE pages SET page_md='整页版：例9 整页转录内容', adopted_source='page_md' WHERE id=%s",
+            (pid,),
+        )
+    seen = []
+
+    class SpyChat:
+        class completions:
+            @staticmethod
+            def create(model, messages, max_tokens):
+                seen.append(messages[0]["content"])
+                class M:
+                    content = ITEMS_JSON
+
+                class C:
+                    message = M()
+
+                class R:
+                    choices = [C()]
+
+                return R()
+
+    class SpyClient:
+        chat = SpyChat()
+
+    structure_chapter(conn, cfg, doc_id, 1, client=SpyClient())
+    assert "整页版：例9 整页转录内容" in seen[0]
+    # 该页块文本不应再进 prompt（fixture 第 1 页块内容）
+    with conn.cursor() as cur:
+        cur.execute("SELECT content_md FROM blocks WHERE page_id=%s LIMIT 1", (pid,))
+        block_text = cur.fetchone()[0]
+    if block_text:
+        assert block_text not in seen[0]

@@ -31,15 +31,28 @@ STRUCTURE_PROMPT = (
 
 
 def _chapter_blocks(cur, doc_id: str, page_start: int, page_end: int) -> list[tuple]:
+    """章节窗口的输入：逐页按采用版本取——adopted=page_md 的页用整页转录（单条伪块，
+    block_id 为 None 不进 item_blocks），其余页用块文本。"""
     cur.execute(
-        """SELECT b.id, b.block_type, b.content_md FROM blocks b
-           JOIN pages p ON p.id = b.page_id
+        """SELECT p.id, p.adopted_source, p.page_md FROM pages p
            WHERE p.document_id=%s AND p.page_no BETWEEN %s AND %s
-             AND NOT (b.block_type = ANY(%s)) AND b.content_md IS NOT NULL
-           ORDER BY p.page_no, b.created_at""",
-        (doc_id, page_start, page_end, list(_SKIP_TYPES)),
+           ORDER BY p.page_no""",
+        (doc_id, page_start, page_end),
     )
-    return cur.fetchall()
+    rows = []
+    for page_id, adopted, page_md in cur.fetchall():
+        if adopted == "page_md" and page_md:
+            rows.append((None, "page", page_md))
+            continue
+        cur.execute(
+            """SELECT b.id, b.block_type, b.content_md FROM blocks b
+               WHERE b.page_id=%s
+                 AND NOT (b.block_type = ANY(%s)) AND b.content_md IS NOT NULL
+               ORDER BY b.created_at""",
+            (page_id, list(_SKIP_TYPES)),
+        )
+        rows.extend(cur.fetchall())
+    return rows
 
 
 def structure_chapter(conn, cfg: Config, doc_id: str, chapter_no: int, client=None) -> int:
@@ -105,6 +118,8 @@ def structure_chapter(conn, cfg: Config, doc_id: str, chapter_no: int, client=No
                 if not (1 <= idx <= len(blocks)):
                     continue  # 模型引用了不存在的块号，跳过不炸
                 bid, btype, _content = blocks[idx - 1]
+                if bid is None:
+                    continue  # 整页版伪块：溯源退化为页图，不进 item_blocks
                 if entry["content_type"] == "answer":
                     role = "solution"
                 elif btype in ("figure", "table"):

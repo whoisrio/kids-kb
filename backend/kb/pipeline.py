@@ -17,6 +17,6 @@ def ingest(conn, cfg: Config, pdf_path, title: str,
                              start=start, end=end)
     run_layout(conn, doc_id, analyzer=make_layout_analyzer(cfg))
     run_parse(conn, cfg, doc_id, client=client)
-    run_qc(conn, doc_id)
+    run_qc(conn, doc_id, cfg=cfg)  # 实质问题多的页自动触发整页 VLM 第二解析
     run_llm_crosscheck(conn, cfg, doc_id)
     return doc_id

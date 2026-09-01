@@ -128,8 +128,9 @@ def _page_image_size(image_path: str) -> tuple[float, float] | None:
     return pix.width, pix.height
 
 
-def run_qc(conn, doc_id: str) -> int:
-    """对低质 block/版面问题建复核记录（同源不重复）；修复后自动关闭旧记录。返回新增条数。"""
+def run_qc(conn, doc_id: str, cfg=None, vlm_client=None) -> int:
+    """对低质 block/版面问题建复核记录（同源不重复）；修复后自动关闭旧记录。返回新增条数。
+    传入 cfg 时，实质问题较多的页自动触发远端整页 VLM 转录（第二解析产物）。"""
     with conn.cursor() as cur:
         cur.execute(
             """SELECT b.id, b.content_md, b.block_type FROM blocks b
@@ -174,6 +175,9 @@ def run_qc(conn, doc_id: str) -> int:
                         "WHERE page_id=%s AND reason=%s AND status='pending'",
                         (page_id, reason),
                     )
+    if cfg is not None:
+        from kb.pagelvl import auto_page_vlm
+        auto_page_vlm(conn, cfg, doc_id, client=vlm_client)
     return n
 
 

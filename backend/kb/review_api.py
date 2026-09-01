@@ -33,8 +33,10 @@ class PageReject(BaseModel):
     reason: str
 
 
-def create_app(get_conn: Callable[[], psycopg.Connection] | None = None) -> FastAPI:
-    """get_conn 可注入测试连接（不关闭）；默认每个请求从 .env 配置开新连接并关闭。"""
+def create_app(get_conn: Callable[[], psycopg.Connection] | None = None,
+               vlm_client=None) -> FastAPI:
+    """get_conn 可注入测试连接（不关闭）；默认每个请求从 .env 配置开新连接并关闭。
+    vlm_client 可注入测试用的假 VLM 客户端（整页解析用）。"""
     own = get_conn is None
     if get_conn is None:
         def get_conn() -> psycopg.Connection:  # type: ignore[misc]
@@ -182,7 +184,9 @@ def create_app(get_conn: Callable[[], psycopg.Connection] | None = None) -> Fast
         import pymupdf as fitz
         with conn_ctx() as conn, conn.cursor() as cur:
             cur.execute(
-                """SELECT p.page_no, p.image_path, d.title FROM pages p
+                """SELECT p.page_no, p.image_path, d.title, p.page_md, p.page_md_model,
+                          p.adopted_source
+                   FROM pages p
                    JOIN documents d ON d.id = p.document_id WHERE p.id=%s""",
                 (page_id,),
             )
@@ -233,6 +237,7 @@ def create_app(get_conn: Callable[[], psycopg.Connection] | None = None) -> Fast
             width, height = pix.width, pix.height
         return {
             "page_id": page_id, "page_no": page[0], "doc_title": page[2],
+            "page_md": page[3], "page_md_model": page[4], "adopted_source": page[5],
             "width": width, "height": height,
             "blocks": [
                 {"id": str(b[0]), "block_type": b[1], "bbox": b[2], "content_md": b[3],
@@ -408,5 +413,37 @@ def create_app(get_conn: Callable[[], psycopg.Connection] | None = None) -> Fast
             )
             row_id = cur.fetchone()[0]
         return {"id": str(row_id), "status": "pending"}
+
+    @app.post("/api/pages/{page_id}/page-vlm")
+    def page_vlm(page_id: str):
+        """人工发起远端整页 VLM 解析（覆盖旧 page_md；采用版本不变，由 adopt 决定）。"""
+        from kb.pagelvl import transcribe_page
+        with conn_ctx() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT 1 FROM pages WHERE id=%s", (page_id,))
+                if not cur.fetchone():
+                    raise HTTPException(status_code=404, detail="page 不存在")
+            md = transcribe_page(conn, load_config(), page_id, client=vlm_client)
+        return {"page_id": page_id, "page_md_len": len(md)}
+
+    @app.post("/api/pages/{page_id}/adopt")
+    def adopt_page(page_id: str, body: dict):
+        """人工选择该页下游采用的解析版本：blocks（切块）或 page_md（整页）。"""
+        source = body.get("source")
+        if source not in ("blocks", "page_md"):
+            raise HTTPException(status_code=422, detail="source 取值: blocks/page_md")
+        with conn_ctx() as conn, conn.cursor() as cur:
+            if source == "page_md":
+                cur.execute("SELECT page_md FROM pages WHERE id=%s", (page_id,))
+                row = cur.fetchone()
+                if not row or not row[0]:
+                    raise HTTPException(status_code=409, detail="该页还没有整页转录")
+            cur.execute(
+                "UPDATE pages SET adopted_source=%s WHERE id=%s RETURNING id",
+                (source, page_id),
+            )
+            if not cur.fetchone():
+                raise HTTPException(status_code=404, detail="page 不存在")
+        return {"page_id": page_id, "adopted_source": source}
 
     return app
