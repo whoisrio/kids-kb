@@ -265,4 +265,103 @@ def create_app(get_conn: Callable[[], psycopg.Connection] | None = None) -> Fast
             n = len(cur.fetchall())
         return {"id": page_id, "resolved": n}
 
+    # ---- 条目级：LLM 整理结果（章节拆条）的可视化与人工确认 ----
+
+    @app.get("/api/items")
+    def list_items(doc_id: str | None = None):
+        where, params = ("WHERE i.document_id = %s", [doc_id]) if doc_id else ("", [])
+        with conn_ctx() as conn, conn.cursor() as cur:
+            cur.execute(
+                f"""SELECT i.id, i.content_type, i.label, i.chapter, i.qc_status, d.title
+                    FROM items i JOIN documents d ON d.id = i.document_id
+                    {where} ORDER BY d.title, i.chapter, i.created_at""",
+                params,
+            )
+            rows = cur.fetchall()
+        return {"items": [
+            {"id": str(r[0]), "content_type": r[1], "label": r[2], "chapter": r[3],
+             "qc_status": r[4], "doc_title": r[5]}
+            for r in rows
+        ]}
+
+    @app.get("/api/items/{item_id}")
+    def item_detail(item_id: str):
+        with conn_ctx() as conn, conn.cursor() as cur:
+            cur.execute(
+                """SELECT i.content_type, i.label, i.chapter, i.qc_status, i.content_md,
+                          i.taxonomy, i.tags, d.title
+                   FROM items i JOIN documents d ON d.id = i.document_id WHERE i.id=%s""",
+                (item_id,),
+            )
+            item = cur.fetchone()
+            if not item:
+                raise HTTPException(status_code=404, detail="item 不存在")
+            cur.execute(
+                """SELECT b.id, ib.role, b.block_type, b.content_md
+                   FROM item_blocks ib JOIN blocks b ON b.id = ib.block_id
+                   WHERE ib.item_id=%s ORDER BY b.created_at, b.id""",
+                (item_id,),
+            )
+            blocks = cur.fetchall()
+            cur.execute(
+                "SELECT id, reason, status FROM review_queue WHERE item_id=%s ORDER BY created_at",
+                (item_id,),
+            )
+            reviews = cur.fetchall()
+        return {
+            "id": item_id, "content_type": item[0], "label": item[1], "chapter": item[2],
+            "qc_status": item[3], "content_md": item[4], "taxonomy": item[5],
+            "tags": item[6], "doc_title": item[7],
+            "blocks": [
+                {"id": str(b[0]), "role": b[1], "block_type": b[2], "content_md": b[3]}
+                for b in blocks
+            ],
+            "reviews": [
+                {"id": str(r[0]), "reason": r[1], "status": r[2]} for r in reviews
+            ],
+        }
+
+    @app.patch("/api/items/{item_id}")
+    def update_item(item_id: str, body: BlockContent):
+        with conn_ctx() as conn, conn.cursor() as cur:
+            cur.execute(
+                "UPDATE items SET content_md=%s WHERE id=%s RETURNING id",
+                (body.content_md, item_id),
+            )
+            row = cur.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="item 不存在")
+        return {"id": str(row[0]), "content_md": body.content_md}
+
+    @app.post("/api/items/{item_id}/approve")
+    def approve_item(item_id: str):
+        """人工确认条目 -> qc_status=approved（向量化的准入门槛）。"""
+        with conn_ctx() as conn, conn.cursor() as cur:
+            cur.execute(
+                "UPDATE items SET qc_status='approved' WHERE id=%s RETURNING id",
+                (item_id,),
+            )
+            if not cur.fetchone():
+                raise HTTPException(status_code=404, detail="item 不存在")
+            cur.execute(
+                "UPDATE review_queue SET status='approved' WHERE item_id=%s AND status='pending'",
+                (item_id,),
+            )
+        return {"id": item_id, "qc_status": "approved"}
+
+    @app.post("/api/items/{item_id}/reject")
+    def reject_item(item_id: str, body: PageReject):
+        """条目打回：item 级自定义复核行（如串章/漏题），机器不自动关闭。"""
+        import uuid
+        with conn_ctx() as conn, conn.cursor() as cur:
+            cur.execute("SELECT 1 FROM items WHERE id=%s", (item_id,))
+            if not cur.fetchone():
+                raise HTTPException(status_code=404, detail="item 不存在")
+            cur.execute(
+                "INSERT INTO review_queue (id, item_id, reason) VALUES (%s,%s,%s) RETURNING id",
+                (str(uuid.uuid4()), item_id, body.reason),
+            )
+            row_id = cur.fetchone()[0]
+        return {"id": str(row_id), "status": "pending"}
+
     return app

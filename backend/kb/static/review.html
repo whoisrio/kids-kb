@@ -73,7 +73,7 @@
 </header>
 <main id="list"><div class="empty">加载中…</div></main>
 <script>
-const TABS = [["pending", "待复核"], ["approved", "已通过"]];
+const TABS = [["pending", "待复核"], ["approved", "已通过"], ["items", "条目"]];
 let status = "pending";
 
 function esc(s) {
@@ -83,6 +83,7 @@ function esc(s) {
 }
 
 async function refresh() {
+  if (status === "items") return refreshItems();
   const otherStatus = status === "pending" ? "approved" : "pending";
   const [cur, other] = await Promise.all([
     fetch("/api/pages?status=" + status).then(r => r.json()),
@@ -96,6 +97,119 @@ async function refresh() {
     return;
   }
   for (const it of cur.items) list.appendChild(pageCard(it));
+}
+
+async function refreshItems() {
+  const data = await (await fetch("/api/items")).json();
+  renderTabs({ items: data.items.length });
+  const list = document.getElementById("list");
+  list.innerHTML = "";
+  if (!data.items.length) {
+    list.innerHTML = '<div class="empty">无条目</div>';
+    return;
+  }
+  let lastGroup = "";
+  for (const it of data.items) {
+    const group = it.doc_title + " · " + (it.chapter || "未分章");
+    if (group !== lastGroup) {
+      lastGroup = group;
+      const h = document.createElement("div");
+      h.className = "meta";
+      h.style.marginTop = "18px";
+      h.innerHTML = `<b>${esc(group)}</b>`;
+      list.appendChild(h);
+    }
+    const d = document.createElement("div");
+    d.className = "card page";
+    d.style.cursor = "pointer";
+    d.innerHTML = `
+      <div class="meta" style="margin:0">
+        <span class="badge">${esc(it.label || "?")}</span>
+        <span class="badge">${esc(it.content_type)}</span>
+        <span class="doc">qc: ${esc(it.qc_status)}</span>
+      </div>`;
+    d.onclick = () => openItem(it.id);
+    list.appendChild(d);
+  }
+}
+
+async function openItem(itemId) {
+  const data = await (await fetch("/api/items/" + itemId)).json();
+  const list = document.getElementById("list");
+  list.innerHTML = "";
+  const pendingRows = data.reviews.filter(r => r.status === "pending");
+  const wrap = document.createElement("div");
+  wrap.innerHTML = `
+    <div class="meta">
+      <button class="btn plain" id="back">← 返回条目</button>
+      <span class="doc">${esc(data.doc_title)} · ${esc(data.chapter || "")}</span>
+      <span class="badge">${esc(data.label || "?")}</span>
+      <span class="badge">${esc(data.content_type)}</span>
+      ${data.taxonomy ? `<span class="badge">${esc(data.taxonomy)}</span>` : ""}
+      ${(data.tags || []).map(t => `<span class="badge">${esc(t)}</span>`).join("")}
+      ${pendingRows.map(r => `<span class="badge" style="background:#fee2e2;color:#991b1b">${esc(r.reason)}</span>`).join("")}
+    </div>
+    <div class="detail">
+      <div class="panel">
+        <div class="md">${data.content_md ? renderContent(data.content_md) : "（空）"}</div>
+        <div class="actions">
+          <button class="btn plain" id="edit">✎ 编辑</button>
+          <button class="btn approve" id="approve">✓ 确认</button>
+          <button class="btn reject" id="reject">✗ 打回</button>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="hint" style="margin-bottom:8px">溯源块（${data.blocks.length}）</div>
+        ${data.blocks.map(b => `
+          <div style="margin-bottom:12px">
+            <div class="meta"><span class="badge">${esc(b.role)}</span><span class="doc">${esc(b.block_type)}</span></div>
+            <img src="/api/blocks/${b.id}/crop" style="width:100%;border:1px solid var(--line);border-radius:6px" loading="lazy">
+          </div>`).join("") || '<div class="hint">无关联块</div>'}
+      </div>
+    </div>`;
+  list.appendChild(wrap);
+  wrap.querySelector("#back").onclick = refresh;
+  wrap.querySelector("#approve").onclick = async (e) => {
+    e.target.disabled = true;
+    const resp = await fetch(`/api/items/${itemId}/approve`, { method: "POST" });
+    if (resp.ok) refreshItems(); else { e.target.disabled = false; alert("操作失败: " + resp.status); }
+  };
+  wrap.querySelector("#reject").onclick = async (e) => {
+    const reason = prompt("打回原因（如：串章/漏题/公式错）：");
+    if (!reason) return;
+    e.target.disabled = true;
+    const resp = await fetch(`/api/items/${itemId}/reject`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reason }),
+    });
+    if (resp.ok) openItem(itemId); else { e.target.disabled = false; alert("操作失败: " + resp.status); }
+  };
+  wrap.querySelector("#edit").onclick = () => {
+    const md = wrap.querySelector(".md");
+    md.innerHTML = "";
+    const ta = document.createElement("textarea");
+    ta.className = "editor";
+    ta.value = data.content_md || "";
+    md.appendChild(ta);
+    const bar = wrap.querySelector(".panel .actions");
+    bar.innerHTML = '<button class="btn approve" id="save">保存</button>' +
+                    '<button class="btn plain" id="cancel">取消</button>' +
+                    '<span class="hint"></span>';
+    const hint = bar.querySelector(".hint");
+    bar.querySelector("#cancel").onclick = () => openItem(itemId);
+    bar.querySelector("#save").onclick = async (e) => {
+      e.target.disabled = true;
+      const resp = await fetch(`/api/items/${itemId}`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content_md: ta.value }),
+      });
+      if (!resp.ok) { e.target.disabled = false; hint.textContent = "保存失败: " + resp.status; return; }
+      data.content_md = ta.value;
+      md.innerHTML = renderContent(ta.value);
+      bar.innerHTML = '<button class="btn plain" id="edit">✎ 编辑</button>';
+      bar.querySelector("#edit").onclick = () => openItem(itemId);
+    };
+  };
 }
 
 function renderTabs(counts) {
