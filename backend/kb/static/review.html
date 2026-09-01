@@ -350,8 +350,9 @@ async function openPage(pageId) {
   let panelMode = "blocks";
 
   function panelTabs() {
+    const issueTag = issueBlocks.size ? ` · ${issueBlocks.size} 问题` : "";
     return `<div class="tabs" style="margin-bottom:10px">
-      <button class="${panelMode === "blocks" ? "active" : ""}" data-mode="blocks">区块</button>
+      <button class="${panelMode === "blocks" ? "active" : ""}" data-mode="blocks">区块${issueTag}</button>
       <button class="${panelMode === "items" ? "active" : ""}" data-mode="items">整理后 (${data.items.length})</button>
     </div>`;
   }
@@ -414,14 +415,21 @@ async function openPage(pageId) {
   }
 
   function blockListHtml() {
-    // 装饰性块（页眉/页脚/空内容）沉底灰显，正文块在前
-    const deco = b => (b.block_type === "header" || b.block_type === "footer" || !b.content_md) ? 1 : 0;
+    // 问题块置顶 + 红底原因徽标；装饰性块（页眉/页脚/空内容）沉底灰显
+    const issueReason = {};
+    for (const r of data.reviews) {
+      if (r.status === "pending" && r.block_id) issueReason[r.block_id] = r.reason;
+    }
+    const rank = b => issueBlocks.has(b.id) ? 0
+      : (b.block_type === "header" || b.block_type === "footer" || !b.content_md) ? 2 : 1;
     const sorted = data.blocks.map((b, i) => [b, i])
-      .sort((x, y) => deco(x[0]) - deco(y[0]) || x[1] - y[1]);
+      .sort((x, y) => rank(x[0]) - rank(y[0]) || x[1] - y[1]);
     return sorted.map(([b, i]) => `
       <div class="blockitem ${issueBlocks.has(b.id) ? "has-issue" : ""}" data-bid="${b.id}"
-           ${deco(b) ? 'style="opacity:.55"' : ""}>
-        <span class="t">${i + 1} · ${esc(b.block_type)}</span>${esc((b.content_md || "").slice(0, 40)) || "（空）"}
+           ${rank(b) === 2 ? 'style="opacity:.55"' : ""}>
+        <span class="t">${i + 1} · ${esc(b.block_type)}</span>${issueReason[b.id]
+          ? `<span class="badge" style="background:#fee2e2;color:#991b1b">${esc(issueReason[b.id])}</span>` : ""}
+        ${esc((b.content_md || "").slice(0, 40)) || "（空）"}
       </div>`).join("");
   }
 
@@ -479,7 +487,9 @@ async function openPage(pageId) {
     }
   });
 
-  select(null);
+  // 打开页详情时直接选中第一个问题块，让"哪块有问题"零寻找成本
+  const firstIssue = data.blocks.find(b => issueBlocks.has(b.id));
+  select(firstIssue || null);
 }
 
 refresh();
