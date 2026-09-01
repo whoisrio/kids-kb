@@ -72,30 +72,38 @@ def test_page_detail_blocks_and_rows(client, doc2, conn):
 
 
 def test_page_detail_includes_covering_items(client, doc2, conn):
-    """页详情带覆盖该页的条目（整理后的 markdown），供"区块/整理后"切换呈现。"""
+    """页详情带落在该页的条目（按 item_blocks 溯源关联），供"区块/整理后"切换呈现。"""
     with conn.cursor() as cur:
         cur.execute("SELECT document_id, id FROM pages WHERE page_no=1")
         doc_id, page_id = cur.fetchone()
+        cur.execute("SELECT id FROM blocks WHERE page_id=%s", (page_id,))
+        block_id = str(cur.fetchone()[0])
         cur.execute(
             """INSERT INTO items (id, document_id, content_type, label, content_md,
                                   chapter, page_start, page_end)
-               VALUES (%s,%s,'example','例1','**例1** 整理后内容','第 1 讲',1,2)""",
+               VALUES (%s,%s,'example','例1','**例1** 整理后内容','第 1 讲',1,2)
+               RETURNING id""",
+            (str(uuid.uuid4()), doc_id),
+        )
+        item_id = str(cur.fetchone()[0])
+        cur.execute(
+            "INSERT INTO item_blocks (item_id, block_id, role) VALUES (%s,%s,'stem')",
+            (item_id, block_id),
+        )
+        # 例9 章范围覆盖第 1 页但无块落在该页 -> 不应出现
+        cur.execute(
+            """INSERT INTO items (id, document_id, content_type, label, content_md, page_start, page_end)
+               VALUES (%s,%s,'example','例9','别的章',1,2)""",
             (str(uuid.uuid4()), doc_id),
         )
     data = client.get(f"/api/pages/{page_id}").json()
-    assert len(data["items"]) == 1
-    assert data["items"][0]["label"] == "例1"
+    assert [i["label"] for i in data["items"]] == ["例1"]
     assert data["items"][0]["content_md"].startswith("**例1**")
-    with conn.cursor() as cur:  # 页 2 也在 1-2 范围内；范围外不收录
+    with conn.cursor() as cur:  # 页 2 无任何条目的块 -> 空
         cur.execute("SELECT id FROM pages WHERE page_no=2")
         page2 = str(cur.fetchone()[0])
-        cur.execute(
-            """INSERT INTO items (id, document_id, content_type, label, content_md, page_start, page_end)
-               VALUES (%s,%s,'example','例9','别的章',5,9)""",
-            (str(uuid.uuid4()), doc_id),
-        )
     data2 = client.get(f"/api/pages/{page2}").json()
-    assert [i["label"] for i in data2["items"]] == ["例1"]
+    assert data2["items"] == []
 
 
 def test_page_image_served(client, doc2, conn):

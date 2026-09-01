@@ -202,13 +202,14 @@ def create_app(get_conn: Callable[[], psycopg.Connection] | None = None) -> Fast
                 (page_id, page_id),
             )
             reviews = cur.fetchall()
-            # 覆盖该页的条目（整理后的 markdown），前端"区块/整理后"切换用
+            # 落在该页的条目（按 item_blocks 溯源关联），前端"区块/整理后"切换用
             cur.execute(
-                """SELECT i.id, i.content_type, i.label, i.content_md, i.qc_status
-                   FROM items i JOIN pages p ON p.document_id = i.document_id
-                   WHERE p.id=%s AND i.page_start <= p.page_no
-                     AND p.page_no <= i.page_end
-                   ORDER BY i.created_at""",
+                """SELECT DISTINCT i.id, i.content_type, i.label, i.content_md, i.qc_status
+                   FROM items i
+                   JOIN item_blocks ib ON ib.item_id = i.id
+                   JOIN blocks b ON b.id = ib.block_id
+                   WHERE b.page_id=%s
+                   ORDER BY i.label""",
                 (page_id,),
             )
             items = cur.fetchall()
