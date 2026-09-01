@@ -61,9 +61,10 @@ def reprocess_pages_paddleocr(conn, cfg: Config, doc_id: str, page_nos: list[int
                 cur.execute(
                     """INSERT INTO blocks (id, page_id, block_type, bbox, crop_path, content_md)
                        VALUES (%s,%s,%s,%s,%s,%s)""",
+                    # 整管线没产出内容的块（如竖式图）落 NULL，留给 run_parse 补转录
                     (str(uuid.uuid4()), page_id, map_block_label(b.get("block_label")),
                      Jsonb([float(v) for v in bbox]), str(crop),
-                     b.get("block_content") or ""),
+                     (b.get("block_content") or "").strip() or None),
                 )
                 stats["blocks"] += 1
             cur.execute(

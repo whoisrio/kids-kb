@@ -100,7 +100,11 @@ def run_qc(conn, doc_id: str) -> int:
 
 
 def check_label_continuity(conn, doc_id: str) -> int:
-    """每章 exercise 题号应连续（1..N），缺号建 missing_item 复核行。返回新增数。"""
+    """每章 exercise 题号应连续，缺号建 missing_item 复核行。返回新增数。
+
+    支持两种题号：纯数字（"3"）按章连续；"3-1" 式（例N-第M题）按 (章, N) 分组对 M 连续。
+    """
+    grouped = re.compile(r"^(\d+)-(\d+)$")
     with conn.cursor() as cur:
         cur.execute(
             """SELECT chapter, label FROM items
@@ -108,15 +112,24 @@ def check_label_continuity(conn, doc_id: str) -> int:
                ORDER BY chapter""",
             (doc_id,),
         )
-        by_chapter: dict[str, set[int]] = {}
+        by_group: dict[tuple, set[int]] = {}
         for chapter, label in cur.fetchall():
-            if label and label.isdigit():
-                by_chapter.setdefault(chapter, set()).add(int(label))
+            if not label:
+                continue
+            m = grouped.match(label)
+            if m:
+                key, num = (chapter, m.group(1)), int(m.group(2))
+            elif label.isdigit():
+                key, num = (chapter, ""), int(label)
+            else:
+                continue
+            by_group.setdefault(key, set()).add(num)
         n = 0
-        for chapter, labels in by_chapter.items():
+        for (chapter, prefix), labels in by_group.items():
             missing = sorted(set(range(1, max(labels) + 1)) - labels)
-            for m in missing:
-                reason = f"missing_item:{chapter} 第{m}题"
+            for num in missing:
+                shown = f"{prefix}-{num}" if prefix else str(num)
+                reason = f"missing_item:{chapter} 第{shown}题"
                 cur.execute("SELECT 1 FROM review_queue WHERE reason=%s", (reason,))
                 if cur.fetchone():
                     continue

@@ -51,6 +51,7 @@ FAKE_BLOCKS = [
     {"block_label": "text", "block_bbox": [0, 0, 100, 50], "block_content": "新内容一"},
     {"block_label": "display_formula", "block_bbox": [0, 60, 100, 100],
      "block_content": "$$1+1=2$$"},
+    {"block_label": "figure", "block_bbox": [0, 110, 100, 160], "block_content": ""},
 ]
 
 
@@ -77,7 +78,7 @@ def test_reprocess_replaces_page_blocks(conn, doc3):
 
     stats = reprocess_pages_paddleocr(conn, cfg, doc_id, [2], pipeline=FakeVL(FAKE_BLOCKS))
 
-    assert stats["blocks"] == 2
+    assert stats["blocks"] == 3
     assert stats["items_deleted"] == 1
     with conn.cursor() as cur:
         cur.execute(
@@ -85,7 +86,9 @@ def test_reprocess_replaces_page_blocks(conn, doc3):
                JOIN pages p ON p.id=b.page_id WHERE p.page_no=2
                ORDER BY b.created_at, b.id"""
         )
-        assert cur.fetchall() == [("text", "新内容一"), ("formula", "$$1+1=2$$")]
+        # 空内容的 figure 落 NULL（留给 run_parse 用视觉模型补转录），不是空串
+        assert cur.fetchall() == [("text", "新内容一"), ("formula", "$$1+1=2$$"),
+                                  ("figure", None)]
         cur.execute("SELECT status FROM pages WHERE page_no=2")
         assert cur.fetchone()[0] == "parsed"  # 内容已带，不再走分级解析
         cur.execute("SELECT count(*) FROM review_queue")

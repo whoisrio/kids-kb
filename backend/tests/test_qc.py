@@ -198,3 +198,25 @@ def test_check_label_continuity_flags_missing(conn, tmp_path):
     with conn.cursor() as cur:
         cur.execute("SELECT reason FROM review_queue WHERE reason LIKE 'missing_item%'")
         assert "第 1 讲" in cur.fetchone()[0]
+
+
+def test_check_label_continuity_handles_grouped_labels(conn, tmp_path):
+    """3-1/3-3 这类"例N-第M题"题号按组检查连续性：缺 3-2 要建 missing_item 复核行。"""
+    import uuid
+
+    from kb.qc import check_label_continuity
+
+    with conn.cursor() as cur:
+        cur.execute("INSERT INTO documents (id, title, source_path) VALUES (%s,'t','/tmp/b.pdf') RETURNING id",
+                    (str(uuid.uuid4()),))
+        doc_id = str(cur.fetchone()[0])
+        for label in ("3-1", "3-3"):
+            cur.execute(
+                """INSERT INTO items (id, document_id, content_type, label, content_md, chapter)
+                   VALUES (%s,%s,'exercise',%s,'题','第 1 讲 竖式谜')""",
+                (str(uuid.uuid4()), doc_id, label),
+            )
+    assert check_label_continuity(conn, doc_id) == 1
+    with conn.cursor() as cur:
+        cur.execute("SELECT reason FROM review_queue WHERE reason LIKE 'missing_item%'")
+        assert "3-2" in cur.fetchone()[0]
