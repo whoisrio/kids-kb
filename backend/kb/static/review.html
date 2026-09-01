@@ -191,6 +191,7 @@ async function openItem(itemId) {
       <span class="doc">${esc(data.doc_title)} · ${esc(data.chapter || "")}</span>
       <span class="badge">${esc(data.label || "?")}</span>
       <span class="badge">${esc(data.content_type)}</span>
+      <span class="doc">整理: ${esc(data.source_model || "未知")}</span>
       ${data.taxonomy ? `<span class="badge">${esc(data.taxonomy)}</span>` : ""}
       ${(data.tags || []).map(t => `<span class="badge">${esc(t)}</span>`).join("")}
       ${pendingRows.map(r => `<span class="badge" style="background:#fee2e2;color:#991b1b">${esc(r.reason)}</span>`).join("")}
@@ -208,7 +209,7 @@ async function openItem(itemId) {
         <div class="hint" style="margin-bottom:8px">溯源块（${data.blocks.length}）</div>
         ${data.blocks.map(b => `
           <div style="margin-bottom:12px">
-            <div class="meta"><span class="badge">${esc(b.role)}</span><span class="doc">${esc(b.block_type)}</span></div>
+            <div class="meta"><span class="badge">${esc(b.role)}</span><span class="doc">${esc(b.block_type)} · ${esc(b.source_model || "来源未知")}</span></div>
             <img src="/api/blocks/${b.id}/crop" style="width:100%;border:1px solid var(--line);border-radius:6px" loading="lazy">
           </div>`).join("") || '<div class="hint">无关联块</div>'}
       </div>
@@ -389,9 +390,13 @@ async function openPage(pageId) {
       return;
     }
     const rows = data.reviews.filter(r => r.block_id === block.id);
+    const src = block.source_model
+      ? `${block.source_model}${block.prompt_tokens ? ` (${block.prompt_tokens}+${block.completion_tokens} tok)` : ""}`
+      : "来源未知";
     panel.innerHTML = panelTabs() + `
       <div class="meta">
         <span class="badge">${esc(block.block_type)}</span>
+        <span class="doc">解析: ${esc(src)}</span>
         ${rows.map(r => `<span class="badge">${esc(r.reason)}（${esc(r.status)}）</span>`).join("")}
       </div>
       <div class="md">${block.content_md ? renderContent(block.content_md) : "（无文本内容，以图为准）"}</div>

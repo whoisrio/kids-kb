@@ -190,7 +190,8 @@ def create_app(get_conn: Callable[[], psycopg.Connection] | None = None) -> Fast
             if not page:
                 raise HTTPException(status_code=404, detail="page 不存在")
             cur.execute(
-                """SELECT id, block_type, bbox, content_md FROM blocks
+                """SELECT id, block_type, bbox, content_md, source_model,
+                          prompt_tokens, completion_tokens FROM blocks
                    WHERE page_id=%s ORDER BY created_at, id""",
                 (page_id,),
             )
@@ -224,7 +225,8 @@ def create_app(get_conn: Callable[[], psycopg.Connection] | None = None) -> Fast
             "page_id": page_id, "page_no": page[0], "doc_title": page[2],
             "width": width, "height": height,
             "blocks": [
-                {"id": str(b[0]), "block_type": b[1], "bbox": b[2], "content_md": b[3]}
+                {"id": str(b[0]), "block_type": b[1], "bbox": b[2], "content_md": b[3],
+                 "source_model": b[4], "prompt_tokens": b[5], "completion_tokens": b[6]}
                 for b in blocks
             ],
             "reviews": [
@@ -318,7 +320,7 @@ def create_app(get_conn: Callable[[], psycopg.Connection] | None = None) -> Fast
         with conn_ctx() as conn, conn.cursor() as cur:
             cur.execute(
                 """SELECT i.content_type, i.label, i.chapter, i.qc_status, i.content_md,
-                          i.taxonomy, i.tags, d.title
+                          i.taxonomy, i.tags, d.title, i.source_model
                    FROM items i JOIN documents d ON d.id = i.document_id WHERE i.id=%s""",
                 (item_id,),
             )
@@ -326,7 +328,7 @@ def create_app(get_conn: Callable[[], psycopg.Connection] | None = None) -> Fast
             if not item:
                 raise HTTPException(status_code=404, detail="item 不存在")
             cur.execute(
-                """SELECT b.id, ib.role, b.block_type, b.content_md
+                """SELECT b.id, ib.role, b.block_type, b.content_md, b.source_model
                    FROM item_blocks ib JOIN blocks b ON b.id = ib.block_id
                    WHERE ib.item_id=%s ORDER BY b.created_at, b.id""",
                 (item_id,),
@@ -340,9 +342,10 @@ def create_app(get_conn: Callable[[], psycopg.Connection] | None = None) -> Fast
         return {
             "id": item_id, "content_type": item[0], "label": item[1], "chapter": item[2],
             "qc_status": item[3], "content_md": item[4], "taxonomy": item[5],
-            "tags": item[6], "doc_title": item[7],
+            "tags": item[6], "doc_title": item[7], "source_model": item[8],
             "blocks": [
-                {"id": str(b[0]), "role": b[1], "block_type": b[2], "content_md": b[3]}
+                {"id": str(b[0]), "role": b[1], "block_type": b[2], "content_md": b[3],
+                 "source_model": b[4]}
                 for b in blocks
             ],
             "reviews": [

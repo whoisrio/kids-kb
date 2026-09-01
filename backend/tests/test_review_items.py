@@ -74,6 +74,60 @@ def test_item_detail_with_source_blocks(client, doc_with_items):
     assert len(data["blocks"]) == 1  # 溯源块：裁图给前端展示
     assert data["blocks"][0]["role"] == "stem"
     assert data["blocks"][0]["content_md"] == "块内容"
+    assert data["blocks"][0]["source_model"] is not None or True  # 列存在即可，存量可 NULL
+
+
+def test_item_carries_structure_model(client, conn, tmp_path):
+    """structure 拆条写入 item.source_model（整理模型），详情可见。"""
+    from kb.config import Config
+    from kb.layout import run_layout
+    from kb.render import render_document
+    from kb.structure import structure_chapter
+
+    cfg = Config(
+        database_url="postgresql://localhost/kb_test",
+        storage_dir=tmp_path / "storage",
+        vision_base_url="http://localhost:11434/v1",
+        vision_api_key="ollama",
+        vision_model="qwen3:4b",
+    )
+    p = tmp_path / "b.pdf"
+    d = fitz.open()
+    d.new_page()
+    d.save(p)
+    doc_id = render_document(conn, cfg, p, title="t")
+    run_layout(conn, doc_id)
+    with conn.cursor() as cur:
+        cur.execute("UPDATE blocks SET content_md='例1 内容'")
+        cur.execute(
+            """INSERT INTO chapters (id, document_id, chapter_no, title, page_start, page_end)
+               VALUES (%s,%s,1,'竖式谜',1,1)""",
+            (str(uuid.uuid4()), doc_id),
+        )
+
+    class C0:
+        class completions:
+            @staticmethod
+            def create(model, messages, max_tokens):
+                class M:
+                    content = '[{"content_type":"example","label":"例1","content_md":"例1","block_ids":[1]}]'
+
+                class C:
+                    message = M()
+
+                class R:
+                    choices = [C()]
+
+                return R()
+
+    class Cli:
+        chat = C0()
+
+    structure_chapter(conn, cfg, doc_id, 1, client=Cli())
+    with conn.cursor() as cur:
+        cur.execute("SELECT id FROM items")
+        item_id = str(cur.fetchone()[0])
+    assert client.get(f"/api/items/{item_id}").json()["source_model"] == "qwen3:4b"
 
 
 def test_patch_item_content(client, doc_with_items, conn):

@@ -83,10 +83,10 @@ def structure_chapter(conn, cfg: Config, doc_id: str, chapter_no: int, client=No
             item_id = str(uuid.uuid4())
             cur.execute(
                 """INSERT INTO items (id, document_id, content_type, label, content_md,
-                                      chapter, taxonomy, tags, page_start, page_end)
-                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+                                      chapter, taxonomy, tags, page_start, page_end, source_model)
+                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
                 (item_id, doc_id, entry["content_type"], entry["label"], entry["content_md"],
-                 chapter_label, taxonomy, tags or [], page_start, page_end),
+                 chapter_label, taxonomy, tags or [], page_start, page_end, model),
             )
             for idx in entry.get("block_ids", []):
                 if not (1 <= idx <= len(blocks)):

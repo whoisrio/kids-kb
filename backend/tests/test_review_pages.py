@@ -67,6 +67,8 @@ def test_page_detail_blocks_and_rows(client, doc2, conn):
     assert data["width"] > 0 and data["height"] > 0  # 前端 overlay 需要页图尺寸
     assert len(data["blocks"]) == 1
     assert data["blocks"][0]["content_md"] == "内容"
+    assert "source_model" in data["blocks"][0]  # 解析来源透出给前端
+    assert "prompt_tokens" in data["blocks"][0]
     assert len(data["reviews"]) == 1
     assert data["reviews"][0]["reason"] == "empty"
 
