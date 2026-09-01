@@ -166,3 +166,43 @@ def test_run_parse_routes_by_block_type(conn, parsed_doc):
     assert n == 2
     assert calls.count("ocr") == 1  # text 块走 ocr
     assert calls.count(cfg.vision_model) == 1  # formula 块走视觉模型
+
+
+def test_run_parse_escalates_starred_ocr_to_vlm(conn, parsed_doc):
+    """OCR 兜底产出多行星号/方框（竖式被拍扁）-> 升级视觉模型重转录。"""
+    from kb.parse import run_parse
+
+    doc_id, cfg = parsed_doc
+    with conn.cursor() as cur:
+        cur.execute("SELECT id FROM blocks ORDER BY created_at LIMIT 2")
+        b1, b2 = [r[0] for r in cur.fetchall()]
+        cur.execute("UPDATE blocks SET block_type='text' WHERE id IN (%s,%s)", (b1, b2))
+
+    class SpyChat:
+        class completions:
+            @staticmethod
+            def create(model, messages, max_tokens):
+                class M:
+                    content = "$$\\begin{array}{r} 1+1=2 \\end{array}$$"
+
+                class C:
+                    message = M()
+
+                class R:
+                    choices = [C()]
+
+                return R()
+
+    class SpyClient:
+        chat = SpyChat()
+
+    texts = iter(["我你他\n×你我他\n***我\n***你", "普通文字没有符号"])
+    n = run_parse(conn, cfg, doc_id, client=SpyClient(), ocr=lambda p: next(texts))
+    assert n == 2
+    with conn.cursor() as cur:
+        cur.execute("SELECT source_model, content_md FROM blocks WHERE id=%s", (b1,))
+        source, content = cur.fetchone()
+        assert source == "qwen3:4b"  # 升级到了视觉模型
+        assert "array" in content
+        cur.execute("SELECT source_model FROM blocks WHERE id=%s", (b2,))
+        assert cur.fetchone()[0] == "rapidocr"  # 正常文字不升级

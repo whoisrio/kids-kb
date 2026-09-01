@@ -53,6 +53,15 @@ def transcribe_image(client, model: str, image_path, prompt: str = TRANSCRIBE_PR
 # 走本地 rapidocr 的区块类型；其余（formula/figure/table/page）走视觉模型
 _OCRABLE_TYPES = {"text", "title", "header", "footer"}
 
+_MATH_MARK_RE = re.compile(r"[□＊*×✕☐]")
+
+
+def starred_math(content: str) -> bool:
+    """多行含竖式符号（□＊*× 等）：竖式被拍扁成星号占位的特征。"""
+    if not content:
+        return False
+    return sum(1 for line in content.splitlines() if _MATH_MARK_RE.search(line)) >= 2
+
 _ocr_engine = None
 
 
@@ -91,6 +100,10 @@ def run_parse(conn, cfg: Config, doc_id: str, client=None, ocr=None) -> int:
             try:
                 if block_type in _OCRABLE_TYPES:
                     text, source, usage = ocr(crop_path), "rapidocr", (None, None)
+                    if starred_math(text):  # OCR 把竖式拍成星号 -> 升级视觉模型
+                        text, usage = transcribe_image(client, cfg.vision_model, crop_path)
+                        source = cfg.vision_model
+                        record_llm_call(conn, doc_id, "transcribe", cfg.vision_model, usage)
                 else:
                     text, usage = transcribe_image(client, cfg.vision_model, crop_path)
                     source = cfg.vision_model

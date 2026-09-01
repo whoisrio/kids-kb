@@ -9,7 +9,6 @@
 """
 from __future__ import annotations
 
-import re
 import uuid
 from pathlib import Path
 
@@ -17,16 +16,12 @@ from psycopg.types.json import Jsonb
 
 from kb.config import Config
 from kb.layout import crop_image, map_block_label
-
-_MATH_MARK_RE = re.compile(r"[□＊*×✕☐]")
+from kb.parse import starred_math
 
 
 def _needs_vlm_upgrade(block_type: str, content: str) -> bool:
     """VL 直出的 text 块若多行含竖式符号，说明竖式被误识别成星号占位文本。"""
-    if block_type != "text":
-        return False
-    hits = sum(1 for line in content.splitlines() if _MATH_MARK_RE.search(line))
-    return hits >= 2
+    return block_type == "text" and starred_math(content)
 
 
 def _parsing_blocks(output) -> list[dict]:
