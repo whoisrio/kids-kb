@@ -25,15 +25,24 @@ export async function resetDbForTest(databaseUrl: string): Promise<pg.Pool> {
     );
   }
   const p = new pg.Pool({ connectionString: databaseUrl });
-  await p.query("DROP SCHEMA public CASCADE; CREATE SCHEMA public");
-  await p.query(
-    "CREATE TABLE IF NOT EXISTS schema_migrations " +
-      "(name TEXT PRIMARY KEY, applied_at TIMESTAMPTZ NOT NULL DEFAULT now())",
-  );
-  const dir = fileURLToPath(new URL("../../pipeline/kb/migrations", import.meta.url));
-  for (const f of readdirSync(dir).filter((f) => f.endsWith(".sql")).sort()) {
-    await p.query(readFileSync(join(dir, f), "utf-8"));
-    await p.query("INSERT INTO schema_migrations (name) VALUES ($1)", [f]);
+  // 多个测试文件并行跑时会并发 reset 同一测试库（CREATE EXTENSION 等会撞唯一约束），
+  // 用 advisory lock 把 reset 串行化。锁是会话级的，必须全程同一 client。
+  const client = await p.connect();
+  try {
+    await client.query("SELECT pg_advisory_lock(hashtext('resetDbForTest'))");
+    await client.query("DROP SCHEMA public CASCADE; CREATE SCHEMA public");
+    await client.query(
+      "CREATE TABLE IF NOT EXISTS schema_migrations " +
+        "(name TEXT PRIMARY KEY, applied_at TIMESTAMPTZ NOT NULL DEFAULT now())",
+    );
+    const dir = fileURLToPath(new URL("../../pipeline/kb/migrations", import.meta.url));
+    for (const f of readdirSync(dir).filter((f) => f.endsWith(".sql")).sort()) {
+      await client.query(readFileSync(join(dir, f), "utf-8"));
+      await client.query("INSERT INTO schema_migrations (name) VALUES ($1)", [f]);
+    }
+  } finally {
+    await client.query("SELECT pg_advisory_unlock(hashtext('resetDbForTest'))");
+    client.release();
   }
   return p;
 }
