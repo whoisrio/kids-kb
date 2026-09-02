@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { streamChat, type ChatMessage } from "../api/chat";
 import { Composer } from "../components/Composer";
 import { MessageBubble } from "../components/MessageBubble";
@@ -13,6 +13,10 @@ export function ChatView() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
+  const abortRef = useRef<AbortController | null>(null);
+
+  // 卸载时中止进行中的流
+  useEffect(() => () => abortRef.current?.abort(), []);
 
   const appendToLast = (text: string) =>
     setMessages((prev) => {
@@ -29,14 +33,23 @@ export function ChatView() {
     setMessages([...next, { role: "assistant", content: "" }]);
     setInput("");
     setStreaming(true);
-    void streamChat(next, {
-      onDelta: appendToLast,
-      onDone: () => setStreaming(false),
-      onError: (message) => {
-        appendToLast(`（出错了：${message}）`);
-        setStreaming(false);
+    // 防御性 abort 上一次未完的请求（正常路径被 Composer disabled 挡住）
+    abortRef.current?.abort();
+    const ac = new AbortController();
+    abortRef.current = ac;
+    void streamChat(
+      next,
+      {
+        onDelta: appendToLast,
+        onDone: () => setStreaming(false),
+        onError: (message) => {
+          appendToLast(`（出错了：${message}）`);
+          setStreaming(false);
+        },
       },
-    });
+      fetch,
+      ac.signal,
+    );
   };
 
   return (
