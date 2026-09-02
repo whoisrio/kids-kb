@@ -88,6 +88,16 @@ def sync_item_grounding(conn, item_id: str) -> int:
             (item_id,),
         )
         sources = [r[0] for r in cur.fetchall()]
+        if not sources:
+            # 无溯源块的条目（docx 路径）：以章原文为接地面
+            cur.execute(
+                """SELECT c.content_md FROM items i
+                   JOIN chapters c ON c.document_id = i.document_id
+                     AND i.chapter = '第 ' || c.chapter_no || ' 讲 ' || c.title
+                   WHERE i.id=%s AND c.content_md IS NOT NULL""",
+                (item_id,),
+            )
+            sources = [r[0] for r in cur.fetchall()]
         current = _item_reasons(content_md, label or "?", sources)
         cur.execute(
             """SELECT id, reason FROM review_queue

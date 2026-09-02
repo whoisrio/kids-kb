@@ -113,6 +113,35 @@ def test_run_grounding_flags_item_without_source_blocks(conn, doc_item):
         assert "no_source" in cur.fetchone()[0]
 
 
+def test_grounding_docx_item_uses_chapter_content(conn):
+    """无溯源块的 docx 条目：接地面为 chapters.content_md，不误报 no_source。"""
+    import uuid
+
+    from kb.grounding import sync_item_grounding
+
+    with conn.cursor() as cur:
+        cur.execute("INSERT INTO documents (id, title, source_path) VALUES (%s,'t','/tmp/g.docx') RETURNING id",
+                    (str(uuid.uuid4()),))
+        doc_id = str(cur.fetchone()[0])
+        cur.execute(
+            """INSERT INTO chapters (id, document_id, chapter_no, title, content_md)
+               VALUES (%s,%s,1,'选择题','1. He goes to school by bus every day.')""",
+            (str(uuid.uuid4()), doc_id),
+        )
+        cur.execute(
+            """INSERT INTO items (id, document_id, content_type, label, content_md, chapter)
+               VALUES (%s,%s,'exercise','1','He goes to school by bus every day.','第 1 讲 选择题')
+               RETURNING id""",
+            (str(uuid.uuid4()), doc_id),
+        )
+        item_id = str(cur.fetchone()[0])
+    n = sync_item_grounding(conn, item_id)
+    assert n == 0  # 句子和章原文一致，无新增复核行
+    with conn.cursor() as cur:
+        cur.execute("SELECT count(*) FROM review_queue WHERE item_id=%s", (item_id,))
+        assert cur.fetchone()[0] == 0
+
+
 def test_unbalanced_display_math_across_blocks():
     """源块逐块剥数学段：跨块的残缺 $$ 定界符不能吞掉中间的正常文字。"""
     from kb.grounding import ungrounded_sentences

@@ -2,7 +2,7 @@
 
 用法（在 pipeline/ 目录下执行）:
   uv run python -m kb.cli migrate
-  uv run python -m kb.cli ingest <pdf> --title 书名 [--subject 数学] [--grade 四年级] [--type workbook|exam]
+  uv run python -m kb.cli ingest <pdf|docx> --title 书名 [--subject 数学] [--grade 四年级] [--type workbook|exam]
   uv run python -m kb.cli status
 """
 from __future__ import annotations
@@ -87,9 +87,14 @@ def main() -> None:
         print("已执行 migration:", migrate(conn) or "（无新增）")
     elif args.cmd == "ingest":
         migrate(conn)
-        doc_id = ingest(conn, cfg, args.pdf, args.title,
-                        subject=args.subject, grade=args.grade, doc_type=args.doc_type,
-                        start=args.start, end=args.end)
+        if str(args.pdf).lower().endswith(".docx"):
+            from kb.docx_ingest import ingest_docx
+            doc_id = ingest_docx(conn, cfg, args.pdf, args.title,
+                                 subject=args.subject, grade=args.grade, doc_type=args.doc_type)
+        else:
+            doc_id = ingest(conn, cfg, args.pdf, args.title,
+                            subject=args.subject, grade=args.grade, doc_type=args.doc_type,
+                            start=args.start, end=args.end)
         print(f"完成 document_id={doc_id}")
     elif args.cmd == "status":
         for title, status, parsed, total in list_documents(conn):
