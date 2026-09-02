@@ -130,6 +130,38 @@ def test_pair_items_links_answers(conn, doc_with_chapter):
         assert cur.fetchone()[0] is not None
 
 
+def test_structure_chapter_uses_content_md(conn, tmp_path):
+    """docx 章（content_md 非空、页码 NULL）：直接拆章稿，不再因 page_start NULL 跳过。"""
+    import uuid
+
+    from kb.config import Config
+    from kb.structure import structure_chapter
+
+    cfg = Config(
+        database_url="postgresql://localhost/kb_test",
+        storage_dir=tmp_path / "storage",
+        vision_base_url="http://localhost:11434/v1",
+        vision_api_key="ollama",
+        vision_model="qwen3:4b",
+    )
+    with conn.cursor() as cur:
+        cur.execute("INSERT INTO documents (id, title, source_path) VALUES (%s,'t','/tmp/e.docx') RETURNING id",
+                    (str(uuid.uuid4()),))
+        doc_id = str(cur.fetchone()[0])
+        cur.execute(
+            """INSERT INTO chapters (id, document_id, chapter_no, title, content_md)
+               VALUES (%s,%s,1,'选择题','# 一、选择题\n\n1. He ___ to school by bus.')""",
+            (str(uuid.uuid4()), doc_id),
+        )
+    items_json = '[{"content_type":"exercise","label":"1","content_md":"He ___ to school by bus.","block_ids":[1]}]'
+    n = structure_chapter(conn, cfg, doc_id, 1, client=_client(items_json))
+    assert n == 1
+    with conn.cursor() as cur:
+        cur.execute("SELECT label, page_start FROM items WHERE document_id=%s", (doc_id,))
+        label, page_start = cur.fetchone()
+    assert label == "1" and page_start is None  # docx 条目无页码
+
+
 def test_structure_prompt_requires_fidelity():
     """拆条 prompt 必须含忠于原文约束（防模型改写/脑补续写）。"""
     from kb.structure import STRUCTURE_PROMPT

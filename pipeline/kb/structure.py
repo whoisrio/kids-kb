@@ -61,15 +61,15 @@ def structure_chapter(conn, cfg: Config, doc_id: str, chapter_no: int, client=No
     client = client or OpenAI(base_url=base_url, api_key=api_key)
     with conn.cursor() as cur:
         cur.execute(
-            """SELECT id, chapter_no, title, taxonomy, tags, page_start, page_end
+            """SELECT id, chapter_no, title, taxonomy, tags, page_start, page_end, content_md
                FROM chapters WHERE document_id=%s AND chapter_no=%s""",
             (doc_id, chapter_no),
         )
         row = cur.fetchone()
         if not row:
             raise SystemExit(f"章节不存在: doc={doc_id} 第 {chapter_no} 章")
-        _cid, _no, title, taxonomy, tags, page_start, page_end = row
-        if page_start is None:
+        _cid, _no, title, taxonomy, tags, page_start, page_end, content_md = row
+        if page_start is None and not content_md:
             return 0  # 页面未入库，跳过（放量重跑时自动补）
         chapter_label = f"第 {chapter_no} 讲 {title}"
         cur.execute(
@@ -78,7 +78,11 @@ def structure_chapter(conn, cfg: Config, doc_id: str, chapter_no: int, client=No
         )
         if cur.fetchone():
             return 0  # 幂等
-        blocks = _chapter_blocks(cur, doc_id, page_start, page_end)
+        if content_md:
+            # docx 章：整份章稿作窗口（单条伪块，block_id None 不进 item_blocks）
+            blocks = [(None, "chapter", content_md)]
+        else:
+            blocks = _chapter_blocks(cur, doc_id, page_start, page_end)
         if not blocks:
             return 0
         blocks_text = "\n\n".join(
