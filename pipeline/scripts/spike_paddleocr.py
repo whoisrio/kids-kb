@@ -1,6 +1,6 @@
 """PaddleOCR-VL spike：对一页真实扫描页跑版面+识别，打印区块与耗时。
 
-用法: uv run --extra layout python backend/scripts/spike_paddleocr.py [image]
+用法: uv run --extra layout python pipeline/scripts/spike_paddleocr.py [image]
 """
 import json
 import sys

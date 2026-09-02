@@ -1,6 +1,6 @@
 """命令行入口。
 
-用法（在 backend/ 目录下执行）:
+用法（在 pipeline/ 目录下执行）:
   uv run python -m kb.cli migrate
   uv run python -m kb.cli ingest <pdf> --title 书名 [--subject 数学] [--grade 四年级] [--type workbook|exam]
   uv run python -m kb.cli status

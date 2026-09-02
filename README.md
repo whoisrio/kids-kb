@@ -2,12 +2,12 @@
 
 小孩学习资料知识库：扫描版习题 PDF -> 结构化条目 -> 混合检索。
 
-后端代码与依赖统一在 `backend/` 下（`kb/` 包、`tests/`、pyproject 与 .venv）；
+后端代码与依赖统一在 `pipeline/` 下（`kb/` 包、`tests/`、pyproject 与 .venv）；
 根目录仅保留探索期脚本与 `resources/` 素材。
 
 ## 流水线（骨架期）
 
-在 `backend/` 目录下执行：
+在 `pipeline/` 目录下执行：
 
 ```bash
 uv sync
@@ -97,7 +97,7 @@ KB_LAYOUT_ENGINE=paddleocr uv run --extra layout python -m kb.cli reprocess <doc
 ## 人工复核（页级 web 页）
 
 ```bash
-cd backend && uv run python -m kb.cli review   # http://127.0.0.1:8765
+cd pipeline && uv run python -m kb.cli review   # http://127.0.0.1:8765
 ```
 
 以页为单位：待复核 = 有 pending 复核行的页；已通过 = 干净的 parsed 页（自动归入，无需逐页点）。

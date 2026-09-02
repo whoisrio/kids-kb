@@ -11,5 +11,5 @@ wheels/
 .env
 
 # 流水线运行时产物（页面渲染图）
-backend/storage/
+pipeline/storage/
 resources
