@@ -5,7 +5,7 @@ export type RerankFn = (query: string, docs: string[]) => Promise<number[]>;
 export function makeReranker(provider: "local" | "none", pipelineUrl: string): RerankFn | null {
   if (provider === "none") return null;
   return async (query, docs) => {
-    const resp = await fetch(`${pipelineUrl}/internal/rerank`, {
+    const resp = await fetch(`${pipelineUrl.replace(/\/$/, "")}/internal/rerank`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ query, docs }),

@@ -41,8 +41,11 @@ export async function resetDbForTest(databaseUrl: string): Promise<pg.Pool> {
       await client.query("INSERT INTO schema_migrations (name) VALUES ($1)", [f]);
     }
   } finally {
-    await client.query("SELECT pg_advisory_unlock(hashtext('resetDbForTest'))");
-    client.release();
+    try {
+      await client.query("SELECT pg_advisory_unlock(hashtext('resetDbForTest'))");
+    } finally {
+      client.release();  // unlock 失败也要归还连接，避免池泄漏
+    }
   }
   return p;
 }
