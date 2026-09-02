@@ -45,6 +45,9 @@ def main() -> None:
     p_review = sub.add_parser("review", help="启动复核 web 页")
     p_review.add_argument("--host", default="127.0.0.1")
     p_review.add_argument("--port", type=int, default=8765)
+    p_internal = sub.add_parser("serve-internal", help="内部服务（/internal/rerank 等，只对 TS 后端）")
+    p_internal.add_argument("--host", default="127.0.0.1")
+    p_internal.add_argument("--port", type=int, default=8766)
     p_golden = sub.add_parser("golden-extract")
     p_golden.add_argument("doc_id")
     p_golden.add_argument("--dir", default="golden")
@@ -79,6 +82,12 @@ def main() -> None:
         import uvicorn
         from kb.review_api import create_app
         uvicorn.run(create_app(), host=args.host, port=args.port)
+        return
+
+    if args.cmd == "serve-internal":
+        import uvicorn
+        from kb.internal_api import create_internal_app
+        uvicorn.run(create_internal_app(), host=args.host, port=args.port)
         return
 
     cfg = load_config()
