@@ -80,3 +80,17 @@ def test_children_attempts_after_0009(conn):
         with pytest.raises(Exception):
             cur.execute(
                 "INSERT INTO attempts (child_id, result) VALUES (%s,'unknown')", (child_id,))
+
+
+def test_chapters_content_md_after_0010(conn):
+    import uuid
+    with conn.cursor() as cur:
+        cur.execute("INSERT INTO documents (id, title, source_path) VALUES (%s,'t','/tmp/d.pdf') RETURNING id",
+                    (str(uuid.uuid4()),))
+        doc_id = str(cur.fetchone()[0])
+        cur.execute(
+            """INSERT INTO chapters (id, document_id, chapter_no, title, content_md)
+               VALUES (%s,%s,1,'大题一','# 一、选择题\n1. ...') RETURNING content_md""",
+            (str(uuid.uuid4()), doc_id),
+        )
+        assert cur.fetchone()[0].startswith("# 一、")
