@@ -16,6 +16,21 @@ describe("loadConfig", () => {
     expect(cfg.rerankProvider).toBe("local");
   });
 
+  it("空字符串视同未设置，照常回落", () => {
+    const cfg = loadConfig({
+      KB_DATABASE_URL: "postgresql://localhost/kb_test",
+      CHAT_BASE_URL: "",
+      CHAT_API_KEY: "",
+      CHAT_MODEL: "",
+      DOC_OGNIZE_BASE_URL: "https://api.example.com/v1",
+      DOC_OGNIZE_API_KEY: "sk-x",
+      DOC_OGNIZE_MODEL: "qwen3-32b",
+    } as NodeJS.ProcessEnv);
+    expect(cfg.chatBaseUrl).toBe("https://api.example.com/v1");
+    expect(cfg.chatApiKey).toBe("sk-x");
+    expect(cfg.chatModel).toBe("qwen3-32b");
+  });
+
   it("CHAT_* 优先", () => {
     const cfg = loadConfig({
       KB_DATABASE_URL: "postgresql://localhost/kb_test",
