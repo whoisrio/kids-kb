@@ -2,8 +2,7 @@
 
 小孩学习资料知识库：扫描版习题 PDF -> 结构化条目 -> 混合检索。
 
-后端代码与依赖统一在 `pipeline/` 下（`kb/` 包、`tests/`、pyproject 与 .venv）；
-根目录仅保留探索期脚本与 `resources/` 素材。
+三目录布局：`frontend/`（React+Vite）、`backend/`（TS：pi-agent + 产品 API + 双路召回）、`pipeline/`（Python：解析管线 + migrations + rerank 服务）。
 
 ## 开发启动
 
