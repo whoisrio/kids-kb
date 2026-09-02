@@ -28,9 +28,19 @@ def test_load_config_layout_engine(tmp_path, monkeypatch):
     assert load_config(tmp_path / "不存在.env").layout_engine == "paddleocr"
 
 
-def test_load_config_structure_model(tmp_path, monkeypatch):
+def test_load_config_doc_ognize(tmp_path, monkeypatch):
+    """整理文档内容的模型走 DOC_OGNIZE_* 配置，留空则回落 vision 渠道。"""
     monkeypatch.setenv("KB_DATABASE_URL", "postgresql://localhost/kb_test")
-    monkeypatch.delenv("KB_STRUCTURE_MODEL", raising=False)
-    assert load_config(tmp_path / "不存在.env").structure_model is None
-    monkeypatch.setenv("KB_STRUCTURE_MODEL", "qwen3.8-27b")
-    assert load_config(tmp_path / "不存在.env").structure_model == "qwen3.8-27b"
+    for v in ("DOC_OGNIZE_MODEL", "DOC_OGNIZE_BASE_URL", "DOC_OGNIZE_API_KEY"):
+        monkeypatch.delenv(v, raising=False)
+    cfg = load_config(tmp_path / "不存在.env")
+    assert cfg.doc_ognize_model is None
+    assert cfg.doc_ognize_base_url is None
+    assert cfg.doc_ognize_api_key is None
+    monkeypatch.setenv("DOC_OGNIZE_MODEL", "qwen3-32b")
+    monkeypatch.setenv("DOC_OGNIZE_BASE_URL", "https://api.example.com/v1")
+    monkeypatch.setenv("DOC_OGNIZE_API_KEY", "sk-x")
+    cfg = load_config(tmp_path / "不存在.env")
+    assert cfg.doc_ognize_model == "qwen3-32b"
+    assert cfg.doc_ognize_base_url == "https://api.example.com/v1"
+    assert cfg.doc_ognize_api_key == "sk-x"

@@ -54,8 +54,8 @@ def _detect_toc_pages(cur, doc_id: str) -> list[int]:
 def extract_toc(conn, cfg: Config, doc_id: str, client=None,
                 toc_pages: list[int] | None = None) -> int:
     """解析目录页写入 chapters。返回新增章节数。"""
-    model = cfg.structure_model or cfg.vision_model
-    client = client or OpenAI(base_url=cfg.vision_base_url, api_key=cfg.vision_api_key)
+    base_url, api_key, model = cfg.doc_ognize_endpoint()
+    client = client or OpenAI(base_url=base_url, api_key=api_key)
     with conn.cursor() as cur:
         cur.execute("SELECT 1 FROM chapters WHERE document_id=%s LIMIT 1", (doc_id,))
         if cur.fetchone():

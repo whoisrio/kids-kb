@@ -82,4 +82,6 @@ def reprocess_pages_paddleocr(conn, cfg: Config, doc_id: str, page_nos: list[int
                 "UPDATE pages SET status='parsed', parse_error=NULL WHERE id=%s",
                 (page_id,),
             )
+    from kb.export_md import export_page_mds
+    export_page_mds(conn, cfg, doc_id)  # 页内容已变，刷新落盘镜像
     return stats

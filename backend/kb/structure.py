@@ -57,8 +57,8 @@ def _chapter_blocks(cur, doc_id: str, page_start: int, page_end: int) -> list[tu
 
 def structure_chapter(conn, cfg: Config, doc_id: str, chapter_no: int, client=None) -> int:
     """拆分一章。返回新增 item 数。"""
-    model = cfg.structure_model or cfg.vision_model
-    client = client or OpenAI(base_url=cfg.vision_base_url, api_key=cfg.vision_api_key)
+    base_url, api_key, model = cfg.doc_ognize_endpoint()
+    client = client or OpenAI(base_url=base_url, api_key=api_key)
     with conn.cursor() as cur:
         cur.execute(
             """SELECT id, chapter_no, title, taxonomy, tags, page_start, page_end

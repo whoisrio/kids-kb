@@ -77,7 +77,7 @@ def test_item_detail_with_source_blocks(client, doc_with_items):
     assert data["blocks"][0]["source_model"] is not None or True  # 列存在即可，存量可 NULL
 
 
-def test_item_carries_structure_model(client, conn, tmp_path):
+def test_item_carries_doc_ognize_model(client, conn, tmp_path):
     """structure 拆条写入 item.source_model（整理模型），详情可见。"""
     from kb.config import Config
     from kb.layout import run_layout

@@ -46,6 +46,10 @@ def test_ingest_end_to_end(conn, tmp_path):
         assert {r[0] for r in cur.fetchall()} == {"parsed"}
         cur.execute("SELECT count(*) FROM blocks WHERE content_md='转录结果'")
         assert cur.fetchone()[0] == 2
+    # ingest 末尾把页级 markdown 镜像落盘
+    pages_dir = cfg.storage_dir / doc_id / "pages"
+    assert (pages_dir / "p0001.md").read_text(encoding="utf-8") == "转录结果"
+    assert (pages_dir / "p0002.md").exists()
 
 
 def test_list_documents_status_query(conn, tmp_path):

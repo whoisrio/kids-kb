@@ -65,6 +65,8 @@ def main() -> None:
     p_repro.add_argument("--pages", required=True, help="物理页码范围，如 9-15 或 9,10,11")
     p_embed = sub.add_parser("embed", help="approved 条目向量化（bge-m3 -> pgvector）")
     p_embed.add_argument("doc_id", nargs="?", default=None)
+    p_export = sub.add_parser("export", help="markdown 落盘镜像（页级 + 章节级）")
+    p_export.add_argument("doc_id")
     p_search = sub.add_parser("search", help="语义检索")
     p_search.add_argument("query")
     p_search.add_argument("--top-k", type=int, default=5)
@@ -131,6 +133,9 @@ def main() -> None:
         print(f"条目: {total} 条入库; 配对 {pair_items(conn, args.doc_id)} 处; "
               f"题号质检新增 {check_label_continuity(conn, args.doc_id)} 条; "
               f"接地检查新增 {run_grounding(conn, args.doc_id)} 条")
+        from kb.export_md import export_chapter_mds, export_page_mds
+        print(f"落盘: {export_page_mds(conn, cfg, args.doc_id)} 页 md, "
+              f"{export_chapter_mds(conn, cfg, args.doc_id)} 章 md")
     elif args.cmd == "reprocess":
         from kb.reprocess import reprocess_pages_paddleocr
 
@@ -145,6 +150,10 @@ def main() -> None:
     elif args.cmd == "embed":
         from kb.embed import embed_approved_items
         print(f"新增向量: {embed_approved_items(conn, cfg, args.doc_id)} 条")
+    elif args.cmd == "export":
+        from kb.export_md import export_chapter_mds, export_page_mds
+        print(f"落盘: {export_page_mds(conn, cfg, args.doc_id)} 页 md, "
+              f"{export_chapter_mds(conn, cfg, args.doc_id)} 章 md")
     elif args.cmd == "search":
         from kb.embed import search
         reranker = None

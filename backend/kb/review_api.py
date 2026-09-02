@@ -34,14 +34,30 @@ class PageReject(BaseModel):
 
 
 def create_app(get_conn: Callable[[], psycopg.Connection] | None = None,
-               vlm_client=None) -> FastAPI:
+               vlm_client=None, cfg=None) -> FastAPI:
     """get_conn 可注入测试连接（不关闭）；默认每个请求从 .env 配置开新连接并关闭。
-    vlm_client 可注入测试用的假 VLM 客户端（整页解析用）。"""
+    vlm_client 可注入测试用的假 VLM 客户端（整页解析用）。
+    cfg 可注入测试配置（落盘镜像路径）；默认按需 load_config()。"""
     own = get_conn is None
     if get_conn is None:
         def get_conn() -> psycopg.Connection:  # type: ignore[misc]
             from kb.db import connect
             return connect(load_config().database_url)
+
+    def _cfg():
+        return cfg if cfg is not None else load_config()
+
+    def _refresh_mirror(conn, page_id: str) -> None:
+        """页内容/采用版本变更后刷新落盘镜像：该页 md + 全文档章稿。"""
+        from kb.export_md import export_chapter_mds, export_page_md
+        with conn.cursor() as cur:
+            cur.execute("SELECT document_id, page_no FROM pages WHERE id=%s", (page_id,))
+            row = cur.fetchone()
+        if not row:
+            return
+        c = _cfg()
+        export_page_md(conn, c, str(row[0]), row[1])
+        export_chapter_mds(conn, c, str(row[0]))
 
     @contextmanager
     def conn_ctx():
@@ -122,6 +138,10 @@ def create_app(get_conn: Callable[[], psycopg.Connection] | None = None,
             if not row:
                 raise HTTPException(status_code=404, detail="block 不存在")
             new_rows = sync_block_reviews(conn, block_id)
+            with conn.cursor() as cur:
+                cur.execute("SELECT page_id FROM blocks WHERE id=%s", (block_id,))
+                page_id = str(cur.fetchone()[0])
+            _refresh_mirror(conn, page_id)
         return {"id": str(row[0]), "content_md": row[1], "new_reviews": new_rows}
 
     @app.get("/api/blocks/{block_id}/crop")
@@ -426,6 +446,7 @@ def create_app(get_conn: Callable[[], psycopg.Connection] | None = None,
                 if not cur.fetchone():
                     raise HTTPException(status_code=404, detail="page 不存在")
             md = transcribe_page(conn, load_config(), page_id, client=vlm_client)
+            _refresh_mirror(conn, page_id)
         return {"page_id": page_id, "page_md_len": len(md)}
 
     @app.post("/api/pages/{page_id}/adopt")
@@ -434,18 +455,20 @@ def create_app(get_conn: Callable[[], psycopg.Connection] | None = None,
         source = body.get("source")
         if source not in ("blocks", "page_md"):
             raise HTTPException(status_code=422, detail="source 取值: blocks/page_md")
-        with conn_ctx() as conn, conn.cursor() as cur:
-            if source == "page_md":
-                cur.execute("SELECT page_md FROM pages WHERE id=%s", (page_id,))
-                row = cur.fetchone()
-                if not row or not row[0]:
-                    raise HTTPException(status_code=409, detail="该页还没有整页转录")
-            cur.execute(
-                "UPDATE pages SET adopted_source=%s WHERE id=%s RETURNING id",
-                (source, page_id),
-            )
-            if not cur.fetchone():
-                raise HTTPException(status_code=404, detail="page 不存在")
+        with conn_ctx() as conn:
+            with conn.cursor() as cur:
+                if source == "page_md":
+                    cur.execute("SELECT page_md FROM pages WHERE id=%s", (page_id,))
+                    row = cur.fetchone()
+                    if not row or not row[0]:
+                        raise HTTPException(status_code=409, detail="该页还没有整页转录")
+                cur.execute(
+                    "UPDATE pages SET adopted_source=%s WHERE id=%s RETURNING id",
+                    (source, page_id),
+                )
+                if not cur.fetchone():
+                    raise HTTPException(status_code=404, detail="page 不存在")
+            _refresh_mirror(conn, page_id)
         return {"page_id": page_id, "adopted_source": source}
 
     @app.post("/api/search")

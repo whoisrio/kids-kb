@@ -169,6 +169,40 @@ def test_structure_retries_on_connection_error(conn, doc_with_chapter):
     assert n == 2 and len(calls) == 2
 
 
+def test_structure_uses_doc_ognize_model_when_set(conn, doc_with_chapter):
+    """配置 doc_ognize_model 时拆条用它，否则回落 vision_model。"""
+    import dataclasses
+
+    from kb.structure import structure_chapter
+
+    doc_id, cfg, _blocks = doc_with_chapter
+    cfg = dataclasses.replace(cfg, doc_ognize_model="qwen3-32b")
+    seen = []
+
+    class SpyChat:
+        class completions:
+            @staticmethod
+            def create(model, messages, max_tokens):
+                seen.append(model)
+
+                class M:
+                    content = ITEMS_JSON
+
+                class C:
+                    message = M()
+
+                class R:
+                    choices = [C()]
+
+                return R()
+
+    class SpyClient:
+        chat = SpyChat()
+
+    structure_chapter(conn, cfg, doc_id, 1, client=SpyClient())
+    assert seen == ["qwen3-32b"]
+
+
 def test_structure_uses_page_md_for_adopted_pages(conn, doc_with_chapter):
     """采用整页版的页：章节窗口用 page_md 替代该页块文本。"""
     from kb.structure import structure_chapter

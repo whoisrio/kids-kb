@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from kb.config import Config
 from kb.crosscheck import run_llm_crosscheck
+from kb.export_md import export_page_mds
 from kb.layout import make_layout_analyzer, run_layout
 from kb.parse import run_parse
 from kb.qc import run_qc
@@ -19,4 +20,5 @@ def ingest(conn, cfg: Config, pdf_path, title: str,
     run_parse(conn, cfg, doc_id, client=client)
     run_qc(conn, doc_id, cfg=cfg)  # 实质问题多的页自动触发整页 VLM 第二解析
     run_llm_crosscheck(conn, cfg, doc_id)
+    export_page_mds(conn, cfg, doc_id)  # 页级 markdown 落盘镜像
     return doc_id

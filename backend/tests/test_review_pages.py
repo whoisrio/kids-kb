@@ -221,3 +221,78 @@ def test_manual_page_vlm_and_adopt(conn, doc2):
 
     assert client.post(f"/api/pages/{page_id}/adopt",
                        json={"source": "bogus"}).status_code == 422
+
+
+@pytest.fixture()
+def app_cfg(conn, tmp_path):
+    """注入 cfg（tmp storage）的 app + 1 页 1 块文档 + 覆盖该页的第 1 章。"""
+    from kb.config import Config
+    from kb.layout import run_layout
+    from kb.render import render_document
+
+    cfg = Config(
+        database_url="postgresql://localhost/kb_test",
+        storage_dir=tmp_path / "storage",
+        vision_base_url="http://localhost:11434/v1",
+        vision_api_key="ollama",
+        vision_model="qwen3:4b",
+    )
+    p = tmp_path / "s.pdf"
+    d = fitz.open()
+    d.new_page()
+    d.save(p)
+    doc_id = render_document(conn, cfg, p, title="镜像书")
+    run_layout(conn, doc_id)
+    with conn.cursor() as cur:
+        cur.execute("UPDATE pages SET status='parsed'")
+        cur.execute("UPDATE blocks SET content_md='原始内容'")
+        cur.execute(
+            """INSERT INTO chapters (id, document_id, chapter_no, title, page_start, page_end)
+               VALUES (%s,%s,1,'章',1,1)""",
+            (str(uuid.uuid4()), doc_id),
+        )
+    client = TestClient(create_app(lambda: conn, vlm_client=_VLClient(), cfg=cfg))
+    return client, conn, cfg, doc_id
+
+
+def test_block_edit_refreshes_page_and_chapter_mirror(app_cfg):
+    """改块转录后：该页 md 与所在章稿立即跟随 DB。"""
+    client, conn, cfg, doc_id = app_cfg
+    with conn.cursor() as cur:
+        cur.execute("SELECT id FROM blocks LIMIT 1")
+        block_id = str(cur.fetchone()[0])
+    resp = client.patch(f"/api/blocks/{block_id}", json={"content_md": "修订后内容"})
+    assert resp.status_code == 200
+    page_md = (cfg.storage_dir / doc_id / "pages" / "p0001.md").read_text(encoding="utf-8")
+    assert "修订后内容" in page_md
+    chapter_md = (cfg.storage_dir / doc_id / "chapters" / "c01.md").read_text(encoding="utf-8")
+    assert "修订后内容" in chapter_md
+
+
+def test_adopt_page_refreshes_mirror(app_cfg):
+    """切换采用版本后：页 md 文件换成对应版本内容。"""
+    client, conn, cfg, doc_id = app_cfg
+    with conn.cursor() as cur:
+        cur.execute("SELECT id FROM pages WHERE document_id=%s", (doc_id,))
+        page_id = str(cur.fetchone()[0])
+        cur.execute("UPDATE pages SET page_md='整页版内容' WHERE id=%s", (page_id,))
+    resp = client.post(f"/api/pages/{page_id}/adopt", json={"source": "page_md"})
+    assert resp.status_code == 200
+    page_md = (cfg.storage_dir / doc_id / "pages" / "p0001.md").read_text(encoding="utf-8")
+    assert page_md == "整页版内容"
+
+
+def test_page_vlm_refreshes_mirror(app_cfg):
+    """整页重转录后：已采用整页版的页，其 md 文件换成新转录。"""
+    client, conn, cfg, doc_id = app_cfg
+    with conn.cursor() as cur:
+        cur.execute("SELECT id FROM pages WHERE document_id=%s", (doc_id,))
+        page_id = str(cur.fetchone()[0])
+        cur.execute(
+            "UPDATE pages SET adopted_source='page_md', page_md='旧整页' WHERE id=%s",
+            (page_id,),
+        )
+    resp = client.post(f"/api/pages/{page_id}/page-vlm")
+    assert resp.status_code == 200
+    page_md = (cfg.storage_dir / doc_id / "pages" / "p0001.md").read_text(encoding="utf-8")
+    assert page_md.startswith("# 整页")
