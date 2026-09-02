@@ -1,0 +1,766 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>作业本 · 家庭学习知识库</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@500;600;700;900&family=Noto+Sans+SC:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<style>
+  :root {
+    --paper: #FCFBF7;
+    --ink: #2B2B26;
+    --pencil: #8A867C;
+    --redpen: #E03C28;
+    --redpen-soft: #FBEAE7;
+    --teal: #2E7D5B;
+    --teal-soft: #E8F2ED;
+    --grid-blue: #DCE5EC;
+    --hairline: #E8E5DD;
+    --card: #FFFFFF;
+    --amber: #B07C1F;
+    --amber-soft: #FBF3E2;
+    --serif: "Noto Serif SC", "Songti SC", serif;
+    --sans: "Noto Sans SC", "PingFang SC", sans-serif;
+    --mono: "IBM Plex Mono", "SF Mono", monospace;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { -webkit-font-smoothing: antialiased; }
+  body {
+    font-family: var(--sans);
+    background: var(--paper);
+    color: var(--ink);
+    font-size: 15px;
+    line-height: 1.7;
+  }
+  button { font-family: inherit; cursor: pointer; }
+  :focus-visible { outline: 2px solid var(--redpen); outline-offset: 2px; }
+
+  /* ---------- 应用骨架 ---------- */
+  .app { display: flex; min-height: 100vh; }
+
+  .rail {
+    width: 208px; flex-shrink: 0;
+    border-right: 1px solid var(--hairline);
+    padding: 28px 0;
+    display: flex; flex-direction: column;
+    background:
+      repeating-linear-gradient(0deg, transparent 0 27px, var(--grid-blue) 27px 28px);
+    background-position: 0 100px;
+  }
+  .brand {
+    display: flex; align-items: center; gap: 10px;
+    padding: 0 24px 26px;
+  }
+  .brand .logo {
+    font-family: var(--serif); font-weight: 900; font-size: 22px;
+    color: var(--ink); position: relative; width: 40px; height: 40px;
+    display: grid; place-items: center;
+  }
+  .brand .logo svg { position: absolute; inset: -4px; overflow: visible; }
+  .brand .name { font-family: var(--serif); font-size: 17px; font-weight: 600; }
+  .brand .sub { font-size: 11px; color: var(--pencil); letter-spacing: .05em; }
+
+  .nav { display: flex; flex-direction: column; gap: 2px; padding: 8px 12px; }
+  .nav button {
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 12px; border: 0; border-radius: 8px;
+    background: transparent; color: var(--ink);
+    font-size: 14.5px; text-align: left; position: relative;
+  }
+  .nav button .dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    border: 1.5px solid var(--pencil); flex-shrink: 0;
+  }
+  .nav button.active { background: var(--card); box-shadow: 0 1px 3px rgba(43,43,38,.08); font-weight: 500; }
+  .nav button.active::before {
+    content: ""; position: absolute; left: -12px; top: 8px; bottom: 8px;
+    width: 2.5px; background: var(--redpen); border-radius: 2px;
+  }
+  .nav button.active .dot { background: var(--redpen); border-color: var(--redpen); }
+  .nav button:not(.active):hover { background: rgba(255,255,255,.6); }
+  .nav .sep { font-size: 11px; color: var(--pencil); letter-spacing: .08em; padding: 14px 12px 4px; }
+
+  .rail-foot { margin-top: auto; padding: 16px 24px 0; font-size: 12px; color: var(--pencil); }
+  .rail-foot .kid-chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    border: 1px solid var(--hairline); background: var(--card);
+    border-radius: 999px; padding: 4px 12px; font-size: 13px; color: var(--ink);
+  }
+
+  main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+
+  .topbar {
+    display: flex; align-items: baseline; gap: 14px;
+    padding: 20px 40px 13px;
+    border-bottom: 1px solid var(--hairline);
+  }
+  .topbar .date { font-family: var(--mono); font-size: 11px; color: var(--pencil); letter-spacing: .08em; display: block; margin-bottom: 2px; }
+  .topbar h1 { font-family: var(--serif); font-size: 24px; font-weight: 700; }
+  .topbar .hint { color: var(--pencil); font-size: 13px; }
+  .kid-switch { margin-left: auto; display: flex; gap: 8px; }
+  .kid-switch button {
+    border: 1px solid var(--hairline); background: var(--card);
+    border-radius: 999px; padding: 5px 16px; font-size: 13.5px; color: var(--pencil);
+  }
+  .kid-switch button.on { border-color: var(--redpen); color: var(--redpen); background: var(--redpen-soft); font-weight: 500; }
+
+  .view { display: none; flex: 1; }
+  .view.on { display: flex; flex-direction: column; }
+
+  /* ---------- 红笔批注（签名元素） ---------- */
+  .pen-circle { position: relative; display: inline-block; padding: 2px 10px; }
+  .pen-circle svg { position: absolute; inset: -6px -10px; width: calc(100% + 20px); height: calc(100% + 12px); overflow: visible; pointer-events: none; }
+  .pen-underline { position: relative; white-space: nowrap; }
+  .pen-underline svg { position: absolute; left: -2px; bottom: -5px; height: 8px; width: calc(100% + 4px); overflow: visible; }
+
+  .mark {
+    display: inline-grid; place-items: center;
+    width: 26px; height: 26px; border-radius: 50%;
+    font-family: var(--serif); font-weight: 700; font-size: 15px;
+    transform: rotate(-8deg); flex-shrink: 0;
+  }
+  .mark.wrong { color: var(--redpen); border: 1.8px solid var(--redpen); background: var(--redpen-soft); }
+  .mark.right { color: var(--teal); border: 1.8px solid var(--teal); background: var(--teal-soft); transform: rotate(6deg); }
+  .mark.half { color: var(--amber); border: 1.8px dashed var(--amber); background: var(--amber-soft); transform: rotate(-4deg); }
+
+  /* ---------- 聊天页 ---------- */
+  .chat-wrap { flex: 1; display: flex; flex-direction: column; max-width: 860px; width: 100%; margin: 0 auto; padding: 28px 40px 0; }
+  .chat-log { flex: 1; display: flex; flex-direction: column; gap: 26px; padding-bottom: 24px; }
+
+  .msg { display: flex; gap: 14px; max-width: 92%; }
+  .msg .avatar {
+    width: 34px; height: 34px; border-radius: 10px; flex-shrink: 0;
+    display: grid; place-items: center;
+    font-family: var(--serif); font-weight: 700; font-size: 15px;
+  }
+  .msg.user { align-self: flex-end; flex-direction: row-reverse; }
+  .msg.user .avatar { background: var(--ink); color: var(--paper); }
+  .msg.agent .avatar { background: var(--redpen-soft); color: var(--redpen); border: 1px solid #F2CFC9; }
+  .msg.user .bubble {
+    background: var(--card); border: 1px solid var(--hairline);
+    border-radius: 14px 14px 4px 14px; padding: 10px 16px;
+  }
+  .msg .who { font-size: 12px; color: var(--pencil); margin-bottom: 4px; }
+  .msg.user .who { text-align: right; }
+
+  /* 题目卡 = 一页作业本：横格线 + 红左边距 */
+  .qcard {
+    margin-top: 12px; background:
+      linear-gradient(to right, transparent 0 40px, rgba(224,60,40,.35) 40px 41.5px, transparent 41.5px),
+      repeating-linear-gradient(0deg, transparent 0 27px, #EEF3F6 27px 28px),
+      var(--card);
+    border: 1px solid var(--hairline); border-radius: 12px;
+    padding: 14px 18px 12px 52px;
+    box-shadow: 0 1px 3px rgba(43,43,38,.05);
+  }
+  .qcard + .qcard { margin-top: 10px; }
+  .qcard .qhead { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+  .qcard .label { font-family: var(--serif); font-weight: 700; font-size: 15.5px; }
+  .qcard .src { font-size: 12px; color: var(--pencil); }
+  .qcard .cause {
+    margin-left: auto; font-size: 12.5px; color: var(--redpen);
+    background: var(--redpen-soft); border-radius: 999px; padding: 2px 10px;
+  }
+  .qcard .stem { font-size: 14.5px; }
+  .qcard .acts { margin-top: 8px; display: flex; gap: 14px; font-size: 13px; }
+  .qcard .acts button { border: 0; background: none; padding: 0; color: var(--teal); font-size: 13px; }
+  .qcard .acts button:hover { text-decoration: underline; }
+
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; padding: 6px 0 14px; }
+  .chips button {
+    border: 1px dashed #D8D4C9; background: transparent; color: var(--pencil);
+    border-radius: 999px; padding: 6px 14px; font-size: 13px;
+  }
+  .chips button:hover { color: var(--redpen); border-color: var(--redpen); }
+
+  .composer { border-top: 1px solid var(--hairline); padding: 14px 40px 20px; background: var(--paper); }
+  .composer .box {
+    max-width: 860px; margin: 0 auto; display: flex; gap: 10px;
+    background: var(--card); border: 1px solid var(--hairline);
+    border-radius: 14px; padding: 8px 8px 8px 18px;
+  }
+  .composer input { flex: 1; border: 0; outline: none; font-size: 15px; font-family: inherit; background: transparent; color: var(--ink); }
+  .composer .send { border: 0; border-radius: 10px; background: var(--redpen); color: #fff; font-size: 14px; padding: 9px 22px; font-weight: 500; }
+
+  /* ---------- 复核页 ---------- */
+  .review-wrap { flex: 1; display: grid; grid-template-columns: 300px 1fr; min-height: 0; }
+  .queue { border-right: 1px solid var(--hairline); overflow: auto; padding: 18px 0; }
+  .queue .q-title { font-size: 12.5px; color: var(--pencil); padding: 0 22px 10px; letter-spacing: .05em; }
+  .qrow { display: flex; align-items: center; gap: 10px; padding: 11px 22px; border-left: 3px solid transparent; cursor: pointer; }
+  .qrow.sel { border-left-color: var(--redpen); background: var(--card); }
+  .qrow:not(.sel):hover { background: rgba(255,255,255,.55); }
+  .qrow .t { font-size: 14px; font-weight: 500; }
+  .qrow .s { font-size: 12px; color: var(--pencil); }
+  .qrow .badge { margin-left: auto; font-size: 11.5px; color: var(--amber); background: var(--amber-soft); border-radius: 999px; padding: 1px 9px; white-space: nowrap; }
+
+  .review-detail { padding: 26px 40px; overflow: auto; }
+  .rd-head { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+  .rd-head .label { font-family: var(--serif); font-size: 20px; font-weight: 700; }
+  .rd-head .src { color: var(--pencil); font-size: 13px; }
+  .rd-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  .pane { background: var(--card); border: 1px solid var(--hairline); border-radius: 12px; padding: 18px; }
+  .pane h3 { font-size: 12.5px; color: var(--pencil); font-weight: 500; letter-spacing: .06em; margin-bottom: 10px; }
+  .pane .fakeimg {
+    height: 220px; border-radius: 8px;
+    background:
+      repeating-linear-gradient(0deg, transparent 0 23px, var(--grid-blue) 23px 24px),
+      repeating-linear-gradient(90deg, transparent 0 23px, var(--grid-blue) 23px 24px),
+      #FDFEFE;
+    border: 1px solid var(--grid-blue);
+    display: grid; place-items: center; color: var(--pencil); font-size: 13px;
+  }
+  .pane .content { font-size: 14.5px; }
+  .pane .content p { margin-bottom: 8px; }
+
+  .verdict { margin-top: 20px; display: flex; align-items: center; gap: 12px; }
+  .verdict .tip { font-size: 13px; color: var(--pencil); margin-right: 6px; }
+  .verdict button {
+    display: inline-flex; align-items: center; gap: 7px;
+    border-radius: 10px; padding: 8px 18px; font-size: 14px;
+    border: 1.5px solid var(--hairline); background: var(--card); color: var(--ink);
+  }
+  .verdict button.w { border-color: var(--redpen); color: var(--redpen); background: var(--redpen-soft); }
+  .verdict button.r { border-color: var(--teal); color: var(--teal); background: var(--teal-soft); }
+  .verdict button.h { border-color: #D9B45C; color: var(--amber); background: var(--amber-soft); }
+  .verdict button.picked { box-shadow: 0 0 0 2px currentColor inset; font-weight: 500; }
+  .verdict .note { flex: 1; border: 1px solid var(--hairline); border-radius: 10px; padding: 8px 14px; font-size: 13.5px; font-family: inherit; background: var(--card); }
+  .keyhint { margin-top: 12px; font-size: 12px; color: var(--pencil); font-family: var(--mono); }
+
+  /* ---------- 统计/用量 通用 ---------- */
+  .stats-wrap { padding: 28px 40px 40px; max-width: 1080px; }
+  .stats-hero { display: flex; align-items: flex-end; gap: 48px; margin-bottom: 30px; }
+  .bignum .n { font-family: var(--serif); font-size: 76px; font-weight: 900; line-height: 1; }
+  .bignum .cap { color: var(--pencil); font-size: 13.5px; margin-top: 6px; }
+  .bignum .n small { font-size: 22px; color: var(--pencil); font-weight: 500; margin-left: 4px; }
+  .hero-side { display: flex; gap: 36px; padding-bottom: 10px; }
+  .mini .n { font-family: var(--serif); font-size: 30px; font-weight: 600; }
+  .mini .cap { color: var(--pencil); font-size: 12.5px; }
+  .mini .up { color: var(--teal); font-size: 12.5px; }
+
+  .stat-grid { display: grid; grid-template-columns: 5fr 4fr; gap: 20px; }
+  .panel { background: var(--card); border: 1px solid var(--hairline); border-radius: 12px; padding: 20px 22px; }
+  .panel h3 { font-family: var(--serif); font-size: 16px; font-weight: 700; margin-bottom: 16px; }
+  .panel h3 .en { font-family: var(--mono); font-size: 11px; color: var(--pencil); margin-left: 8px; letter-spacing: .04em; font-weight: 400; }
+
+  .bars { display: flex; flex-direction: column; gap: 13px; }
+  .bar-row { display: grid; grid-template-columns: 76px 1fr 30px; align-items: center; gap: 12px; font-size: 13.5px; }
+  .bar-row .track { height: 14px; background: #F4F2EC; border-radius: 4px; overflow: hidden; }
+  .bar-row .fill { height: 100%; border-radius: 4px; background: var(--redpen); opacity: .85; }
+  .bar-row .num { font-family: var(--mono); font-size: 12.5px; color: var(--pencil); text-align: right; }
+
+  .trend { display: flex; align-items: flex-end; gap: 10px; height: 120px; padding-top: 6px; }
+  .trend .col { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; height: 100%; justify-content: flex-end; }
+  .trend .col .v { width: 100%; border-radius: 5px 5px 0 0; background: var(--teal); opacity: .28; }
+  .trend .col.cur .v { opacity: .95; }
+  .trend .col .d { font-size: 11.5px; color: var(--pencil); font-family: var(--mono); }
+
+  .weak { display: flex; flex-wrap: wrap; gap: 8px; }
+  .weak .tag { border: 1px solid var(--hairline); border-radius: 8px; padding: 6px 12px; font-size: 13px; background: var(--paper); }
+  .weak .tag b { color: var(--redpen); font-family: var(--mono); font-weight: 500; margin-left: 6px; }
+
+  .redo { display: flex; flex-direction: column; gap: 10px; }
+  .redo .row { display: flex; align-items: center; gap: 10px; font-size: 14px; }
+  .redo .row .src { font-size: 12px; color: var(--pencil); }
+  .redo .row button { margin-left: auto; border: 1px solid var(--hairline); background: var(--card); border-radius: 8px; padding: 3px 12px; font-size: 12.5px; color: var(--teal); }
+  .redo .row button:hover { border-color: var(--teal); }
+
+  /* ---------- 用量页 ---------- */
+  .token-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+  .tok { border: 1px solid var(--hairline); border-radius: 10px; padding: 14px 16px; background: var(--paper); }
+  .tok .v { font-family: var(--mono); font-size: 20px; font-weight: 500; }
+  .tok .k { font-size: 12px; color: var(--pencil); margin-top: 2px; }
+
+  table.calls { width: 100%; border-collapse: collapse; font-size: 13px; }
+  table.calls th { text-align: left; font-weight: 500; color: var(--pencil); font-size: 12px; letter-spacing: .05em; padding: 6px 10px; border-bottom: 1px solid var(--hairline); }
+  table.calls td { padding: 8px 10px; border-bottom: 1px solid #F1EFE8; }
+  table.calls td.mono { font-family: var(--mono); font-size: 12px; color: var(--pencil); }
+  .mod { font-size: 11.5px; border-radius: 999px; padding: 1px 9px; }
+  .mod.img { color: #7A5C00; background: #F6EFDA; }
+  .mod.txt { color: var(--teal); background: var(--teal-soft); }
+
+  /* ---------- 资料库 ---------- */
+  .lib-wrap { padding: 28px 40px 40px; max-width: 1080px; }
+  .drop {
+    border: 2px dashed #D8D4C9; border-radius: 14px;
+    padding: 26px; text-align: center; color: var(--pencil);
+    background: var(--card); margin-bottom: 22px; cursor: pointer;
+  }
+  .drop:hover { border-color: var(--redpen); color: var(--redpen); background: #FFFDFC; }
+  .drop b { color: var(--ink); font-weight: 500; }
+  .drop .fmts { font-size: 12px; margin-top: 4px; font-family: var(--mono); }
+
+  .doc { display: flex; align-items: center; gap: 14px; background: var(--card); border: 1px solid var(--hairline); border-radius: 12px; padding: 14px 18px; }
+  .doc + .doc { margin-top: 10px; }
+  .doc .ico {
+    width: 38px; height: 44px; border-radius: 6px; flex-shrink: 0;
+    display: grid; place-items: center;
+    font-family: var(--mono); font-size: 10px; font-weight: 500; letter-spacing: .02em;
+  }
+  .doc .ico.pdf { background: var(--redpen-soft); color: var(--redpen); border: 1px solid #F2CFC9; }
+  .doc .ico.docx { background: #E7EEF9; color: #3366AA; border: 1px solid #CFDCEE; }
+  .doc .meta { min-width: 0; }
+  .doc .name { font-weight: 500; font-size: 14.5px; }
+  .doc .sub { font-size: 12.5px; color: var(--pencil); }
+  .doc .prog { width: 160px; }
+  .doc .prog .track { height: 6px; background: #F4F2EC; border-radius: 3px; overflow: hidden; }
+  .doc .prog .fill { height: 100%; background: var(--teal); border-radius: 3px; }
+  .doc .prog .ptext { font-size: 11.5px; color: var(--pencil); font-family: var(--mono); margin-top: 3px; }
+  .doc .status { font-size: 12px; border-radius: 999px; padding: 2px 11px; white-space: nowrap; }
+  .doc .status.done { color: var(--teal); background: var(--teal-soft); }
+  .doc .status.ing { color: var(--amber); background: var(--amber-soft); }
+  .doc .status.wait { color: var(--redpen); background: var(--redpen-soft); }
+  .doc .acts { margin-left: auto; display: flex; gap: 6px; }
+  .doc .acts button {
+    border: 1px solid var(--hairline); background: var(--card); border-radius: 8px;
+    padding: 5px 12px; font-size: 12.5px; color: var(--ink);
+  }
+  .doc .acts button:hover { border-color: var(--pencil); }
+  .doc .acts button.primary { border-color: var(--redpen); color: var(--redpen); }
+  .lib-head { display: flex; align-items: baseline; gap: 12px; margin-bottom: 14px; }
+  .lib-head h2 { font-family: var(--serif); font-size: 17px; font-weight: 700; }
+  .lib-head .n { font-family: var(--mono); font-size: 12px; color: var(--pencil); }
+
+  @media (max-width: 900px) {
+    .rail { width: 64px; }
+    .brand .name, .brand .sub, .nav button span.txt, .nav .sep, .rail-foot { display: none; }
+    .review-wrap { grid-template-columns: 1fr; }
+    .rd-cols, .stat-grid { grid-template-columns: 1fr; }
+    .token-grid { grid-template-columns: repeat(2, 1fr); }
+    .stats-hero { flex-direction: column; align-items: flex-start; gap: 18px; }
+    .doc .prog { display: none; }
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .qcard { animation: rise .35s ease both; }
+    .qcard:nth-of-type(2) { animation-delay: .06s; }
+    .qcard:nth-of-type(3) { animation-delay: .12s; }
+    @keyframes rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- 左 rail -->
+  <nav class="rail">
+    <div class="brand">
+      <span class="logo">知
+        <svg viewBox="0 0 48 48"><path d="M8 24 C8 12, 40 10, 41 23 C42 36, 12 40, 8 27" fill="none" stroke="#E03C28" stroke-width="2.2" stroke-linecap="round" opacity=".9"/></svg>
+      </span>
+      <span>
+        <div class="name">作业本</div>
+        <div class="sub">家庭学习知识库</div>
+      </span>
+    </div>
+    <div class="nav">
+      <button class="active" data-view="chat"><span class="dot"></span><span class="txt">聊天</span></button>
+      <button data-view="review"><span class="dot"></span><span class="txt">复核</span></button>
+      <button data-view="stats"><span class="dot"></span><span class="txt">统计</span></button>
+      <button data-view="lib"><span class="dot"></span><span class="txt">资料库</span></button>
+      <div class="sep">系统</div>
+      <button data-view="usage"><span class="dot"></span><span class="txt">用量</span></button>
+    </div>
+    <div class="rail-foot">
+      <span class="kid-chip">👦 小宝 · 四年级</span>
+    </div>
+  </nav>
+
+  <main>
+    <div class="topbar">
+      <div>
+        <span class="date">2026-09-06 SUN</span>
+        <h1 id="view-title">聊天</h1>
+      </div>
+      <span class="hint" id="view-hint">问孩子学习情况，或找题、看讲解</span>
+      <div class="kid-switch">
+        <button class="on">小宝</button>
+        <button>朵朵</button>
+      </div>
+    </div>
+
+    <!-- ============ 聊天 ============ -->
+    <section class="view on" id="view-chat">
+      <div class="chat-wrap">
+        <div class="chat-log">
+
+          <div class="msg user">
+            <div class="avatar">我</div>
+            <div>
+              <div class="who">我 · 周日 21:12</div>
+              <div class="bubble">小宝这周数学学得怎么样？哪些题错得多？</div>
+            </div>
+          </div>
+
+          <div class="msg agent">
+            <div class="avatar">答</div>
+            <div>
+              <div class="who">学习助手 · 检索了 2 张试卷、14 条做题记录</div>
+              <div class="bubble">
+                这周小宝数学一共做了 <b>21 道题</b>，对了 16 道，正确率 <b>76%</b>。
+                错的 5 道里有 3 道出在<span class="pen-underline">三位数乘两位数<svg viewBox="0 0 100 8" preserveAspectRatio="none"><path d="M2 5 C 30 8, 70 2, 98 5" fill="none" stroke="#E03C28" stroke-width="2" stroke-linecap="round"/></svg></span>，
+                错因主要是「粗心」——竖式对位写错。建议先重练这 3 道：
+              </div>
+
+              <div class="qcard">
+                <div class="qhead">
+                  <span class="mark wrong">✗</span>
+                  <span class="label">第 3 题</span>
+                  <span class="src">《期末测试卷》· 乘法</span>
+                  <span class="cause">粗心</span>
+                </div>
+                <div class="stem">列竖式计算：$246 \times 37$ —— 小宝把第二步的 738 错写成了 708。</div>
+                <div class="acts">
+                  <button>看讲解</button>
+                  <button>出 3 道同类题</button>
+                  <button>标记已订正</button>
+                </div>
+              </div>
+
+              <div class="qcard">
+                <div class="qhead">
+                  <span class="mark wrong">✗</span>
+                  <span class="label">例 2</span>
+                  <span class="src">《7星学霸》· 第 3 讲 竖式谜</span>
+                  <span class="cause">方法不会</span>
+                </div>
+                <div class="stem">在方框里填上合适的数字：$\square 7 \times 6 = 1\square 62$</div>
+                <div class="acts">
+                  <button>看讲解</button>
+                  <button>出 3 道同类题</button>
+                  <button>标记已订正</button>
+                </div>
+              </div>
+
+              <div class="qcard">
+                <div class="qhead">
+                  <span class="mark half">½</span>
+                  <span class="label">第 8 题</span>
+                  <span class="src">《期末测试卷》· 应用题</span>
+                  <span class="cause">概念不清</span>
+                </div>
+                <div class="stem">一辆汽车 3 小时行 216 千米，照这样计算，7 小时行多少千米？（步骤对，单位写错）</div>
+                <div class="acts">
+                  <button>看讲解</button>
+                  <button>出 3 道同类题</button>
+                  <button>标记已订正</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <div class="chips">
+          <button>把本周错题整理成一张复习卷</button>
+          <button>朵朵的英语语法错因分布</button>
+          <button>《7星学霸》第 3 讲有哪些例题</button>
+        </div>
+      </div>
+
+      <div class="composer">
+        <div class="box">
+          <input type="text" placeholder="问点什么，比如「小宝最近计算错得多吗」" aria-label="输入问题">
+          <button class="send">发送</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ 复核 ============ -->
+    <section class="view" id="view-review">
+      <div class="review-wrap">
+        <aside class="queue">
+          <div class="q-title">待复核 · 6 条</div>
+          <div class="qrow sel">
+            <div><div class="t">第 3 题 · 乘法竖式</div><div class="s">期末测试卷 · 小宝</div></div>
+            <span class="badge">对错待确认</span>
+          </div>
+          <div class="qrow">
+            <div><div class="t">第 5 题 · 脱式计算</div><div class="s">期末测试卷 · 小宝</div></div>
+            <span class="badge">对错待确认</span>
+          </div>
+          <div class="qrow">
+            <div><div class="t">例 2 · 竖式谜</div><div class="s">7星学霸 · 第 3 讲</div></div>
+            <span class="badge">解析待复核</span>
+          </div>
+          <div class="qrow">
+            <div><div class="t">第 8 题 · 归一问题</div><div class="s">期末测试卷 · 小宝</div></div>
+            <span class="badge">待匹配题库</span>
+          </div>
+        </aside>
+
+        <div class="review-detail">
+          <div class="rd-head">
+            <span class="label">第 3 题</span>
+            <span class="src">《期末测试卷》第 1 页 · VLM 预识别为「错」</span>
+          </div>
+          <div class="rd-cols">
+            <div class="pane">
+              <h3>原卷裁图</h3>
+              <div class="fakeimg">题目裁图（含红笔批改痕迹）</div>
+            </div>
+            <div class="pane">
+              <h3>识别出的题目</h3>
+              <div class="content">
+                <p>列竖式计算：$246 \times 37$</p>
+                <p style="color:var(--pencil)">识别到的作答：竖式第二步 738 写成 708，旁边有老师红笔 ✗。</p>
+                <p style="color:var(--pencil)">题库匹配：《7星学霸》第 3 讲「三位数乘两位数」· 相似度 0.91</p>
+              </div>
+            </div>
+          </div>
+          <div class="verdict">
+            <span class="tip">这题小宝</span>
+            <button class="w"><span class="mark wrong" style="width:20px;height:20px;font-size:12px">✗</span>做错了</button>
+            <button class="r"><span class="mark right" style="width:20px;height:20px;font-size:12px">✓</span>做对了</button>
+            <button class="h"><span class="mark half" style="width:20px;height:20px;font-size:12px">½</span>半对</button>
+            <input class="note" placeholder="错因和备注，比如「竖式对位错 · 粗心」">
+          </div>
+          <div class="keyhint">快捷键：1 做错 · 2 做对 · 3 半对 · Enter 下一条</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ 统计（学习） ============ -->
+    <section class="view" id="view-stats">
+      <div class="stats-wrap">
+        <div class="stats-hero">
+          <div class="bignum">
+            <div class="n"><span class="pen-circle">12<svg viewBox="0 0 120 90" preserveAspectRatio="none"><path d="M10 45 C10 12, 108 8, 112 42 C114 74, 20 84, 11 52" fill="none" stroke="#E03C28" stroke-width="3" stroke-linecap="round"/></svg></span><small>道</small></div>
+            <div class="cap">小宝 · 本周错题</div>
+          </div>
+          <div class="hero-side">
+            <div class="mini"><div class="n">78%</div><div class="cap">本周正确率 <span class="up">↑ 6%</span></div></div>
+            <div class="mini"><div class="n">5</div><div class="cap">已订正</div></div>
+            <div class="mini"><div class="n">3</div><div class="cap">待重练</div></div>
+          </div>
+        </div>
+
+        <div class="stat-grid">
+          <div class="panel">
+            <h3>错因分布<span class="en">BY CAUSE · 近 30 天</span></h3>
+            <div class="bars">
+              <div class="bar-row"><span>粗心</span><div class="track"><div class="fill" style="width:42%"></div></div><span class="num">5</span></div>
+              <div class="bar-row"><span>概念不清</span><div class="track"><div class="fill" style="width:33%;opacity:.65"></div></div><span class="num">4</span></div>
+              <div class="bar-row"><span>方法不会</span><div class="track"><div class="fill" style="width:17%;opacity:.5"></div></div><span class="num">2</span></div>
+              <div class="bar-row"><span>计算错</span><div class="track"><div class="fill" style="width:8%;opacity:.35"></div></div><span class="num">1</span></div>
+            </div>
+          </div>
+          <div class="panel">
+            <h3>薄弱知识点<span class="en">WEAK SPOTS</span></h3>
+            <div class="weak">
+              <span class="tag">三位数乘两位数<b>×4</b></span>
+              <span class="tag">归一问题<b>×2</b></span>
+              <span class="tag">竖式谜<b>×2</b></span>
+              <span class="tag">单位换算<b>×1</b></span>
+            </div>
+          </div>
+          <div class="panel">
+            <h3>正确率趋势<span class="en">ACCURACY · 近 8 周</span></h3>
+            <div class="trend">
+              <div class="col"><div class="v" style="height:55%"></div><div class="d">W30</div></div>
+              <div class="col"><div class="v" style="height:62%"></div><div class="d">W31</div></div>
+              <div class="col"><div class="v" style="height:58%"></div><div class="d">W32</div></div>
+              <div class="col"><div class="v" style="height:70%"></div><div class="d">W33</div></div>
+              <div class="col"><div class="v" style="height:66%"></div><div class="d">W34</div></div>
+              <div class="col"><div class="v" style="height:74%"></div><div class="d">W35</div></div>
+              <div class="col"><div class="v" style="height:71%"></div><div class="d">W36</div></div>
+              <div class="col cur"><div class="v" style="height:78%"></div><div class="d">W37</div></div>
+            </div>
+          </div>
+          <div class="panel">
+            <h3>待重练<span class="en">TO REDO</span></h3>
+            <div class="redo">
+              <div class="row"><span class="mark wrong" style="width:22px;height:22px;font-size:12px">✗</span><span>第 3 题 · 乘法竖式</span><span class="src">粗心</span><button>已订正</button></div>
+              <div class="row"><span class="mark wrong" style="width:22px;height:22px;font-size:12px">✗</span><span>例 2 · 竖式谜</span><span class="src">方法不会</span><button>已订正</button></div>
+              <div class="row"><span class="mark half" style="width:22px;height:22px;font-size:12px">½</span><span>第 8 题 · 归一问题</span><span class="src">概念不清</span><button>已订正</button></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ 资料库（管理） ============ -->
+    <section class="view" id="view-lib">
+      <div class="lib-wrap">
+        <div class="drop">
+          <b>拖入学习资料，或点击选择文件</b> —— 上传后自动解析入库
+          <div class="fmts">PDF 扫描件 · DOCX 文档</div>
+        </div>
+
+        <div class="lib-head"><h2>已入库资料</h2><span class="n">4 份 · 例题 24 · 练习 256</span></div>
+
+        <div class="doc">
+          <div class="ico pdf">PDF</div>
+          <div class="meta">
+            <div class="name">7星学霸 · 题中题 数学四年级 第7辑</div>
+            <div class="sub">数学 · 四年级 · 练习册 · 8 讲</div>
+          </div>
+          <div class="prog">
+            <div class="track"><div class="fill" style="width:100%"></div></div>
+            <div class="ptext">88 / 88 页</div>
+          </div>
+          <span class="status done">已完成</span>
+          <div class="acts">
+            <button>章节</button><button>导出 md</button><button>重跑</button>
+          </div>
+        </div>
+
+        <div class="doc">
+          <div class="ico docx">DOCX</div>
+          <div class="meta">
+            <div class="name">语法一阶 期末测试</div>
+            <div class="sub">英语 · 试卷</div>
+          </div>
+          <div class="prog">
+            <div class="track"><div class="fill" style="width:100%"></div></div>
+            <div class="ptext">40 题</div>
+          </div>
+          <span class="status done">已完成</span>
+          <div class="acts">
+            <button>章节</button><button>导出 md</button><button>重跑</button>
+          </div>
+        </div>
+
+        <div class="doc">
+          <div class="ico pdf">PDF</div>
+          <div class="meta">
+            <div class="name">学霸提优大试卷 数学一年级下</div>
+            <div class="sub">数学 · 一年级 · 试卷</div>
+          </div>
+          <div class="prog">
+            <div class="track"><div class="fill" style="width:47%"></div></div>
+            <div class="ptext">42 / 88 页</div>
+          </div>
+          <span class="status ing">解析中</span>
+          <div class="acts">
+            <button>查看进度</button><button>暂停</button>
+          </div>
+        </div>
+
+        <div class="doc">
+          <div class="ico pdf">PDF</div>
+          <div class="meta">
+            <div class="name">学霸寒假计算大通关 四年级</div>
+            <div class="sub">数学 · 四年级 · 练习册</div>
+          </div>
+          <div class="prog">
+            <div class="track"><div class="fill" style="width:88%"></div></div>
+            <div class="ptext">待复核 12 块</div>
+          </div>
+          <span class="status wait">待复核</span>
+          <div class="acts">
+            <button class="primary">去复核</button><button>导出 md</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ 用量（token） ============ -->
+    <section class="view" id="view-usage">
+      <div class="stats-wrap">
+        <div class="stats-hero">
+          <div class="bignum">
+            <div class="n">2.28<small>M tokens</small></div>
+            <div class="cap">本月 LLM 总消耗</div>
+          </div>
+          <div class="hero-side">
+            <div class="mini"><div class="n">169.6k</div><div class="cap">文本（输入+输出）</div></div>
+            <div class="mini"><div class="n">2.1M</div><div class="cap">图像（页图/裁图）</div></div>
+            <div class="mini"><div class="n">36</div><div class="cap">调用次数</div></div>
+          </div>
+        </div>
+
+        <div class="stat-grid">
+          <div class="panel">
+            <h3>按用途<span class="en">BY PURPOSE · 本月</span></h3>
+            <div class="bars">
+              <div class="bar-row"><span>整页转录</span><div class="track"><div class="fill" style="width:64%"></div></div><span class="num">1.5M</span></div>
+              <div class="bar-row"><span>块转录</span><div class="track"><div class="fill" style="width:24%;opacity:.65"></div></div><span class="num">560k</span></div>
+              <div class="bar-row"><span>章节整理</span><div class="track"><div class="fill" style="width:7%;opacity:.5"></div></div><span class="num">158k</span></div>
+              <div class="bar-row"><span>对话</span><div class="track"><div class="fill" style="width:3%;opacity:.35"></div></div><span class="num">62k</span></div>
+            </div>
+          </div>
+          <div class="panel">
+            <h3>按模型<span class="en">BY MODEL · 本月</span></h3>
+            <div class="token-grid" style="grid-template-columns:1fr 1fr">
+              <div class="tok"><div class="v">1.9M</div><div class="k">qwen-vl-plus（图像）</div></div>
+              <div class="tok"><div class="v">220k</div><div class="k">qwen3-32b（文本）</div></div>
+              <div class="tok"><div class="v">98k</div><div class="k">bge-m3（向量，本地）</div></div>
+              <div class="tok"><div class="v">62k</div><div class="k">对话模型</div></div>
+            </div>
+          </div>
+          <div class="panel" style="grid-column:1 / -1">
+            <h3>最近调用<span class="en">RECENT CALLS</span></h3>
+            <table class="calls">
+              <thead><tr><th>时间</th><th>用途</th><th>模型</th><th>模态</th><th style="text-align:right">输入</th><th style="text-align:right">输出</th></tr></thead>
+              <tbody>
+                <tr><td class="mono">09-06 21:04</td><td>章节整理 · 第3讲</td><td class="mono">qwen3-32b</td><td><span class="mod txt">文本</span></td><td class="mono" style="text-align:right">6,204</td><td class="mono" style="text-align:right">1,876</td></tr>
+                <tr><td class="mono">09-06 20:58</td><td>整页转录 · p0042</td><td class="mono">qwen-vl-plus</td><td><span class="mod img">图像</span></td><td class="mono" style="text-align:right">2,140</td><td class="mono" style="text-align:right">688</td></tr>
+                <tr><td class="mono">09-06 20:57</td><td>对话 · 学习助手</td><td class="mono">qwen3-32b</td><td><span class="mod txt">文本</span></td><td class="mono" style="text-align:right">3,912</td><td class="mono" style="text-align:right">542</td></tr>
+                <tr><td class="mono">09-06 20:41</td><td>目录提取</td><td class="mono">qwen-vl-plus</td><td><span class="mod img">图像</span></td><td class="mono" style="text-align:right">2,088</td><td class="mono" style="text-align:right">396</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<script>
+  // 视图切换（支持 #view 直达）
+  const titles = {
+    chat:   ["聊天", "问孩子学习情况，或找题、看讲解"],
+    review: ["复核", "确认识别结果，标记对错与错因"],
+    stats:  ["统计", "按孩子看进展、错因与待重练"],
+    lib:    ["资料库", "上传资料、看解析进度、导出与重跑"],
+    usage:  ["用量", "LLM token 消耗，文本与图像分开记"],
+  };
+  function show(v) {
+    if (!titles[v]) return;
+    document.querySelectorAll(".nav button").forEach(b =>
+      b.classList.toggle("active", b.dataset.view === v));
+    document.querySelectorAll(".view").forEach(s => s.classList.remove("on"));
+    document.getElementById("view-" + v).classList.add("on");
+    document.getElementById("view-title").textContent = titles[v][0];
+    document.getElementById("view-hint").textContent = titles[v][1];
+  }
+  document.querySelectorAll(".nav button").forEach(btn => {
+    btn.addEventListener("click", () => show(btn.dataset.view));
+  });
+  show(location.hash.slice(1));
+
+  // 孩子切换
+  document.querySelectorAll(".kid-switch button").forEach(btn => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll(".kid-switch button").forEach(b => b.classList.remove("on"));
+      btn.classList.add("on");
+    });
+  });
+
+  // 建议问题 -> 填入输入框
+  const input = document.querySelector(".composer input");
+  document.querySelectorAll(".chips button").forEach(btn => {
+    btn.addEventListener("click", () => { input.value = btn.textContent; input.focus(); });
+  });
+
+  // 复核：批改按钮选中态
+  document.querySelectorAll(".verdict button").forEach(btn => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll(".verdict button").forEach(b => b.classList.remove("picked"));
+      btn.classList.add("picked");
+    });
+  });
+
+  // KaTeX 渲染行内公式
+  document.querySelectorAll(".stem, .pane .content p").forEach(el => {
+    el.innerHTML = el.innerHTML.replace(/\$([^$]+)\$/g, (_, tex) => {
+      try { return katex.renderToString(tex, { throwOnError: false }); }
+      catch { return tex; }
+    });
+  });
+</script>
+</body>
+</html>
