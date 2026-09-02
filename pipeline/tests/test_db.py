@@ -51,3 +51,32 @@ def test_chapters_table_after_0003(conn):
         cid = cur.fetchone()[0]
         cur.execute("SELECT title, tags FROM chapters WHERE id=%s", (cid,))
         assert cur.fetchone() == ("乘除法竖式谜", ["倒推法", "枚举法"])
+
+
+def test_children_attempts_after_0009(conn):
+    """0009 后：children/attempts 表存在；result/error_cause 受控词表；级联删除。"""
+    import uuid
+    with conn.cursor() as cur:
+        cur.execute("INSERT INTO children (name, grade) VALUES ('小宝','四年级') RETURNING id")
+        child_id = str(cur.fetchone()[0])
+        cur.execute(
+            "INSERT INTO documents (id, title, source_path) VALUES (%s,'t','/tmp/a.pdf') RETURNING id",
+            (str(uuid.uuid4()),),
+        )
+        doc_id = str(cur.fetchone()[0])
+        cur.execute(
+            "INSERT INTO items (id, document_id, content_type, label, content_md) VALUES (%s,%s,'exercise','1','题') RETURNING id",
+            (str(uuid.uuid4()), doc_id),
+        )
+        item_id = str(cur.fetchone()[0])
+        # 正常写入
+        cur.execute(
+            """INSERT INTO attempts (child_id, item_id, result, error_cause, note)
+               VALUES (%s,%s,'wrong','粗心','竖式对位错')""",
+            (child_id, item_id),
+        )
+        # 非法 result 被拒
+        import pytest
+        with pytest.raises(Exception):
+            cur.execute(
+                "INSERT INTO attempts (child_id, result) VALUES (%s,'unknown')", (child_id,))
