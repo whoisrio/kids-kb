@@ -78,7 +78,8 @@ def export_chapter_mds(conn, cfg: Config, doc_id: str) -> int:
     with conn.cursor() as cur:
         cur.execute(
             """SELECT chapter_no FROM chapters
-               WHERE document_id=%s AND page_start IS NOT NULL ORDER BY chapter_no""",
+               WHERE document_id=%s AND (page_start IS NOT NULL OR content_md IS NOT NULL)
+               ORDER BY chapter_no""",
             (doc_id,),
         )
         chapter_nos = [r[0] for r in cur.fetchall()]

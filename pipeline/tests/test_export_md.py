@@ -109,3 +109,27 @@ def test_export_chapter_mds_skips_chapters_without_pages(doc):
         )
     assert export_chapter_mds(conn, cfg, doc_id) == 1  # 仍只有第 1 章
     assert not (cfg.storage_dir / doc_id / "chapters" / "c02.md").exists()
+
+
+def test_export_chapter_mds_for_docx_chapter(conn, tmp_path):
+    """content_md 章（无页）：章稿直接取章原文。"""
+    cfg = Config(
+        database_url="postgresql://localhost/kb_test",
+        storage_dir=tmp_path / "storage",
+        vision_base_url="http://localhost:11434/v1",
+        vision_api_key="ollama",
+        vision_model="qwen3:4b",
+    )
+    with conn.cursor() as cur:
+        cur.execute("INSERT INTO documents (id, title, source_path) VALUES (%s,'t','/tmp/f.docx') RETURNING id",
+                    (str(uuid.uuid4()),))
+        doc_id = str(cur.fetchone()[0])
+        cur.execute(
+            """INSERT INTO chapters (id, document_id, chapter_no, title, content_md)
+               VALUES (%s,%s,1,'选择题','# 一、选择题\n\n1. 题干')""",
+            (str(uuid.uuid4()), doc_id),
+        )
+    n = export_chapter_mds(conn, cfg, doc_id)
+    assert n == 1
+    text = (cfg.storage_dir / doc_id / "chapters" / "c01.md").read_text(encoding="utf-8")
+    assert "题干" in text
