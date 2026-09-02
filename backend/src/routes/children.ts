@@ -9,7 +9,13 @@ export function childrenRoutes(pool: pg.Pool): Hono {
     return c.json({ children: rows });
   });
   app.post("/", async (c) => {
-    const { name, grade } = await c.req.json();
+    let body: { name?: string; grade?: string };
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: "请求体不是合法 JSON" }, 400);
+    }
+    const { name, grade } = body;
     if (!name?.trim()) return c.json({ error: "name 不能为空" }, 422);
     const { rows } = await pool.query(
       "INSERT INTO children (name, grade) VALUES ($1, $2) RETURNING id, name, grade",

@@ -9,6 +9,9 @@ wheels/
 # Node
 node_modules/
 
+# macOS
+.DS_Store
+
 # Virtual environments
 .venv
 .env

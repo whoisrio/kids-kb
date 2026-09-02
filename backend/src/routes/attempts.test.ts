@@ -57,4 +57,46 @@ maybe("children/attempts API（真库）", () => {
     expect(data.attempts).toHaveLength(1);
     expect(data.attempts[0].error_cause).toBe("粗心");
   });
+
+  it("错误映射：坏 JSON 400 / FK 404 / 非法 UUID 422", async () => {
+    // 坏 JSON body → 400（与 chat.ts 模式一致）
+    const badJsonChildren = await app.request("/api/children", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "{not json",
+    });
+    expect(badJsonChildren.status).toBe(400);
+    const badJsonAttempts = await app.request("/api/attempts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "{not json",
+    });
+    expect(badJsonAttempts.status).toBe(400);
+
+    // 合法 UUID 但库里不存在 → PG 23503 → 404
+    const noChild = await app.request("/api/attempts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        child_id: "33333333-3333-3333-3333-333333333333",
+        item_id: "22222222-2222-2222-2222-222222222222",
+        result: "correct",
+      }),
+    });
+    expect(noChild.status).toBe(404);
+
+    // 非法 UUID 字符串 → PG 22P02 → 422
+    const badUuid = await app.request("/api/attempts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        child_id: "abc",
+        item_id: "22222222-2222-2222-2222-222222222222",
+        result: "correct",
+      }),
+    });
+    expect(badUuid.status).toBe(422);
+    const badGet = await app.request("/api/attempts?child_id=abc");
+    expect(badGet.status).toBe(422);
+  });
 });
