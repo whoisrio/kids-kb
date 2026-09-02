@@ -6,6 +6,8 @@ import { chatRoute, makeAgentFactory } from "./agent/chat.js";
 import { embedTexts } from "./retrieval/embed.js";
 import { makeReranker } from "./retrieval/rerank.js";
 import { hybridSearch } from "./retrieval/search.js";
+import { childrenRoutes } from "./routes/children.js";
+import { attemptsRoutes } from "./routes/attempts.js";
 
 export function createApp(cfg: BackendConfig = loadConfig()) {
   const app = new Hono();
@@ -25,6 +27,8 @@ export function createApp(cfg: BackendConfig = loadConfig()) {
       [cfg.chatModel, u.input, u.output],
     );
   }));
+  app.route("/api/children", childrenRoutes(pool));
+  app.route("/api/attempts", attemptsRoutes(pool));
   return app;
 }
 
