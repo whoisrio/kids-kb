@@ -65,6 +65,22 @@ def test_ingest_docx_splits_chapters(conn, cfg, docx_file):
     assert r == ("exam", "英语", 0)
 
 
+@pandoc_missing
+def test_ingest_docx_idempotent(conn, cfg, docx_file):
+    """同一 docx 重复入库：复用既有 doc_id，章节不翻倍，source_path 为绝对路径。"""
+    from kb.docx_ingest import ingest_docx
+
+    kwargs = dict(title="语法一阶 期末测试", subject="英语", doc_type="exam")
+    doc_id1 = ingest_docx(conn, cfg, docx_file, **kwargs)
+    doc_id2 = ingest_docx(conn, cfg, docx_file, **kwargs)
+    assert doc_id2 == doc_id1
+    with conn.cursor() as cur:
+        cur.execute("SELECT count(*) FROM chapters WHERE document_id=%s", (doc_id1,))
+        assert cur.fetchone()[0] == 2
+        cur.execute("SELECT source_path FROM documents WHERE id=%s", (doc_id1,))
+        assert cur.fetchone()[0] == str(docx_file.resolve())
+
+
 def test_split_chapters_no_heading():
     """无标题文档整份为单章。"""
     from kb.docx_ingest import split_chapters

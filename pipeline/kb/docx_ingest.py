@@ -19,10 +19,13 @@ _HEADING_RE = re.compile(r"^#{1,2}\s+(.+?)\s*#*$", re.M)
 def docx_to_markdown(docx_path, extract_dir: Path) -> str:
     """pandoc docx -> gfm；图片抽到 extract_dir（markdown 引用为其相对路径）。"""
     Path(extract_dir).mkdir(parents=True, exist_ok=True)
-    out = subprocess.run(
-        ["pandoc", "-f", "docx", "-t", "gfm", f"--extract-media={extract_dir}", str(docx_path)],
-        capture_output=True, text=True,
-    )
+    try:
+        out = subprocess.run(
+            ["pandoc", "-f", "docx", "-t", "gfm", f"--extract-media={extract_dir}", str(docx_path)],
+            capture_output=True, text=True,
+        )
+    except FileNotFoundError:
+        raise SystemExit("需要 pandoc: https://pandoc.org/installing.html") from None
     if out.returncode != 0:
         raise SystemExit(f"pandoc 转换失败: {out.stderr.strip()}")
     return out.stdout
@@ -45,15 +48,23 @@ def split_chapters(markdown: str, doc_title: str) -> list[tuple[str, str]]:
 def ingest_docx(conn, cfg: Config, path, title: str,
                 subject: str | None = None, grade: str | None = None,
                 doc_type: str = "exam") -> str:
+    """幂等可重跑：source_path（绝对路径）为幂等键，已建档则复用 doc_id 补写章节。"""
+    # 存绝对路径：source_path 是幂等键，相对路径会因 CWD 不同而重复建档
+    path = str(Path(path).resolve())
     with conn.cursor() as cur:
-        cur.execute(
-            """INSERT INTO documents (id, title, subject, grade, doc_type, source_path,
-                                      page_count, has_text_layer, status)
-               VALUES (%s,%s,%s,%s,%s,%s,0,true,'parsed') RETURNING id""",
-            (str(uuid.uuid4()), title, subject, grade, doc_type, str(path)),
-        )
-        doc_id = str(cur.fetchone()[0])
+        cur.execute("SELECT id FROM documents WHERE source_path=%s", (path,))
+        row = cur.fetchone()
+    doc_id = str(row[0]) if row else str(uuid.uuid4())
+    # pandoc 先于建档：转换失败不留孤儿 documents 行
     markdown = docx_to_markdown(path, Path(cfg.storage_dir) / doc_id)
+    if not row:
+        with conn.cursor() as cur:
+            cur.execute(
+                """INSERT INTO documents (id, title, subject, grade, doc_type, source_path,
+                                          page_count, has_text_layer, status)
+                   VALUES (%s,%s,%s,%s,%s,%s,0,true,'parsed')""",
+                (doc_id, title, subject, grade, doc_type, path),
+            )
     with conn.cursor() as cur:
         for i, (ch_title, content) in enumerate(split_chapters(markdown, title), start=1):
             cur.execute(
