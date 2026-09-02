@@ -5,6 +5,12 @@
 后端代码与依赖统一在 `pipeline/` 下（`kb/` 包、`tests/`、pyproject 与 .venv）；
 根目录仅保留探索期脚本与 `resources/` 素材。
 
+## 开发启动
+
+- pipeline：`cd pipeline && uv run pytest tests/`（测试需 KB_TEST_DATABASE_URL）
+- backend：`cd backend && npm test` / `npm run dev`（8787）
+- frontend：`cd frontend && npm run dev`（5173，proxy 到 8787）
+
 ## 流水线（骨架期）
 
 在 `pipeline/` 目录下执行：
