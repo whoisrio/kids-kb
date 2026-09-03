@@ -124,6 +124,8 @@ token 统计不进统计页；复核页支持键盘流转（1/2/3 标记对错�
   - docx 入库（按 docx spec）
   - 根目录 AGENTS.md
 - **Phase 2**：试卷上传管线 + VLM 对错预识别 + 复核页确认流 + 题库匹配。
+- **Phase 1.5（插在 2 前）**：聊天会话补全——会话 JSONL 持久化 + 历史列表/回看 + 模型切换，详见 `2026-09-03-chat-session-design.md`。
+  注：原定迁 `AgentHarness`，因 pi-agent-core 0.84.4 的 harness 是 stub（运行时方法全部未实现），改为裸 Agent + 手工接 `JsonlSessionRepo`，harness 迁移待上游就绪。
 - **Phase 3**：复核页迁移 React + 统计页 + 用量页；现有静态复核页退役。
 - **Phase 4（长期）**：奖励机制（积分/徽章，如攻克曾经的错题加分）。
 
