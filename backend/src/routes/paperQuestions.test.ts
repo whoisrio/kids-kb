@@ -98,6 +98,17 @@ maybe("paper-questions API（真库）", () => {
     expect(cleared.item_id).toBeNull();
   });
 
+  it("attempts.paper_question_id 有唯一索引:同题第二条被 DB 拒绝", async () => {
+    const idx = (await pool.query(
+      `SELECT indexdef FROM pg_indexes WHERE tablename='attempts'
+       AND indexdef ILIKE '%paper_question_id%'`)).rows;
+    expect(idx.some((r) => /UNIQUE/.test(r.indexdef))).toBe(true);
+    // 绕过 API 直接插同 paper_question_id 第二条 → 唯一约束报 23505
+    await expect(pool.query(
+      `INSERT INTO attempts (child_id, item_id, paper_question_id, result)
+       VALUES ($1,NULL,$2,'wrong')`, [CHILD, q1])).rejects.toMatchObject({ code: "23505" });
+  });
+
   it("校验:result 枚举 422;match 不存在 item 404;不存在题目 404", async () => {
     const bad = await app.request(`/api/paper-questions/${q1}/confirm`, {
       method: "PUT", body: JSON.stringify({ result: "对" }),

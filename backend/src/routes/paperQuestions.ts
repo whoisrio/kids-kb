@@ -45,19 +45,15 @@ export function paperQuestionsRoutes(pool: pg.Pool, deps: PaperJobDeps): Hono {
         await client.query(
           `UPDATE paper_questions SET confirmed_result=$1, error_cause=$2, note=$3, updated_at=now()
            WHERE id=$4`, [result, body.error_cause ?? null, body.note ?? null, qid]);
-        const { rows: existing } = await client.query(
-          "SELECT id::text FROM attempts WHERE paper_question_id=$1", [qid]);
-        if (existing.length) {  // 改判 = UPDATE,不追加
-          await client.query(
-            `UPDATE attempts SET item_id=$1, result=$2, error_cause=$3, note=$4
-             WHERE paper_question_id=$5`,
-            [q.matched_item_id, result, body.error_cause ?? null, body.note ?? null, qid]);
-        } else {
-          await client.query(
-            `INSERT INTO attempts (child_id, item_id, paper_question_id, result, error_cause, note)
-             VALUES ($1,$2,$3,$4,$5,$6)`,
-            [q.child_id, q.matched_item_id, qid, result, body.error_cause ?? null, body.note ?? null]);
-        }
+        // 单语句 upsert:并发 confirm 也只会落到同一条 attempt(改判不追加),
+        // 靠 0012 migration 的 attempts_paper_question_id_key 唯一约束兜底,取代 SELECT-then-INSERT 竞态
+        await client.query(
+          `INSERT INTO attempts (child_id, item_id, paper_question_id, result, error_cause, note)
+           VALUES ($1,$2,$3,$4,$5,$6)
+           ON CONFLICT (paper_question_id) DO UPDATE SET
+             item_id=EXCLUDED.item_id, result=EXCLUDED.result,
+             error_cause=EXCLUDED.error_cause, note=EXCLUDED.note`,
+          [q.child_id, q.matched_item_id, qid, result, body.error_cause ?? null, body.note ?? null]);
         const { rows: [paper] } = await client.query(
           `UPDATE papers SET status = CASE
              WHEN NOT EXISTS (
