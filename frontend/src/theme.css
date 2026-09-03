@@ -274,6 +274,7 @@ main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
   padding: 14px 16px; min-height: 120px; }
 .qcard-paper h3 { font-size: 12.5px; color: var(--pencil); font-weight: 500; margin-bottom: 8px; }
 .crop-box img { max-width: 100%; border-radius: 6px; border: 1px solid var(--hairline); }
+.crop-box .placeholder { color: var(--pencil); font-size: 13px; text-align: center; padding: 28px 0; border: 1px dashed var(--hairline); border-radius: 6px; }
 .qcard-paper .stem { font-size: 15px; margin-bottom: 6px; }
 .qcard-paper .muted { color: var(--pencil); font-size: 13px; }
 .qcard-paper .match-line { font-size: 13px; color: var(--teal); margin-top: 6px; }
