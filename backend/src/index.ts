@@ -11,8 +11,14 @@ import { childrenRoutes } from "./routes/children.js";
 import { attemptsRoutes } from "./routes/attempts.js";
 import { sessionsRoutes } from "./routes/sessions.js";
 import { modelsRoutes } from "./routes/models.js";
+import { papersRoutes } from "./routes/papers.js";
+import { paperQuestionsRoutes } from "./routes/paperQuestions.js";
+import { redriveStuckPapers, type PaperJobDeps } from "./papers/jobs.js";
 
-export function createApp(cfg: BackendConfig = loadConfig()) {
+export function createApp(
+  cfg: BackendConfig = loadConfig(),
+  opts: { paperJobs?: PaperJobDeps } = {},
+) {
   const app = new Hono();
   const pool = getPool(cfg.databaseUrl);
   const rerank = makeReranker(cfg.rerankProvider, cfg.pipelineUrl);
@@ -21,6 +27,12 @@ export function createApp(cfg: BackendConfig = loadConfig()) {
       embed: (texts) => embedTexts(cfg.embedBaseUrl, cfg.embedModel, texts),
       rerank,
     }, q, { filters });
+  const paperJobs: PaperJobDeps = opts.paperJobs ?? {
+    pipelineUrl: cfg.pipelineUrl,
+    matchThreshold: cfg.matchThreshold,
+    embed: (texts) => embedTexts(cfg.embedBaseUrl, cfg.embedModel, texts),
+    rerank,
+  };
   const factory = makeAgentFactory(cfg, pool, search);
   const sessionStore = new JsonlSessionStore();
   app.get("/api/health", (c) => c.json({ ok: true }));
@@ -40,6 +52,8 @@ export function createApp(cfg: BackendConfig = loadConfig()) {
   app.route("/api/models", modelsRoutes(cfg.chatModels));
   app.route("/api/children", childrenRoutes(pool));
   app.route("/api/attempts", attemptsRoutes(pool));
+  app.route("/api/papers", papersRoutes(pool, paperJobs, cfg));
+  app.route("/api/paper-questions", paperQuestionsRoutes(pool, paperJobs));
   return app;
 }
 
@@ -47,5 +61,16 @@ if (process.env.VITEST === undefined) {
   const cfg = loadConfig();
   serve({ fetch: createApp(cfg).fetch, port: cfg.port }, (info) => {
     console.log(`backend  listening on http://127.0.0.1:${info.port}`);
+    // 启动重驱动:滞留 processing 的卷(pipeline 幂等,安全)
+    const pool = getPool(cfg.databaseUrl);
+    const jobs: PaperJobDeps = {
+      pipelineUrl: cfg.pipelineUrl,
+      matchThreshold: cfg.matchThreshold,
+      embed: (texts) => embedTexts(cfg.embedBaseUrl, cfg.embedModel, texts),
+      rerank: makeReranker(cfg.rerankProvider, cfg.pipelineUrl),
+    };
+    void redriveStuckPapers(pool, jobs).then((n) => {
+      if (n > 0) console.log(`重驱动 ${n} 卷滞留 processing 的试卷`);
+    });
   });
 }
