@@ -116,7 +116,7 @@ token 统计不进统计页；复核页支持键盘流转（1/2/3 标记对错�
 - **Pre-phase（已完成）**：前端视觉原型，五视图 + 视觉语言，用户已确认方向。
 - **Phase 1（本轮）**：
   - 目录搬家：现有 Python `backend/` 整体迁到 `pipeline/`（含 storage/，保持相对路径可解析）
-  - `children` / `attempts` 表 + `llm_calls` 加 modality/paper_id
+  - `children` / `attempts` 表 + `llm_calls` 加 modality（paper_id 随 Phase 2 的 papers 表一起建）
   - `backend/` TS 服务骨架 + pi-agent + `/api/chat`（SSE）+ 检索工具（题库部分）
   - 双路召回在 TS 实现（ollama embed + pgvector/BM25 SQL + 合并）；pipeline 侧加 `/internal/rerank`，TS 侧 reranker provider 抽象
   - frontend/ React 骨架 + 聊天页（按原型视觉）
