@@ -14,6 +14,7 @@ describe("loadConfig", () => {
     expect(cfg.embedBaseUrl).toBe("http://localhost:11434");
     expect(cfg.pipelineUrl).toBe("http://127.0.0.1:8766");
     expect(cfg.rerankProvider).toBe("local");
+    expect(cfg.chatModels).toEqual(["qwen3-32b"]);
   });
 
   it("空字符串视同未设置，照常回落", () => {
@@ -43,5 +44,23 @@ describe("loadConfig", () => {
 
   it("缺 KB_DATABASE_URL 直接抛错", () => {
     expect(() => loadConfig({} as NodeJS.ProcessEnv)).toThrow(/KB_DATABASE_URL/);
+  });
+
+  it("CHAT_MODELS 逗号分隔注册多模型，去空白去空项", () => {
+    const cfg = loadConfig({
+      KB_DATABASE_URL: "postgresql://localhost/kb_test",
+      CHAT_MODEL: "qwen3:4b",
+      CHAT_MODELS: "qwen3:4b, deepseek-v3 ,,qwen3-32b",
+    } as NodeJS.ProcessEnv);
+    expect(cfg.chatModels).toEqual(["qwen3:4b", "deepseek-v3", "qwen3-32b"]);
+  });
+
+  it("CHAT_MODELS 为空串视同未设置，缺省 [chatModel]", () => {
+    const cfg = loadConfig({
+      KB_DATABASE_URL: "postgresql://localhost/kb_test",
+      CHAT_MODEL: "deepseek-v3",
+      CHAT_MODELS: "",
+    } as NodeJS.ProcessEnv);
+    expect(cfg.chatModels).toEqual(["deepseek-v3"]);
   });
 });

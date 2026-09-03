@@ -18,4 +18,6 @@ node_modules/
 
 # 流水线运行时产物（页面渲染图）
 pipeline/storage/
+# 聊天会话 JSONL 持久化（产品数据，只写文件不落 git）
+backend/storage/
 resources

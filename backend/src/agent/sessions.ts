@@ -1,0 +1,158 @@
+/** 聊天会话持久化：窄接口 SessionStore + JsonlSessionRepo 实现。
+    设计要点（对 pi-agent-core@0.84.4 源码核实）：
+    - appendMessage/appendEntry 走 "main" lane，lane 不存在会抛错 → 首次写前 ensureLane。
+    - JsonlSessionRepo.open() 无写者锁 → 进程内 id→Session 缓存，避免同会话多写者交错。
+    - user/assistant 的 message_end 都会触发（agent-loop.js），toolResult 不落盘。 */
+import { fileURLToPath } from "node:url";
+import {
+  JsonlSessionRepo,
+  uuidv7,
+  type AgentMessage,
+  type JsonlSessionMetadata,
+  type MessageEntry,
+  type ModelChangeEntry,
+  type Session,
+} from "@earendil-works/pi-agent-core";
+import { NodeExecutionEnv } from "@earendil-works/pi-agent-core/node";
+
+export interface StoredChatMessage {
+  role: "user" | "assistant";
+  content: string;
+}
+
+export interface SessionSummary {
+  id: string;
+  title: string;
+  model: string;
+  createdAt: number;
+  modifiedAt: number;
+}
+
+export interface SessionHandle {
+  readonly id: string;
+  /** 当前模型：最近一次 model_change，否则创建时 metadata.model。 */
+  currentModel(): Promise<string>;
+  /** 规范化后的历史消息（user/assistant 的 text 段拼接；空 text 与 toolResult 跳过）。 */
+  messages(): Promise<StoredChatMessage[]>;
+  appendMessage(message: AgentMessage): Promise<void>;
+  markModelChange(modelId: string): Promise<void>;
+}
+
+export interface SessionStore {
+  create(opts: { title: string; model: string }): Promise<SessionHandle>;
+  open(id: string): Promise<SessionHandle | null>;
+  list(): Promise<SessionSummary[]>;
+}
+
+/** src/ 与 dist/ 深度相同，同 db.ts 的 migrations 路径手法。 */
+export function defaultSessionsRoot(): string {
+  return fileURLToPath(new URL("../../storage/sessions", import.meta.url));
+}
+
+function messageText(m: AgentMessage): string | null {
+  if (m.role === "user") {
+    if (typeof m.content === "string") return m.content;
+    return m.content.filter((c) => c.type === "text").map((c) => c.text).join("");
+  }
+  if (m.role === "assistant") {
+    return m.content.filter((c) => c.type === "text").map((c) => c.text).join("");
+  }
+  return null;
+}
+
+class JsonlSessionHandle implements SessionHandle {
+  constructor(
+    readonly id: string,
+    private readonly session: Session<JsonlSessionMetadata>,
+    private readonly createdModel: string,
+  ) {}
+
+  private async ensureLane() {
+    const lanes = await this.session.getLanes();
+    if (!lanes.some((l) => l.lane === "main")) await this.session.createLane("main", null);
+  }
+
+  async currentModel(): Promise<string> {
+    const [change] = (await this.session.findEntries({
+      type: "model_change", order: "newestFirst", limit: 1,
+    })) as ModelChangeEntry[];
+    return change?.modelId ?? this.createdModel;
+  }
+
+  async messages(): Promise<StoredChatMessage[]> {
+    const entries = (await this.session.findEntries({
+      type: "message", order: "oldestFirst",
+    })) as MessageEntry[];
+    const out: StoredChatMessage[] = [];
+    for (const e of entries) {
+      const text = messageText(e.message);
+      if (text === null || text === "") continue;
+      out.push({ role: e.message.role as "user" | "assistant", content: text });
+    }
+    return out;
+  }
+
+  async appendMessage(message: AgentMessage): Promise<void> {
+    await this.ensureLane();
+    await this.session.appendMessage(message);
+  }
+
+  async markModelChange(modelId: string): Promise<void> {
+    await this.ensureLane();
+    await this.session.appendEntry(
+      { type: "model_change", id: uuidv7(), provider: "chat", modelId },
+      "main",
+    );
+  }
+}
+
+export class JsonlSessionStore implements SessionStore {
+  private readonly repo: JsonlSessionRepo;
+  private readonly cwd: string;
+  /** 进程内单写者缓存：open() 无锁，同 id 必须共享一个 Session 实例。 */
+  private readonly cache = new Map<string, Session<JsonlSessionMetadata>>();
+
+  constructor(opts: { sessionsRoot?: string; cwd?: string } = {}) {
+    this.cwd = opts.cwd ?? fileURLToPath(new URL("../..", import.meta.url));
+    const env = new NodeExecutionEnv({ cwd: this.cwd });
+    this.repo = new JsonlSessionRepo({
+      fs: env,
+      sessionsRoot: opts.sessionsRoot ?? defaultSessionsRoot(),
+    });
+  }
+
+  private wrap(session: Session<JsonlSessionMetadata>, meta: JsonlSessionMetadata): SessionHandle {
+    this.cache.set(meta.id, session);
+    return new JsonlSessionHandle(meta.id, session, String(meta.metadata?.model ?? ""));
+  }
+
+  async create(opts: { title: string; model: string }): Promise<SessionHandle> {
+    const session = await this.repo.create({
+      cwd: this.cwd,
+      metadata: { title: opts.title, model: opts.model },
+    });
+    return this.wrap(session, await session.getMetadata());
+  }
+
+  async open(id: string): Promise<SessionHandle | null> {
+    const cached = this.cache.get(id);
+    if (cached) {
+      const meta = await cached.getMetadata();
+      return new JsonlSessionHandle(id, cached, String(meta.metadata?.model ?? ""));
+    }
+    const meta = (await this.repo.list()).find((m) => m.id === id);
+    if (!meta) return null;
+    return this.wrap(await this.repo.open(meta), meta);
+  }
+
+  async list(): Promise<SessionSummary[]> {
+    const all = await this.repo.list();
+    return all.map((m) => ({
+      id: m.id,
+      title: String(m.metadata?.title ?? ""),
+      model: String(m.metadata?.model ?? ""),
+      createdAt: m.createdAt,
+      modifiedAt: m.modifiedAt,
+    }));
+  }
+}

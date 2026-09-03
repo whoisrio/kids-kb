@@ -6,6 +6,8 @@ export interface BackendConfig {
   chatBaseUrl: string;
   chatApiKey: string;
   chatModel: string;
+  /** 可切换的聊天模型列表（CHAT_MODELS 逗号分隔；缺省 [chatModel]）。 */
+  chatModels: string[];
   embedBaseUrl: string;
   embedModel: string;
   pipelineUrl: string;
@@ -22,12 +24,18 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): BackendConfig 
   const databaseUrl = env.KB_DATABASE_URL;
   if (!databaseUrl) throw new Error("缺少 KB_DATABASE_URL（如 postgresql://localhost/kb）");
   const visionBase = pick(env.KB_VISION_BASE_URL) ?? "http://localhost:11434/v1";
+  const chatModel = pick(env.CHAT_MODEL, env.DOC_OGNIZE_MODEL, env.KB_VISION_MODEL) ?? "qwen3:4b";
+  const chatModels = pick(env.CHAT_MODELS)
+    ?.split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
   return {
     databaseUrl,
     chatBaseUrl: pick(env.CHAT_BASE_URL, env.DOC_OGNIZE_BASE_URL) ?? visionBase,
     chatApiKey:
       pick(env.CHAT_API_KEY, env.DOC_OGNIZE_API_KEY, env.KB_VISION_API_KEY) ?? "ollama",
-    chatModel: pick(env.CHAT_MODEL, env.DOC_OGNIZE_MODEL, env.KB_VISION_MODEL) ?? "qwen3:4b",
+    chatModel,
+    chatModels: chatModels && chatModels.length > 0 ? chatModels : [chatModel],
     embedBaseUrl: pick(env.KB_EMBED_BASE_URL) ?? "http://localhost:11434",
     embedModel: pick(env.KB_EMBED_MODEL) ?? "bge-m3",
     pipelineUrl: pick(env.PIPELINE_INTERNAL_URL) ?? "http://127.0.0.1:8766",
