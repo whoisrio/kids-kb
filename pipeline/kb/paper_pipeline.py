@@ -5,8 +5,15 @@ papers.status 由 TS 编排层管理;本模块只写 source_path/page_count/pape
 """
 from __future__ import annotations
 
+import base64
 import json
 import re
+from pathlib import Path
+
+import pymupdf as fitz
+
+from kb.config import Config
+from kb.metering import extract_usage, record_llm_call
 
 PAPER_VLM_PROMPT = """你是试卷解析助手。把这一页试卷拆成一道道独立的题,并识别批改痕迹。
 只输出纯 JSON(不要 markdown 围栏),结构:
@@ -80,3 +87,155 @@ def parse_page_questions(text: str) -> list[dict]:
             "mark_desc": (q.get("mark_desc") or "").strip() or None,
         })
     return out
+
+
+def _vlm_call(client, model: str, image_path: str, feedback: str | None):
+    """单次 VLM 调用;feedback 非空时为重试(带错误反馈)。"""
+    prompt = PAPER_VLM_PROMPT
+    if feedback:
+        prompt += f"\n\n你上次的输出有问题:{feedback}\n请严格修正后重新输出,仍然只输出纯 JSON。"
+    b64 = base64.b64encode(Path(image_path).read_bytes()).decode("ascii")
+    resp = client.chat.completions.create(
+        model=model,
+        messages=[{
+            "role": "user",
+            "content": [
+                {"type": "text", "text": prompt},
+                {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64}"}},
+            ],
+        }],
+        max_tokens=_MAX_TOKENS,
+    )
+    return resp.choices[0].message.content, extract_usage(resp)
+
+
+def _recognize_page(conn, cfg: Config, paper_id: str, page_no: int,
+                    image_path: str, client=None) -> list[dict]:
+    """一页 VLM 识别:失败重试一次(带反馈),再失败抛 RuntimeError。每次调用都计量。"""
+    if client is None:
+        from openai import OpenAI
+        client = OpenAI(base_url=cfg.vision_base_url, api_key=cfg.vision_api_key)
+    feedback: str | None = None
+    for _ in range(2):
+        text, usage = _vlm_call(client, cfg.vision_model, image_path, feedback)
+        record_llm_call(conn, None, "paper_vlm", cfg.vision_model, usage,
+                        paper_id=paper_id, modality="image")
+        try:
+            return parse_page_questions(text)
+        except ValueError as e:
+            feedback = str(e)
+    raise RuntimeError(f"第 {page_no} 页 VLM 输出两次解析失败: {feedback}")
+
+
+def _crop_question(page: fitz.Page, dpi: int, bbox: list[int], out_path: Path) -> None:
+    """按 0-1000 归一化 bbox 裁题图。
+
+    用 page.get_pixmap(clip=) 而非 Pixmap(pix, IRect) 二次裁切:后者在 PyMuPDF
+    1.28.x 存在 Pixmap 双参构造的兼容问题,前者坐标语义(页面 pt)更干净。
+    """
+    w, h = page.rect.width, page.rect.height
+    x1, y1, x2, y2 = bbox
+    rect = fitz.Rect(w * x1 / 1000, h * y1 / 1000, w * x2 / 1000, h * y2 / 1000)
+    page.get_pixmap(dpi=dpi, clip=rect).save(str(out_path))
+
+
+def _insert_questions(conn, paper_id: str, questions: list[dict]) -> None:
+    from psycopg.types.json import Jsonb
+    with conn.cursor() as cur:
+        for q in questions:
+            cur.execute(
+                """INSERT INTO paper_questions
+                   (paper_id, page_no, seq_in_page, content_md, answer_excerpt, mark_desc,
+                    recognized_result, bbox, image_path)
+                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+                (paper_id, q["page_no"], q["seq_in_page"], q["content_md"],
+                 q["answer_excerpt"], q["mark_desc"], q["recognized_result"],
+                 Jsonb(q["bbox"]) if q["bbox"] else None, q["image_path"]),
+            )
+
+
+def ingest_paper(conn, cfg: Config, paper_id: str, pdf_bytes: bytes | None = None,
+                 client=None) -> dict:
+    """全卷加工(幂等):存 source.pdf -> 渲染页图 -> 每页 VLM -> 裁题图 -> 全量替换。
+
+    pdf_bytes 缺省 = 重驱动,复用已存的 source.pdf。原子性:DELETE+INSERT 包在一个事务里。
+    """
+    root = cfg.storage_dir / "papers" / paper_id
+    pages_dir, questions_dir = root / "pages", root / "questions"
+    source = root / "source.pdf"
+    if pdf_bytes is not None:
+        root.mkdir(parents=True, exist_ok=True)
+        source.write_bytes(pdf_bytes)
+    if not source.exists():
+        raise FileNotFoundError("source.pdf 不存在(重驱动须先上传)")
+    pages_dir.mkdir(parents=True, exist_ok=True)
+    questions_dir.mkdir(parents=True, exist_ok=True)
+
+    doc = fitz.open(str(source))
+    recognized: list[dict] = []
+    for i, page in enumerate(doc, start=1):
+        img_rel = pages_dir / f"p{i:04d}.png"
+        if not img_rel.exists():
+            page.get_pixmap(dpi=cfg.dpi).save(str(img_rel))
+        questions = _recognize_page(conn, cfg, paper_id, i, str(img_rel), client=client)
+        for q in questions:
+            if q["bbox"]:
+                rel = questions_dir / f"p{i:04d}_q{q['seq_in_page']:02d}.png"
+                _crop_question(page, cfg.dpi, q["bbox"], rel)
+                q["image_path"] = str(rel.resolve())
+            else:
+                q["image_path"] = None
+            q["page_no"] = i
+            recognized.append(q)
+
+    with conn.transaction():  # autocommit 连接上的显式事务:全量替换原子生效
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM paper_questions WHERE paper_id=%s", (paper_id,))
+        _insert_questions(conn, paper_id, recognized)
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE papers SET source_path=%s, page_count=%s WHERE id=%s",
+                (str(source.resolve()), doc.page_count, paper_id),
+            )
+    return {"pages": doc.page_count, "questions": len(recognized)}
+
+
+def recognize_page(conn, cfg: Config, paper_id: str, page_no: int, client=None) -> dict:
+    """页级重识别(幂等):删该页题目 -> 复用/渲染该页图 -> 单页 VLM -> 重插。"""
+    with conn.cursor() as cur:
+        source_path = cur.execute(
+            "SELECT source_path FROM papers WHERE id=%s", (paper_id,)
+        ).fetchone()
+    if not source_path or not source_path[0]:
+        raise FileNotFoundError("试卷还没有 source.pdf")
+    doc = fitz.open(source_path[0])
+    if not (1 <= page_no <= doc.page_count):
+        raise ValueError(f"page_no 越界: {page_no} / {doc.page_count}")
+
+    root = cfg.storage_dir / "papers" / paper_id
+    pages_dir, questions_dir = root / "pages", root / "questions"
+    pages_dir.mkdir(parents=True, exist_ok=True)
+    questions_dir.mkdir(parents=True, exist_ok=True)
+    img_rel = pages_dir / f"p{page_no:04d}.png"
+    # 重识别 bbox 可能变,页图本身不重渲染(DPI 不变),但旧题图作废重裁
+    if not img_rel.exists():
+        doc[page_no - 1].get_pixmap(dpi=cfg.dpi).save(str(img_rel))
+    questions = _recognize_page(conn, cfg, paper_id, page_no, str(img_rel), client=client)
+    page = doc[page_no - 1]
+    for q in questions:
+        if q["bbox"]:
+            rel = questions_dir / f"p{page_no:04d}_q{q['seq_in_page']:02d}.png"
+            _crop_question(page, cfg.dpi, q["bbox"], rel)
+            q["image_path"] = str(rel.resolve())
+        else:
+            q["image_path"] = None
+        q["page_no"] = page_no
+
+    with conn.transaction():
+        with conn.cursor() as cur:
+            cur.execute(
+                "DELETE FROM paper_questions WHERE paper_id=%s AND page_no=%s",
+                (paper_id, page_no),
+            )
+        _insert_questions(conn, paper_id, questions)
+    return {"pages": 1, "questions": len(questions)}
