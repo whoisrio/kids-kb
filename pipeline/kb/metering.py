@@ -11,10 +11,13 @@ def extract_usage(resp) -> tuple[int | None, int | None]:
 
 
 def record_llm_call(conn, doc_id: str | None, purpose: str, model: str,
-                    usage: tuple[int | None, int | None]) -> None:
+                    usage: tuple[int | None, int | None],
+                    paper_id: str | None = None,
+                    modality: str | None = None) -> None:
     with conn.cursor() as cur:
         cur.execute(
-            """INSERT INTO llm_calls (document_id, purpose, model, prompt_tokens, completion_tokens)
-               VALUES (%s,%s,%s,%s,%s)""",
-            (doc_id, purpose, model, usage[0], usage[1]),
+            """INSERT INTO llm_calls (document_id, paper_id, purpose, model, modality,
+                                      prompt_tokens, completion_tokens)
+               VALUES (%s,%s,%s,%s,%s,%s,%s)""",
+            (doc_id, paper_id, purpose, model, modality, usage[0], usage[1]),
         )

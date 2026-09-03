@@ -105,6 +105,26 @@ def test_reprocess_marks_paddleocr_source(conn, tmp_path):
         assert cur.fetchall() == [("paddleocr-vl-1.5",)]
 
 
+def test_record_llm_call_paper_fields(conn):
+    from kb.metering import record_llm_call
+
+    cid = str(uuid.uuid4())
+    conn.execute("INSERT INTO children (id, name) VALUES (%s,'小宝')", (cid,))
+    pid = str(uuid.uuid4())
+    conn.execute(
+        "INSERT INTO papers (id, child_id, title, subject) VALUES (%s,%s,'卷','数学')",
+        (pid, cid),
+    )
+    record_llm_call(conn, None, "paper_vlm", "qwen3.8-27b", (11, 22),
+                    paper_id=pid, modality="image")
+    row = conn.execute(
+        "SELECT document_id, paper_id, purpose, model, modality, prompt_tokens, completion_tokens "
+        "FROM llm_calls ORDER BY created_at DESC LIMIT 1"
+    ).fetchone()
+    # psycopg 把 uuid 列读成 UUID 对象,与插入的字符串比较前先归一
+    assert row == (None, uuid.UUID(pid), "paper_vlm", "qwen3.8-27b", "image", 11, 22)
+
+
 def test_structure_records_llm_call(conn, tmp_path):
     """章节拆条走远端 -> llm_calls 记 purpose=structure。"""
     from kb.layout import run_layout
