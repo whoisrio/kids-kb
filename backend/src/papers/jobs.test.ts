@@ -60,7 +60,17 @@ maybe("试卷后台任务（真库 + 假 pipeline fetch）", () => {
   it("成功路径:调 pipeline -> 自动匹配 -> ready_for_review", async () => {
     const id = await seedPaper();
     await seedQuestion(id, "135 ÷ 5 =");
-    await drivePaper(pool, deps, id);
+    const signalCalls: unknown[] = [];
+    const depsWithSignal = {
+      ...deps,
+      fetchImpl: vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        signalCalls.push(init?.signal);
+        const u = String(input);
+        if (u.includes("/internal/ingest-paper")) return okPipeline();
+        throw new Error(`unexpected ${u}`);
+      }) as unknown as typeof fetch,
+    };
+    await drivePaper(pool, depsWithSignal, id);
     const paper = (await pool.query(
       "SELECT status, error FROM papers WHERE id=$1", [id])).rows[0];
     expect(paper.status).toBe("ready_for_review");
@@ -70,8 +80,11 @@ maybe("试卷后台任务（真库 + 假 pipeline fetch）", () => {
     expect(q.matched_item_id).toBe(ITEM);
     expect(q.match_score).toBeGreaterThan(0.88);
     // 首次驱动带 multipart body
-    const call = (deps.fetchImpl as ReturnType<typeof vi.fn>).mock.calls[0];
+    const call = (depsWithSignal.fetchImpl as ReturnType<typeof vi.fn>).mock.calls[0];
     expect(String(call[0])).toContain("/internal/ingest-paper");
+    // 每次 pipeline 调用都挂了 AbortSignal 超时(10 分钟),防整卷卡死
+    expect(signalCalls.length).toBeGreaterThan(0);
+    for (const s of signalCalls) expect(s).toBeInstanceOf(AbortSignal);
   });
 
   it("pipeline 失败 -> failed + error 文案", async () => {

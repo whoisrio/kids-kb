@@ -39,6 +39,9 @@ async function runPaperJob(pool: pg.Pool, deps: PaperJobDeps, paperId: string,
                            opts: { pdfBytes?: Uint8Array; pageNo?: number }) {
   const fetchImpl = deps.fetchImpl ?? fetch;
   const base = deps.pipelineUrl.replace(/\/$/, "");
+  // 整卷加工可长达数分钟(VLM 逐页),显式 10 分钟超时;undici 默认 300s 且长任务可能整卷卡死
+  const TIMEOUT_MS = 600_000;
+  const timeout = () => AbortSignal.timeout(TIMEOUT_MS);
 
   let resp: Response;
   if (opts.pageNo === undefined) {
@@ -46,15 +49,16 @@ async function runPaperJob(pool: pg.Pool, deps: PaperJobDeps, paperId: string,
     if (opts.pdfBytes) {
       const form = new FormData();
       form.append("file", new Blob([opts.pdfBytes as BlobPart], { type: "application/pdf" }), "source.pdf");
-      resp = await fetchImpl(url, { method: "POST", body: form });
+      resp = await fetchImpl(url, { method: "POST", body: form, signal: timeout() });
     } else {
-      resp = await fetchImpl(url, { method: "POST" });  // 重驱动:复用 pipeline 已存 source.pdf
+      resp = await fetchImpl(url, { method: "POST", signal: timeout() });  // 重驱动:复用 pipeline 已存 source.pdf
     }
   } else {
     resp = await fetchImpl(`${base}/internal/recognize-page`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ paper_id: paperId, page_no: opts.pageNo }),
+      signal: timeout(),
     });
   }
   if (!resp.ok) {
