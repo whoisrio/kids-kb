@@ -1141,6 +1141,7 @@ dependencies = [
     { name = "psycopg", extra = ["binary"] },
     { name = "pymupdf" },
     { name = "python-dotenv" },
+    { name = "python-multipart" },
     { name = "rapidocr-onnxruntime" },
     { name = "uvicorn" },
 ]
@@ -1191,6 +1192,7 @@ requires-dist = [
     { name = "psycopg", extras = ["binary"], specifier = ">=3.2" },
     { name = "pymupdf", specifier = ">=1.28.2" },
     { name = "python-dotenv", specifier = ">=1.0" },
+    { name = "python-multipart", specifier = ">=0.0.32" },
     { name = "rapidocr-onnxruntime", specifier = ">=1.4.4" },
     { name = "torch", marker = "extra == 'ocr-cuda'", specifier = ">=2.5" },
     { name = "torch", marker = "extra == 'rerank'", specifier = ">=2.5" },
