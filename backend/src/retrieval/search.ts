@@ -8,6 +8,8 @@ export interface SearchHit {
   content_md: string;
   score: number;
   rerank_score?: number;
+  /** 向量余弦(该条目所有 chunk 的最大值);仅 BM25 命中的条目无此字段。 */
+  vec_score?: number;
   [k: string]: unknown;  // meta 展开（label/chapter/subject/doc_title 等）
 }
 
@@ -54,6 +56,8 @@ export async function hybridSearch(
   const rrf = new Map<string, SearchHit>();
   vecHits.forEach((r, rank) => {
     const h = rrf.get(r.item_id) ?? { ...toHit(r), score: 0 };
+    // vec_score 取该条目各 chunk 的最大余弦(一个条目一个 chunk,当前即本身)
+    h.vec_score = Math.max(h.vec_score ?? -1, r.score ?? -1);
     h.score += 1 / (60 + rank + 1);
     rrf.set(r.item_id, h);
   });
