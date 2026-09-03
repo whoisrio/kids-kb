@@ -81,15 +81,33 @@ class TestPaperEndpoints:
         n = conn.execute("SELECT count(*) FROM paper_questions WHERE paper_id=%s", (pid,)).fetchone()[0]
         assert n == 1
 
+    def test_ingest_paper_500_detail_透传真实原因(self, conn, cfg, monkeypatch):
+        """服务器端抛异常 → HTTPException(500, detail=str(e))，detail 可排查而非 "Internal Server Error"。"""
+        from fastapi.testclient import TestClient
+        from kb.internal_api import create_internal_app
+        import kb.paper_pipeline as pp
+
+        def boom(*a, **kw):
+            raise RuntimeError("磁盘写满: /dev/sdb1")
+
+        monkeypatch.setattr(pp, "ingest_paper", boom)
+        client = TestClient(create_internal_app(get_conn=lambda: conn, cfg=cfg),
+                            raise_server_exceptions=False)
+        r = client.post("/internal/ingest-paper?paper_id=00000000-0000-0000-0000-000000000000")
+        assert r.status_code == 500
+        assert r.json()["detail"] == "磁盘写满: /dev/sdb1"
+
     def test_ingest_paper_卷不存在_500_detail(self, conn, cfg):
         from fastapi.testclient import TestClient
         from kb.internal_api import create_internal_app
-        # 服务器端抛异常返回 500，需关闭 raise_server_exceptions 才能断言到状态码
+        # 服务器端抛异常返回 500 + 真实 detail，需关闭 raise_server_exceptions 才能断言到状态码
         client = TestClient(create_internal_app(get_conn=lambda: conn, cfg=cfg),
                             raise_server_exceptions=False)
         r = client.post("/internal/ingest-paper?paper_id=00000000-0000-0000-0000-000000000000",
                         files={"file": ("s.pdf", b"not a pdf", "application/pdf")})
         assert r.status_code == 500
+        body = r.json()
+        assert isinstance(body.get("detail"), str) and body["detail"]
 
     def test_recognize_page(self, conn, child, cfg):
         from fastapi.testclient import TestClient
