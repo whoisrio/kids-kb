@@ -15,11 +15,11 @@
 
 ## 开发启动
 
-一键起三服务（pipeline :8766 + backend :8787 + frontend :5173）：在**仓库根目录**执行 `node scripts/start.mjs`（Ctrl+C 全停，跨平台）。
+一键起三服务（pipeline :8766 + backend :8787 + frontend :5200）：在**仓库根目录**执行 `node scripts/start.mjs`（Ctrl+C 全停，跨平台）。
 
 - pipeline：`cd pipeline && uv run pytest tests/`（测试需 KB_TEST_DATABASE_URL）
 - backend：`cd backend && npm test`（真库测试需 KB_TEST_DATABASE_URL）/ `npm run dev`（8787）
-- frontend：`cd frontend && npm run dev`（5173，proxy 到 8787）
+- frontend：`cd frontend && npm run dev`（5200，proxy 到 8787）
 
 ## 边界纪律
 

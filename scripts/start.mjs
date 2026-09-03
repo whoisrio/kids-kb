@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * 一键启动三服务：pipeline（rerank 内部服务 :8766）+ backend（:8787）+ frontend（:5173）。
+ * 一键启动三服务：pipeline（rerank 内部服务 :8766）+ backend（:8787）+ frontend（:5200）。
  * 用法：node scripts/start.mjs（Ctrl+C 全部停止）
  * 跨平台：Windows/macOS/Linux；npm 在 Windows 上自动用 npm.cmd。
  */
@@ -74,5 +74,5 @@ function shutdown(code = 0) {
 process.on("SIGINT", () => shutdown(0));
 process.on("SIGTERM", () => shutdown(0));
 
-console.log("三服务启动中：pipeline :8766 · backend :8787 · frontend :5173");
-console.log("打开 http://127.0.0.1:5173 ；Ctrl+C 停止全部\n");
+console.log("三服务启动中：pipeline :8766 · backend :8787 · frontend :5200");
+console.log("打开 http://127.0.0.1:5200 ；Ctrl+C 停止全部\n");
