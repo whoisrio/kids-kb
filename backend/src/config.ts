@@ -1,5 +1,6 @@
 /** 集中配置：全部走环境变量，与 pipeline 侧 .env 习惯一致。 */
 import "dotenv/config";
+import { resolve as pathResolve } from "node:path";
 
 export interface BackendConfig {
   databaseUrl: string;
@@ -13,6 +14,10 @@ export interface BackendConfig {
   pipelineUrl: string;
   rerankProvider: "local" | "none";
   port: number;
+  /** pipeline 侧 storage 根(试卷页图/题图回传用)。 */
+  storageRoot: string;
+  /** 题库自动匹配阈值(余弦相似度)。 */
+  matchThreshold: number;
 }
 
 /** 取第一个非空值：dotenv 把 `KEY=` 解析为空串，空串视同未设置。 */
@@ -42,5 +47,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): BackendConfig 
     pipelineUrl: pick(env.PIPELINE_INTERNAL_URL) ?? "http://127.0.0.1:8766",
     rerankProvider: env.RERANK_PROVIDER === "none" ? "none" : "local",
     port: Number(pick(env.BACKEND_PORT) ?? 8787),
+    // 试卷页图/题图在 pipeline/storage 下;默认同仓部署,可 env 覆盖
+    storageRoot: pick(env.KB_STORAGE_ROOT) ?? pathResolve("../pipeline/storage"),
+    matchThreshold: (() => {
+      const v = Number(pick(env.KB_MATCH_THRESHOLD));
+      return Number.isFinite(v) && v > 0 && v <= 1 ? v : 0.88;
+    })(),
   };
 }

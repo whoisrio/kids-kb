@@ -82,3 +82,25 @@ describe("loadConfig", () => {
     expect(cfg.chatModels).toEqual(["qwen3:4b", "deepseek-v3"]);
   });
 });
+
+describe("试卷配置", () => {
+  it("storageRoot 缺省指向 ../pipeline/storage(相对 backend cwd 解析)", () => {
+    const cfg = loadConfig({ KB_DATABASE_URL: "postgresql://localhost/kb" } as NodeJS.ProcessEnv);
+    expect(cfg.storageRoot.endsWith("pipeline/storage")).toBe(true);
+  });
+  it("KB_STORAGE_ROOT 覆盖;matchThreshold 缺省 0.88 可覆盖", () => {
+    const cfg = loadConfig({
+      KB_DATABASE_URL: "x",
+      KB_STORAGE_ROOT: "/tmp/papers-root",
+      KB_MATCH_THRESHOLD: "0.9",
+    } as unknown as NodeJS.ProcessEnv);
+    expect(cfg.storageRoot).toBe("/tmp/papers-root");
+    expect(cfg.matchThreshold).toBe(0.9);
+  });
+  it("matchThreshold 非法值回落默认", () => {
+    const cfg = loadConfig({
+      KB_DATABASE_URL: "x", KB_MATCH_THRESHOLD: "abc",
+    } as unknown as NodeJS.ProcessEnv);
+    expect(cfg.matchThreshold).toBe(0.88);
+  });
+});
