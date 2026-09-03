@@ -1,4 +1,9 @@
-export function Rail() {
+interface RailProps {
+  activeView: "chat" | "review";
+  onSelect: (view: "chat" | "review") => void;
+}
+
+export function Rail({ activeView, onSelect }: RailProps) {
   return (
     <nav className="rail">
       <div className="brand">
@@ -21,14 +26,13 @@ export function Rail() {
         </span>
       </div>
       <div className="nav">
-        <button className="active">
+        <button className={activeView === "chat" ? "active" : ""} onClick={() => onSelect("chat")}>
           <span className="dot"></span>
           <span className="txt">聊天</span>
         </button>
-        <button disabled>
+        <button className={activeView === "review" ? "active" : ""} onClick={() => onSelect("review")}>
           <span className="dot"></span>
           <span className="txt">复核</span>
-          <span className="todo">待建设</span>
         </button>
         <button disabled>
           <span className="dot"></span>

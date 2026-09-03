@@ -1,0 +1,164 @@
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { fetchRouter, jsonResponse } from "../test/support";
+import { ReviewView } from "./ReviewView";
+
+afterEach(() => vi.unstubAllGlobals());
+
+const CHILDREN = [{ id: "c1", name: "小宝", grade: null, created_at: "2026-01-01" }];
+const CHILDREN_RES = { children: CHILDREN };
+
+function paper(status: string, extra: Record<string, unknown> = {}) {
+  return {
+    id: "p1", title: "期中卷", subject: "数学", status, error: null, page_count: 1,
+    created_at: "2026-09-03", total_questions: 2, confirmed_questions: 0, ...extra,
+  };
+}
+
+function detail(questions: unknown[]) {
+  return {
+    id: "p1", title: "期中卷", subject: "数学", child_id: "c1", status: "ready_for_review",
+    error: null, page_count: 1, created_at: "2026-09-03",
+    total_questions: questions.length, confirmed_questions: 0, questions,
+  };
+}
+
+const Q1 = {
+  id: "q1", paper_id: "p1", page_no: 1, seq_in_page: 1, seq: 1,
+  content_md: "135 ÷ 5 =", answer_excerpt: "27", mark_desc: "红笔 ✗",
+  recognized_result: "wrong", confirmed_result: null, error_cause: null, note: null,
+  matched_item_id: null, match_score: null, matched_label: null,
+  matched_chapter: null, matched_doc_title: null,
+};
+const Q2 = { ...Q1, id: "q2", seq_in_page: 2, seq: 2, content_md: "画一画", recognized_result: null };
+
+function stub(routes: Record<string, (init?: RequestInit) => Response>) {
+  vi.stubGlobal("fetch", fetchRouter(routes));
+}
+
+describe("ReviewView", () => {
+  it("挂载:左侧卷列表 + 选中卷加载题目详情", async () => {
+    stub({
+      "/api/children": () => jsonResponse(CHILDREN),
+      "/api/papers": () => jsonResponse({ papers: [paper("ready_for_review")] }),
+      "/api/papers/p1": () => jsonResponse(detail([Q1, Q2])),
+    });
+    render(<ReviewView />);
+    await waitFor(() => expect(screen.getByText("期中卷")).toBeInTheDocument());
+    fireEvent.click(screen.getByText("期中卷"));
+    await waitFor(() => expect(screen.getByText("135 ÷ 5 =")).toBeInTheDocument());
+    // VLM 预识别展示 + 预选中提示
+    expect(screen.getByText(/红笔 ✗/)).toBeInTheDocument();
+  });
+
+  it("键盘流转:1=错(确认并下一条),Enter=采纳预选;焦点在输入框时不触发", async () => {
+    const confirms: unknown[] = [];
+    stub({
+      "/api/children": () => jsonResponse(CHILDREN_RES),
+      "/api/papers": () => jsonResponse({ papers: [paper("ready_for_review")] }),
+      "/api/papers/p1": () => jsonResponse(detail([Q1, Q2])),
+      "/api/paper-questions/q1/confirm": (init) => {
+        confirms.push(JSON.parse(String(init?.body)));
+        return jsonResponse({ id: "q1", paper_status: "ready_for_review" });
+      },
+      "/api/paper-questions/q2/confirm": (init) => {
+        confirms.push(JSON.parse(String(init?.body)));
+        return jsonResponse({ id: "q2", paper_status: "done" });
+      },
+    });
+    render(<ReviewView />);
+    await waitFor(() => expect(screen.getByText("期中卷")).toBeInTheDocument());
+    fireEvent.click(screen.getByText("期中卷"));
+    await waitFor(() => expect(screen.getByText("135 ÷ 5 =")).toBeInTheDocument());
+    // 焦点在备注框时按 1 不触发(keydown 冒泡到 window,target 是输入框被拦)
+    fireEvent.keyDown(screen.getByLabelText("备注"), { key: "1" });
+    expect(confirms).toEqual([]);
+    // 焦点在 body:1 = 错,确认并跳下一条
+    fireEvent.keyDown(window, { key: "1" });
+    await waitFor(() => expect(confirms[0]).toEqual({ result: "wrong" }));
+    await waitFor(() => expect(screen.getByText("画一画")).toBeInTheDocument());
+    // Enter = 采纳预选(Q2 无预选,不触发)
+    fireEvent.keyDown(window, { key: "Enter" });
+    expect(confirms).toHaveLength(1);
+  });
+
+  it("确认带错因与备注(先填后按键)", async () => {
+    const confirms: unknown[] = [];
+    stub({
+      "/api/children": () => jsonResponse(CHILDREN_RES),
+      "/api/papers": () => jsonResponse({ papers: [paper("ready_for_review")] }),
+      "/api/papers/p1": () => jsonResponse(detail([Q1])),
+      "/api/paper-questions/q1/confirm": (init) => {
+        confirms.push(JSON.parse(String(init?.body)));
+        return jsonResponse({ id: "q1", paper_status: "done" });
+      },
+    });
+    render(<ReviewView />);
+    await waitFor(() => expect(screen.getByText("期中卷")).toBeInTheDocument());
+    fireEvent.click(screen.getByText("期中卷"));
+    await waitFor(() => expect(screen.getByText("135 ÷ 5 =")).toBeInTheDocument());
+    fireEvent.change(screen.getByLabelText("错因"), { target: { value: "计算错" } });
+    fireEvent.change(screen.getByLabelText("备注"), { target: { value: "对位错" } });
+    fireEvent.keyDown(window, { key: "1" });
+    await waitFor(() => expect(confirms[0]).toEqual({
+      result: "wrong", error_cause: "计算错", note: "对位错",
+    }));
+  });
+
+  it("匹配:待匹配题点开候选浮层点选关联", async () => {
+    stub({
+      "/api/children": () => jsonResponse(CHILDREN_RES),
+      "/api/papers": () => jsonResponse({ papers: [paper("ready_for_review")] }),
+      "/api/papers/p1": () => jsonResponse(detail([Q1])),
+      "/api/paper-questions/q1/candidates": () => jsonResponse({
+        candidates: [{ item_id: "i1", content_md: "135 ÷ 5 =", vec_score: 0.93, label: "1", chapter: "第3讲", doc_title: "数学书" }],
+      }),
+      "/api/paper-questions/q1/match": () => jsonResponse({ id: "q1", matched_item_id: "i1" }),
+    });
+    render(<ReviewView />);
+    await waitFor(() => expect(screen.getByText("期中卷")).toBeInTheDocument());
+    fireEvent.click(screen.getByText("期中卷"));
+    await waitFor(() => expect(screen.getByText("135 ÷ 5 =")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: /待匹配/ }));
+    const popover = await screen.findByRole("dialog");
+    fireEvent.click(within(popover).getByText(/数学书/));
+    await waitFor(() =>
+      expect(screen.getByText(/数学书 · 第3讲 · 1/)).toBeInTheDocument());
+  });
+
+  it("上传弹层:填表提交 multipart 后刷新列表并选中", async () => {
+    let captured: FormData | null = null;
+    let listCalls = 0;
+    stub({
+      "/api/children": () => jsonResponse(CHILDREN_RES),
+      "/api/papers": () => {
+        listCalls++;
+        return jsonResponse({ papers: listCalls === 1 ? [] : [paper("processing")] });
+      },
+      "/api/papers/p1": () => jsonResponse(detail([Q1])),
+    });
+    // 覆盖 POST /api/papers(fetchRouter 只按 URL 路由,method 区分需手写全局 fetch)
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === "/api/papers" && init?.method === "POST") {
+        captured = init.body as FormData;
+        return jsonResponse(paper("processing"), 201);
+      }
+      if (url === "/api/children") return jsonResponse(CHILDREN_RES);
+      if (url === "/api/papers") return jsonResponse({ papers: [paper("processing")] });
+      if (url === "/api/papers/p1") return jsonResponse(detail([Q1]));
+      return new Response("404", { status: 404 });
+    });
+    render(<ReviewView />);
+    fireEvent.click(screen.getByRole("button", { name: /上传试卷/ }));
+    fireEvent.change(await screen.findByLabelText("孩子"), { target: { value: "c1" } });
+    fireEvent.change(screen.getByLabelText("标题"), { target: { value: "期中卷" } });
+    fireEvent.change(screen.getByLabelText("科目"), { target: { value: "数学" } });
+    const file = new File([new Uint8Array([1])], "p1.png", { type: "image/png" });
+    fireEvent.change(screen.getByLabelText("文件"), { target: { files: [file] } });
+    fireEvent.click(screen.getByRole("button", { name: "提交" }));
+    await waitFor(() => expect(captured!.get("title")).toBe("期中卷"));
+    // 列表刷新出现新卷(用队列项断言,避免与详情区《》标题歧义)
+    await waitFor(() => expect(screen.getByRole("button", { name: /期中卷/ })).toBeInTheDocument());
+  });
+});
