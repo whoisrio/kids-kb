@@ -84,6 +84,44 @@ button { font-family: inherit; cursor: pointer; }
 
 main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 
+/* ---------- 会话侧栏 ---------- */
+.sessions {
+  width: 240px; flex-shrink: 0;
+  border-right: 1px solid var(--hairline);
+  display: flex; flex-direction: column; gap: 10px;
+  padding: 20px 12px 14px;
+}
+.sessions .head { display: flex; align-items: center; justify-content: space-between; padding: 0 8px; }
+.sessions .head .label { font-size: 11px; color: var(--pencil); letter-spacing: .08em; }
+.sessions .new-btn {
+  border: 1px dashed #D8D4C9; background: transparent; color: var(--pencil);
+  border-radius: 999px; padding: 3px 10px; font-size: 12px;
+}
+.sessions .new-btn:hover { color: var(--redpen); border-color: var(--redpen); }
+.sessions .list { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; }
+.sessions .empty { color: var(--pencil); font-size: 12.5px; text-align: center; padding: 28px 0; }
+.session-item {
+  border: 0; background: transparent; border-radius: 8px;
+  padding: 8px 10px; text-align: left; position: relative;
+  display: flex; flex-direction: column; gap: 2px; min-width: 0;
+}
+.session-item:hover { background: rgba(255,255,255,.6); }
+.session-item.active { background: var(--card); box-shadow: 0 1px 3px rgba(43,43,38,.08); }
+.session-item.active::before {
+  content: ""; position: absolute; left: 0; top: 10px; bottom: 10px;
+  width: 2.5px; background: var(--redpen); border-radius: 2px;
+}
+.session-item .t {
+  font-size: 13.5px; color: var(--ink); font-weight: 500;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.session-item .m {
+  font-family: var(--mono); font-size: 11px; color: var(--pencil);
+  display: flex; gap: 8px; min-width: 0;
+}
+.session-item .m .model { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.session-item .m span:last-child { flex-shrink: 0; }
+
 .topbar {
   display: flex; align-items: baseline; gap: 14px;
   padding: 20px 40px 13px;
@@ -92,7 +130,18 @@ main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .topbar .date { font-family: var(--mono); font-size: 11px; color: var(--pencil); letter-spacing: .08em; display: block; margin-bottom: 2px; }
 .topbar h1 { font-family: var(--serif); font-size: 24px; font-weight: 700; }
 .topbar .hint { color: var(--pencil); font-size: 13px; }
-.kid-switch { margin-left: auto; display: flex; gap: 8px; }
+.model-select {
+  margin-left: auto; display: inline-flex; align-items: center; gap: 7px;
+  border: 1px solid var(--hairline); background: var(--card);
+  border-radius: 999px; padding: 4px 6px 4px 14px; font-size: 13px;
+}
+.model-select .tag { color: var(--pencil); }
+.model-select select {
+  border: 0; outline: none; background: transparent;
+  font-family: var(--mono); font-size: 12.5px; color: var(--ink);
+  cursor: pointer; max-width: 180px;
+}
+.kid-switch { display: flex; gap: 8px; }
 .kid-switch button {
   border: 1px solid var(--hairline); background: var(--card);
   border-radius: 999px; padding: 5px 16px; font-size: 13.5px; color: var(--pencil);
@@ -179,6 +228,7 @@ main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 @media (max-width: 900px) {
   .rail { width: 64px; }
   .brand .name, .brand .sub, .nav button span.txt, .nav button .todo, .nav .sep, .rail-foot { display: none; }
+  .sessions { display: none; }
 }
 @media (prefers-reduced-motion: no-preference) {
   .qcard { animation: rise .35s ease both; }
