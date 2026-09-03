@@ -129,6 +129,18 @@ class TestParsePageQuestions:
         with pytest.raises(ValueError):
             self._run('{"questions": [{"answer_excerpt": "无题干"}]}')
 
+    def test_LaTeX_归一为自然文本_与题库对齐(self):
+        # VLM 真实输出可能是 "$135 \\div 5 =$" 这类 LaTeX;题库是自然文本 "135 ÷ 5 =",
+        # 不归一化会让自动匹配的向量余弦跌破阈值。归一化幂等、剥序号、剥 $。
+        import json as _json
+        payload = _json.dumps({"questions": [
+            {"content_md": "2. $135 \\div 5 =$"},
+            {"content_md": "1、$246 \\times 37$ ="},
+            {"content_md": "3. $507 - 348 =$"},   # 已自然文本:应原样
+        ]})
+        assert [q["content_md"] for q in self._run(payload)] == \
+            ["135 ÷ 5 =", "246 × 37 =", "507 - 348 ="]
+
 
 class FakeVLM:
     """按调用次数弹回预设响应;记录收到的 prompt 供断言。"""
@@ -189,7 +201,7 @@ class TestIngestPaper:
             "answer_excerpt, mark_desc FROM paper_questions WHERE paper_id=%s", (pid,)
         ).fetchone()
         assert row[0] == 1 and row[1] == 1
-        assert row[2] == "1. 246 × 37 =" and row[3] == "wrong"
+        assert row[2] == "246 × 37 =" and row[3] == "wrong"  # 行首序号被归一化剥除
         assert row[4] == [0, 0, 500, 300]
         assert row[5] and Path(row[5]).exists()      # 题图裁切落盘
         assert row[6] == "9102" and row[7] == "红笔 ✗"

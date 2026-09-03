@@ -20,7 +20,7 @@ PAPER_VLM_PROMPT = """你是试卷解析助手。把这一页试卷拆成一道�
 {"questions": [
   {"seq_in_page": 1,
    "bbox": [x1, y1, x2, y2],
-   "content_md": "题干全文,数学公式用 LaTeX",
+   "content_md": "题干全文,算式用自然文本(如 135 ÷ 5 =、246 × 37),不要 LaTeX 记号",
    "answer_excerpt": "学生作答内容摘录(没有则空字符串)",
    "result": "correct|wrong|partial|null",
    "mark_desc": "批改痕迹描述,如「老师红笔 ✗」(没有则空字符串)"}
@@ -41,6 +41,34 @@ def _strip_fences(text: str) -> str:
     t = re.sub(r"^```[a-zA-Z]*\s*|\s*```$", "", t).strip()
     m = re.search(r"\{.*\}", t, re.DOTALL)
     return m.group(0) if m else t
+
+
+def _normalize_content_md(raw: str) -> str:
+    """LaTeX 记号 -> 自然文本,与题库 content_md 对齐(自动匹配按表面文本做 embedding)。
+
+    VLM 即使被要求自然文本也可能给 "$135 \\div 5$" 这类 LaTeX;而题库里是 "135 ÷ 5 =",
+    bge-m3 对两者余弦会跌破匹配阈值(实测 0.75 vs 0.97)。这里幂等地把 LaTeX 还原。
+    """
+    t = raw.strip()
+    # \frac{a}{b} -> (a)/(b)(先于运算符替换,内部可能含 \times 等)
+    t = re.sub(r"\\frac\{([^{}]*)\}\{([^{}]*)\}", r"(\1)/(\2)", t)
+    # \sqrt{x} -> √x
+    t = re.sub(r"\\sqrt\{([^{}]*)\}", r"√\1", t)
+    # 常见运算符命令 -> Unicode
+    for pat, rep in (
+        (r"\div", "÷"), (r"\times", "×"), (r"\cdot", "×"),
+        (r"\pm", "±"), (r"\approx", "≈"), (r"\le", "≤"),
+        (r"\ge", "≥"), (r"\neq", "≠"),
+    ):
+        t = t.replace(pat, rep)
+    # 剥行内公式边界 $ \( \)
+    t = t.replace("$", "").replace(r"\(", "").replace(r"\)", "")
+    # 残留 LaTeX 命令与转义空白(如 \left \right \, \;)剥掉
+    t = re.sub(r"\\[a-zA-Z]+", "", t)
+    t = t.replace(r"\,", " ").replace(r"\;", " ").replace("\\ ", " ")
+    # 行首序号:1. 1、 (1) [1] 1) 剥掉(题库 content_md 无序号)
+    t = re.sub(r"^\s*(?:\(\d+\)|\[\d+\]|\d+[.)、])\s*", "", t)
+    return re.sub(r"\s+", " ", t).strip()
 
 
 def _norm_bbox(raw) -> list[int] | None:
@@ -72,7 +100,7 @@ def parse_page_questions(text: str) -> list[dict]:
     for i, q in enumerate(questions, start=1):
         if not isinstance(q, dict):
             raise ValueError(f"第 {i} 项不是对象")
-        content = (q.get("content_md") or "").strip()
+        content = _normalize_content_md(q.get("content_md") or "")
         if not content:
             raise ValueError(f"第 {i} 项缺少 content_md")
         result = q.get("result")
