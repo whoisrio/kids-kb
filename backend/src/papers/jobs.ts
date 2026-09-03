@@ -103,3 +103,36 @@ export async function redriveStuckPapers(pool: pg.Pool, deps: PaperJobDeps): Pro
   for (const r of rows) void drivePaper(pool, deps, r.id);
   return rows.length;
 }
+
+/**
+ * 探活 pipeline 就绪后才重驱动。规避启动竞态:backend 先于 pipeline 起来时,
+ * redrive 对每卷调 ingest 会立即失败并把 processing 卷误打成 failed。
+ * 探活点用 /internal/rerank 空 docs(不加载模型权重,恒 200);失败按退避重试。
+ */
+export async function redriveWhenPipelineReady(
+  pool: pg.Pool,
+  deps: PaperJobDeps,
+  opts: { attempts?: number; retryMs?: number; probeTimeoutMs?: number } = {},
+): Promise<number> {
+  const fetchImpl = deps.fetchImpl ?? fetch;
+  const base = deps.pipelineUrl.replace(/\/$/, "");
+  const attempts = opts.attempts ?? 30;
+  const retryMs = opts.retryMs ?? 2_000;
+  const probeTimeoutMs = opts.probeTimeoutMs ?? 5_000;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      const resp = await fetchImpl(`${base}/internal/rerank`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query: "", docs: [] }),
+        signal: AbortSignal.timeout(probeTimeoutMs),
+      });
+      if (resp.ok) return redriveStuckPapers(pool, deps);
+    } catch {
+      // pipeline 未就绪,退避重试
+    }
+    if (i < attempts - 1) await new Promise((r) => setTimeout(r, retryMs));
+  }
+  console.warn(`pipeline ${base} ${attempts} 次探活未就绪,跳过滞留试卷重驱动`);
+  return 0;
+}

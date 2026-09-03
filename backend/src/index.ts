@@ -13,7 +13,7 @@ import { sessionsRoutes } from "./routes/sessions.js";
 import { modelsRoutes } from "./routes/models.js";
 import { papersRoutes } from "./routes/papers.js";
 import { paperQuestionsRoutes } from "./routes/paperQuestions.js";
-import { redriveStuckPapers, type PaperJobDeps } from "./papers/jobs.js";
+import { redriveWhenPipelineReady, type PaperJobDeps } from "./papers/jobs.js";
 
 export function createApp(
   cfg: BackendConfig = loadConfig(),
@@ -69,7 +69,9 @@ if (process.env.VITEST === undefined) {
       embed: (texts) => embedTexts(cfg.embedBaseUrl, cfg.embedModel, texts),
       rerank: makeReranker(cfg.rerankProvider, cfg.pipelineUrl),
     };
-    void redriveStuckPapers(pool, jobs).then((n) => {
+    // 启动重驱动:探活 pipeline 就绪后才驱动滞留 processing 的卷,
+    // 避免 backend 先起时把卷误打成 failed(pipeline 幂等,安全)
+    void redriveWhenPipelineReady(pool, jobs, { attempts: 30, retryMs: 2_000 }).then((n) => {
       if (n > 0) console.log(`重驱动 ${n} 卷滞留 processing 的试卷`);
     });
   });
