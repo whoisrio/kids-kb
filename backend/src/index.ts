@@ -27,6 +27,7 @@ export function createApp(cfg: BackendConfig = loadConfig()) {
   app.post("/api/chat", chatRoute(factory, {
     store: sessionStore,
     defaultModel: cfg.chatModel,
+    models: cfg.chatModels,
     onUsage: async (u, model) => {
       await pool.query(
         `INSERT INTO llm_calls (document_id, purpose, model, modality, prompt_tokens, completion_tokens)

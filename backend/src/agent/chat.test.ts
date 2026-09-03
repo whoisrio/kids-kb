@@ -319,4 +319,29 @@ describe("/api/chat 会话持久化", () => {
     });
     expect(resp.status).toBe(400);
   });
+
+  it("不在已注册列表的 model + 已有会话 → 400，不留 model_change，后续不带 model 正常", async () => {
+    const { store, marks } = fakeStore({ "s-x": { model: "qwen3:4b", messages: [] } });
+    const a = app(() => fakeAgent([{ type: "agent_end", messages: [] }]), {
+      store, defaultModel: "qwen3:4b", models: ["qwen3:4b", "deepseek-v3"],
+    });
+    const bad = await post(a, {
+      session_id: "s-x", model: "no-such-model", messages: [{ role: "user", content: "hi" }],
+    });
+    expect(bad.status).toBe(400);
+    expect(marks["s-x"]).toBeUndefined();
+    // 会话未被毒化：后续不带 model 的请求沿用会话模型，正常走完
+    const ok = await post(a, { session_id: "s-x", messages: [{ role: "user", content: "hi" }] });
+    expect((await ok.text())).toContain("event: done");
+  });
+
+  it("不在已注册列表的 model + 无 session_id → 400，不产生孤儿会话", async () => {
+    const { store, createCalls } = fakeStore();
+    const a = app(() => fakeAgent([]), {
+      store, defaultModel: "qwen3:4b", models: ["qwen3:4b"],
+    });
+    const resp = await post(a, { model: "no-such-model", messages: [{ role: "user", content: "hi" }] });
+    expect(resp.status).toBe(400);
+    expect(createCalls).toEqual([]);
+  });
 });

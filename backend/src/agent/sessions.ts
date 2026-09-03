@@ -109,8 +109,9 @@ class JsonlSessionHandle implements SessionHandle {
 export class JsonlSessionStore implements SessionStore {
   private readonly repo: JsonlSessionRepo;
   private readonly cwd: string;
-  /** 进程内单写者缓存：open() 无锁，同 id 必须共享一个 Session 实例。 */
-  private readonly cache = new Map<string, Session<JsonlSessionMetadata>>();
+  /** 进程内单写者缓存：open() 无锁，同 id 必须共享一个 Session 实例。
+      存 Promise 消除并发 open 的 check-then-set 竞态；null（未找到）/失败即刻清出缓存。 */
+  private readonly cache = new Map<string, Promise<SessionHandle | null>>();
 
   constructor(opts: { sessionsRoot?: string; cwd?: string } = {}) {
     this.cwd = opts.cwd ?? fileURLToPath(new URL("../..", import.meta.url));
@@ -121,28 +122,38 @@ export class JsonlSessionStore implements SessionStore {
     });
   }
 
-  private wrap(session: Session<JsonlSessionMetadata>, meta: JsonlSessionMetadata): SessionHandle {
-    this.cache.set(meta.id, session);
-    return new JsonlSessionHandle(meta.id, session, String(meta.metadata?.model ?? ""));
-  }
-
   async create(opts: { title: string; model: string }): Promise<SessionHandle> {
     const session = await this.repo.create({
       cwd: this.cwd,
       metadata: { title: opts.title, model: opts.model },
     });
-    return this.wrap(session, await session.getMetadata());
+    const meta = await session.getMetadata();
+    const handle = new JsonlSessionHandle(meta.id, session, String(meta.metadata?.model ?? ""));
+    this.cache.set(meta.id, Promise.resolve(handle));
+    return handle;
   }
 
   async open(id: string): Promise<SessionHandle | null> {
-    const cached = this.cache.get(id);
-    if (cached) {
-      const meta = await cached.getMetadata();
-      return new JsonlSessionHandle(id, cached, String(meta.metadata?.model ?? ""));
+    let cached = this.cache.get(id);
+    if (!cached) {
+      cached = this.load(id);
+      this.cache.set(id, cached);
     }
+    try {
+      const handle = await cached;
+      if (!handle) this.cache.delete(id);
+      return handle;
+    } catch (err) {
+      this.cache.delete(id);
+      throw err;
+    }
+  }
+
+  private async load(id: string): Promise<SessionHandle | null> {
     const meta = (await this.repo.list()).find((m) => m.id === id);
     if (!meta) return null;
-    return this.wrap(await this.repo.open(meta), meta);
+    const session = await this.repo.open(meta);
+    return new JsonlSessionHandle(id, session, String(meta.metadata?.model ?? ""));
   }
 
   async list(): Promise<SessionSummary[]> {

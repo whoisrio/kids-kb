@@ -123,6 +123,16 @@ describe("JsonlSessionStore", () => {
     expect((await h2!.messages()).map((m) => m.content)).toEqual(["一", "二", "三"]);
   });
 
+  it("并发 open 同一未缓存 id 拿到同一 handle（Promise 缓存消竞态）", async () => {
+    const { store, dir } = makeStore();
+    const h = await store.create({ title: "t", model: "m" });
+    // 新 store 实例指向同一目录，保证目标 id 不在缓存里
+    const fresh = new JsonlSessionStore({ sessionsRoot: dir, cwd: dir });
+    const [a, b] = await Promise.all([fresh.open(h.id), fresh.open(h.id)]);
+    expect(a).not.toBeNull();
+    expect(a).toBe(b);
+  });
+
   it("只含 toolCall 的 assistant 消息不进 messages()", async () => {
     const { store } = makeStore();
     const h = await store.create({ title: "t", model: "m" });
