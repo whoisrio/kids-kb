@@ -1,14 +1,29 @@
-import { questionImageUrl, type PaperQuestion } from "../api/papers";
+import { useEffect, useState } from "react";
+import { questionImageUrl, pageImageUrl, type PaperQuestion } from "../api/papers";
 
-/** 当前题双栏:原卷裁图 | 识别内容(题干/作答/痕迹/匹配行)。 */
+/** 裁图三态:bbox 缺失/裁图丢失时裁图 404 → 回退整页图;整页也没有才隐藏提示。 */
+type Stage = "crop" | "page" | "missing";
+
+/** 当前题双栏:原卷裁图(缺失回退整页图) | 识别内容(题干/作答/痕迹/匹配行)。 */
 export function QuestionCard({ question }: { question: PaperQuestion }) {
+  const [stage, setStage] = useState<Stage>("crop");
+  // 换题(未重挂载)时回到裁图态,不把上一题的回退结果带到下一题
+  useEffect(() => { setStage("crop"); }, [question.id]);
+  const src = stage === "crop"
+    ? questionImageUrl(question.id)
+    : pageImageUrl(question.paper_id, question.page_no);
+  const label = stage === "crop" ? `第 ${question.seq} 题裁图` : `第 ${question.page_no} 页原卷`;
   return (
     <div className="qcard-paper">
       <div className="pane">
         <h3>原卷裁图</h3>
         <div className="crop-box">
-          <img src={questionImageUrl(question.id)} alt={`第 ${question.seq} 题裁图`}
-               onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
+          {stage === "missing" ? (
+            <p className="placeholder">题图缺失（裁图与整页均不可用）</p>
+          ) : (
+            <img src={src} alt={label}
+                 onError={() => setStage((s) => (s === "crop" ? "page" : "missing"))} />
+          )}
         </div>
       </div>
       <div className="pane">

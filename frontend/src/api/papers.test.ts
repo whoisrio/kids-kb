@@ -31,7 +31,7 @@ describe("papers api", () => {
 
   it("confirmQuestion:PUT body + 返回 paper_status;非 2xx 抛错", async () => {
     let captured = "";
-    const out = await confirmQuestion("q1", { result: "wrong", error_cause: "计算错" }, async (input, init) => {
+    const out = await confirmQuestion("q1", { result: "wrong", error_cause: "计算错" }, async (_input, init) => {
       captured = String(init?.body);
       return jsonResp({ id: "q1", paper_status: "done" });
     });
