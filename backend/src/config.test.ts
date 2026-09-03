@@ -63,4 +63,22 @@ describe("loadConfig", () => {
     } as NodeJS.ProcessEnv);
     expect(cfg.chatModels).toEqual(["deepseek-v3"]);
   });
+
+  it("chatModels 是 chatModel 与 CHAT_MODELS 的并集（chatModel 永远在内）", () => {
+    const cfg = loadConfig({
+      KB_DATABASE_URL: "postgresql://localhost/kb_test",
+      CHAT_MODEL: "qwen3:4b",
+      CHAT_MODELS: "deepseek-v3,qwen3-32b",
+    } as NodeJS.ProcessEnv);
+    expect(cfg.chatModels).toEqual(["qwen3:4b", "deepseek-v3", "qwen3-32b"]);
+  });
+
+  it("chatModels 重叠去重", () => {
+    const cfg = loadConfig({
+      KB_DATABASE_URL: "postgresql://localhost/kb_test",
+      CHAT_MODEL: "qwen3:4b",
+      CHAT_MODELS: "qwen3:4b,deepseek-v3,deepseek-v3",
+    } as NodeJS.ProcessEnv);
+    expect(cfg.chatModels).toEqual(["qwen3:4b", "deepseek-v3"]);
+  });
 });

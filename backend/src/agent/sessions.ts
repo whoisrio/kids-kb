@@ -30,9 +30,11 @@ export interface SessionSummary {
 
 export interface SessionHandle {
   readonly id: string;
+  /** 会话标题（创建时 metadata.title）。 */
+  readonly title: string;
   /** 当前模型：最近一次 model_change，否则创建时 metadata.model。 */
   currentModel(): Promise<string>;
-  /** 规范化后的历史消息（user/assistant 的 text 段拼接；空 text 与 toolResult 跳过）。 */
+  /** 规范化后的历史消息（仅 user/assistant，text 段拼接；空 text 与其他角色跳过）。 */
   messages(): Promise<StoredChatMessage[]>;
   appendMessage(message: AgentMessage): Promise<void>;
   markModelChange(modelId: string): Promise<void>;
@@ -63,6 +65,7 @@ function messageText(m: AgentMessage): string | null {
 class JsonlSessionHandle implements SessionHandle {
   constructor(
     readonly id: string,
+    readonly title: string,
     private readonly session: Session<JsonlSessionMetadata>,
     private readonly createdModel: string,
   ) {}
@@ -85,9 +88,12 @@ class JsonlSessionHandle implements SessionHandle {
     })) as MessageEntry[];
     const out: StoredChatMessage[] = [];
     for (const e of entries) {
+      // 读端 role 白名单：toolResult 等其他角色不进历史（不写脏数据，也不靠强转）
+      const role = e.message.role;
+      if (role !== "user" && role !== "assistant") continue;
       const text = messageText(e.message);
-      if (text === null || text === "") continue;
-      out.push({ role: e.message.role as "user" | "assistant", content: text });
+      if (!text) continue;
+      out.push({ role, content: text });
     }
     return out;
   }
@@ -128,7 +134,9 @@ export class JsonlSessionStore implements SessionStore {
       metadata: { title: opts.title, model: opts.model },
     });
     const meta = await session.getMetadata();
-    const handle = new JsonlSessionHandle(meta.id, session, String(meta.metadata?.model ?? ""));
+    const handle = new JsonlSessionHandle(
+      meta.id, String(meta.metadata?.title ?? ""), session, String(meta.metadata?.model ?? ""),
+    );
     this.cache.set(meta.id, Promise.resolve(handle));
     return handle;
   }
@@ -153,7 +161,9 @@ export class JsonlSessionStore implements SessionStore {
     const meta = (await this.repo.list()).find((m) => m.id === id);
     if (!meta) return null;
     const session = await this.repo.open(meta);
-    return new JsonlSessionHandle(id, session, String(meta.metadata?.model ?? ""));
+    return new JsonlSessionHandle(
+      id, String(meta.metadata?.title ?? ""), session, String(meta.metadata?.model ?? ""),
+    );
   }
 
   async list(): Promise<SessionSummary[]> {

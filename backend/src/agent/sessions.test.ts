@@ -141,4 +141,28 @@ describe("JsonlSessionStore", () => {
     await h.appendMessage(assistantMsg("查到了"));
     expect((await h.messages()).map((m) => m.content)).toEqual(["查一下", "查到了"]);
   });
+
+  it("toolResult 角色的消息不进 messages()（读端 role 白名单）", async () => {
+    const { store } = makeStore();
+    const h = await store.create({ title: "t", model: "m" });
+    await h.appendMessage(userMsg("查一下"));
+    await h.appendMessage({
+      role: "toolResult",
+      toolCallId: "tc1",
+      toolName: "search",
+      content: [{ type: "text", text: "工具原始输出不应出现在历史" }],
+      isError: false,
+      timestamp: Date.now(),
+    });
+    await h.appendMessage(assistantMsg("查到了"));
+    expect((await h.messages()).map((m) => m.content)).toEqual(["查一下", "查到了"]);
+  });
+
+  it("handle 暴露 title（创建时 metadata）", async () => {
+    const { store } = makeStore();
+    const h = await store.create({ title: "四口算题", model: "m" });
+    expect(h.title).toBe("四口算题");
+    const reopened = await store.open(h.id);
+    expect(reopened!.title).toBe("四口算题");
+  });
 });

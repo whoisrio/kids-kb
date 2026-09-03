@@ -135,7 +135,8 @@ export interface ChatDeps {
   store?: SessionStore;
   /** 默认模型 id（创建会话/计量的兜底）。 */
   defaultModel?: string;
-  /** 已注册模型白名单；提供时请求的 model 必须在列，且校验先于任何会话持久化。 */
+  /** 已注册模型白名单。启用 store 时请求带 model 必须过白名单（缺省 = 全部拒绝），
+      且校验先于任何会话持久化；无 store 时由 factory 抛错兜底。 */
   models?: string[];
 }
 
@@ -164,8 +165,9 @@ export function chatRoute(
     const last = messages[messages.length - 1];
     let history: ChatMessage[] = messages.slice(0, -1);
     let requestedModel = modelRaw as string | undefined;
-    // 模型合法性校验必须先于一切会话持久化（否则坏 model_change/孤儿会话已落盘才 400）
-    if (requestedModel && deps.models && !deps.models.includes(requestedModel)) {
+    // 模型合法性校验必须先于一切会话持久化（否则坏 model_change/孤儿会话已落盘才 400）。
+    // 启用 store 时无条件生效：白名单缺失视同全部拒绝，防止坏 model 毒化会话。
+    if (requestedModel && deps.store && !deps.models?.includes(requestedModel)) {
       return c.json({ error: `未知模型: ${requestedModel}` }, 400);
     }
 

@@ -6,19 +6,20 @@ import type { SessionHandle, SessionStore } from "../agent/sessions.js";
 
 function makeStore(opts: {
   list?: Awaited<ReturnType<SessionStore["list"]>>;
-  sessions?: Record<string, { role: "user" | "assistant"; content: string }[]>;
+  sessions?: Record<string, { title?: string; model?: string; messages: { role: "user" | "assistant"; content: string }[] }>;
 }): SessionStore {
   return {
     create: async () => {
       throw new Error("未使用");
     },
     open: async (id): Promise<SessionHandle | null> => {
-      const msgs = opts.sessions?.[id];
-      if (!msgs) return null;
+      const data = opts.sessions?.[id];
+      if (!data) return null;
       return {
         id,
-        currentModel: async () => "m",
-        messages: async () => msgs,
+        title: data.title ?? "",
+        currentModel: async () => data.model ?? "",
+        messages: async () => data.messages,
         appendMessage: async () => {},
         markModelChange: async () => {},
       };
@@ -34,29 +35,38 @@ function app(store: SessionStore) {
 }
 
 describe("/api/sessions", () => {
-  it("GET / 返回会话摘要列表", async () => {
+  it("GET / 返回会话摘要列表（裸路径 /api/sessions 也命中）", async () => {
     const store = makeStore({
       list: [{ id: "s1", title: "口算题", model: "qwen3:4b", createdAt: 1, modifiedAt: 2 }],
     });
-    const resp = await app(store).request("/api/sessions");
+    const a = app(store);
+    const resp = await a.request("/api/sessions");
     expect(resp.status).toBe(200);
     expect(await resp.json()).toEqual([
       { id: "s1", title: "口算题", model: "qwen3:4b", createdAt: 1, modifiedAt: 2 },
     ]);
+    // 钉住：裸路径（无尾斜杠）必须 200
+    expect((await a.request("/api/sessions")).status).toBe(200);
   });
 
-  it("GET /:id 返回按序消息", async () => {
+  it("GET /:id 返回按序消息 + title + currentModel（最新 model_change 为准）", async () => {
     const store = makeStore({
       sessions: {
-        s1: [
-          { role: "user", content: "问题" },
-          { role: "assistant", content: "回答" },
-        ],
+        s1: {
+          title: "口算题",
+          model: "deepseek-v3",
+          messages: [
+            { role: "user", content: "问题" },
+            { role: "assistant", content: "回答" },
+          ],
+        },
       },
     });
     const resp = await app(store).request("/api/sessions/s1");
     expect(resp.status).toBe(200);
     expect(await resp.json()).toEqual({
+      title: "口算题",
+      currentModel: "deepseek-v3",
       messages: [
         { role: "user", content: "问题" },
         { role: "assistant", content: "回答" },

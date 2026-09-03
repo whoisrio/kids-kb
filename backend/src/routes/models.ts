@@ -2,7 +2,8 @@
 import { Hono } from "hono";
 
 export function modelsRoutes(chatModels: string[]) {
-  const app = new Hono();
+  // strict: false —— 与 children/attempts 对齐
+  const app = new Hono({ strict: false });
   app.get("/", (c) => c.json(chatModels.map((id) => ({ provider: "chat", id, name: id }))));
   return app;
 }

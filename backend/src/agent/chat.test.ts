@@ -30,14 +30,15 @@ function app(factory: AgentFactory, deps?: ChatDeps) {
 }
 
 /** 内存 fake SessionStore：记录 create/append/markModelChange 调用，可预置已有会话。 */
-function fakeStore(initial?: Record<string, { model: string; messages: StoredChatMessage[] }>) {
-  const data: Record<string, { model: string; messages: StoredChatMessage[] }> = { ...initial };
+function fakeStore(initial?: Record<string, { model: string; messages: StoredChatMessage[]; title?: string }>) {
+  const data: Record<string, { model: string; messages: StoredChatMessage[]; title?: string }> = { ...initial };
   const appended: Record<string, unknown[]> = {};
   const marks: Record<string, string[]> = {};
   const createCalls: { title: string; model: string }[] = [];
   let seq = 0;
   const makeHandle = (id: string): SessionHandle => ({
     id,
+    title: data[id].title ?? "",
     currentModel: async () => data[id].model,
     messages: async () => data[id].messages,
     appendMessage: async (m: unknown) => {
@@ -52,7 +53,7 @@ function fakeStore(initial?: Record<string, { model: string; messages: StoredCha
     create: async (o) => {
       createCalls.push(o);
       const id = `s-${++seq}`;
-      data[id] = { model: o.model, messages: [] };
+      data[id] = { model: o.model, title: o.title, messages: [] };
       return makeHandle(id);
     },
     open: async (id) => (data[id] ? makeHandle(id) : null),
@@ -246,7 +247,7 @@ describe("/api/chat 会话持久化", () => {
       factoryModel = model;
       return agent;
     };
-    const resp = await post(app(factory, { store, onUsage, defaultModel: "qwen3:4b" }), {
+    const resp = await post(app(factory, { store, onUsage, defaultModel: "qwen3:4b", models: ["qwen3:4b", "deepseek-v3"] }), {
       session_id: "s-x",
       model: "deepseek-v3",
       messages: [{ role: "user", content: "hi" }],
@@ -265,7 +266,7 @@ describe("/api/chat 会话持久化", () => {
       factoryModel = model;
       return agent;
     };
-    const resp = await post(app(factory, { store, defaultModel: "qwen3:4b" }), {
+    const resp = await post(app(factory, { store, defaultModel: "qwen3:4b", models: ["qwen3:4b", "deepseek-v3"] }), {
       session_id: "s-x",
       model: "qwen3:4b",
       messages: [{ role: "user", content: "hi" }],
@@ -299,7 +300,7 @@ describe("/api/chat 会话持久化", () => {
       factoryModel = model;
       return agent;
     };
-    const resp = await post(app(factory, { store, defaultModel: "qwen3:4b" }), {
+    const resp = await post(app(factory, { store, defaultModel: "qwen3:4b", models: ["qwen3:4b", "deepseek-v3"] }), {
       model: "deepseek-v3",
       messages: [{ role: "user", content: "hi" }],
     });
@@ -342,6 +343,19 @@ describe("/api/chat 会话持久化", () => {
     });
     const resp = await post(a, { model: "no-such-model", messages: [{ role: "user", content: "hi" }] });
     expect(resp.status).toBe(400);
+    expect(createCalls).toEqual([]);
+  });
+
+  it("带 store 但未注入 models 白名单 → 任何带 model 的请求 400，不毒化会话", async () => {
+    const { store, marks, createCalls } = fakeStore({ "s-x": { model: "qwen3:4b", messages: [] } });
+    const a = app(() => fakeAgent([]), { store, defaultModel: "qwen3:4b" });
+    const resp = await post(a, {
+      session_id: "s-x", model: "deepseek-v3", messages: [{ role: "user", content: "hi" }],
+    });
+    expect(resp.status).toBe(400);
+    expect(marks["s-x"]).toBeUndefined();
+    const resp2 = await post(a, { model: "deepseek-v3", messages: [{ role: "user", content: "hi" }] });
+    expect(resp2.status).toBe(400);
     expect(createCalls).toEqual([]);
   });
 });

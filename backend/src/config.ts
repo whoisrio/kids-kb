@@ -25,7 +25,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): BackendConfig 
   if (!databaseUrl) throw new Error("缺少 KB_DATABASE_URL（如 postgresql://localhost/kb）");
   const visionBase = pick(env.KB_VISION_BASE_URL) ?? "http://localhost:11434/v1";
   const chatModel = pick(env.CHAT_MODEL, env.DOC_OGNIZE_MODEL, env.KB_VISION_MODEL) ?? "qwen3:4b";
-  const chatModels = pick(env.CHAT_MODELS)
+  const envModels = pick(env.CHAT_MODELS)
     ?.split(",")
     .map((s) => s.trim())
     .filter(Boolean);
@@ -35,7 +35,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): BackendConfig 
     chatApiKey:
       pick(env.CHAT_API_KEY, env.DOC_OGNIZE_API_KEY, env.KB_VISION_API_KEY) ?? "ollama",
     chatModel,
-    chatModels: chatModels && chatModels.length > 0 ? chatModels : [chatModel],
+    // chatModel 永远在可切换列表内（并集去重，chatModel 排首位）
+    chatModels: [...new Set([chatModel, ...(envModels ?? [])])],
     embedBaseUrl: pick(env.KB_EMBED_BASE_URL) ?? "http://localhost:11434",
     embedModel: pick(env.KB_EMBED_MODEL) ?? "bge-m3",
     pipelineUrl: pick(env.PIPELINE_INTERNAL_URL) ?? "http://127.0.0.1:8766",
