@@ -103,6 +103,38 @@ describe("App 集成（会话侧栏 + 模型下拉 + 聊天流）", () => {
     expect(screen.getByText("还没有对话——问孩子学习情况，或找题、看讲解。")).toBeInTheDocument();
   });
 
+  it("流式期间 chat-wrap 标记 data-streaming，收尾后复位", async () => {
+    const enc = new TextEncoder();
+    let push: (e: string) => void = () => {};
+    const stream = new ReadableStream({
+      start(controller) {
+        push = (e) => controller.enqueue(enc.encode(e));
+      },
+    });
+    stubFetch({
+      "/api/models": () => jsonResponse(MODELS),
+      "/api/sessions": () => jsonResponse([]),
+      "/api/chat": () => new Response(stream),
+    });
+    render(<App />);
+    await waitFor(() =>
+      expect(screen.getByRole("combobox", { name: "选择模型" })).toHaveValue("qwen3:4b"),
+    );
+    fireEvent.change(screen.getByLabelText("输入问题"), { target: { value: "hi" } });
+    fireEvent.click(screen.getByRole("button", { name: "发送" }));
+    // 用户消息已上屏、流挂起中：标记为 true
+    await waitFor(() => expect(screen.getByText("hi")).toBeInTheDocument());
+    expect(document.querySelector(".chat-wrap")).toHaveAttribute("data-streaming", "true");
+    // 流收尾：标记复位
+    push('event: session\ndata: "s1"\n\n');
+    push('event: delta\ndata: "好"\n\n');
+    push("event: done\ndata: \n\n");
+    await waitFor(() =>
+      expect(document.querySelector(".chat-wrap")).toHaveAttribute("data-streaming", "false"),
+    );
+    expect(screen.getByText("好")).toBeInTheDocument();
+  });
+
   it("切换模型 → 下一条消息请求携带新模型", async () => {
     let chatBody: unknown = null;
     stubFetch({

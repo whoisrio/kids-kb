@@ -21,3 +21,6 @@ pipeline/storage/
 # 聊天会话 JSONL 持久化（产品数据，只写文件不落 git）
 backend/storage/
 resources
+
+# Playwright E2E 运行产物（trace/error context）
+e2e/test-results/

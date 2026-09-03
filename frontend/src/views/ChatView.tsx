@@ -27,7 +27,7 @@ export function ChatView({ messages, streaming, onSend }: ChatViewProps) {
 
   return (
     <>
-      <div className="chat-wrap">
+      <div className="chat-wrap" data-streaming={streaming ? "true" : "false"}>
         <div className="chat-log">
           {messages.length === 0 && (
             <div className="chat-empty">还没有对话——问孩子学习情况，或找题、看讲解。</div>

@@ -12,6 +12,7 @@
 
 - pipeline：`cd pipeline && uv run pytest tests/`（测试需 KB_TEST_DATABASE_URL）
 - backend：`cd backend && npm test` / `npm run dev`（8787）
+- e2e：`cd e2e && npm test`（全栈 Playwright：自动拉起缺失服务，断言 UI→API→JSONL→DB；需本机 ollama/PostgreSQL）
 - frontend：`cd frontend && npm run dev`（5200，proxy 到 8787）
 
 ## 流水线（骨架期）
