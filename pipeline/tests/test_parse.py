@@ -64,6 +64,37 @@ def test_transcribe_image_calls_openai_compatible_api(tmp_path):
     assert usage == (None, None)  # 假客户端无 usage 时容忍 None
 
 
+def test_transcribe_image_downscales_oversized_image(tmp_path):
+    """超大整页扫描图先降采样再送视觉模型：vision token 数与分辨率正相关，
+    高分辨率会让思考型模型 reasoning 爆预算、content 被截空。"""
+    import base64
+
+    from kb.parse import transcribe_image
+
+    big = fitz.open()
+    page = big.new_page(width=3000, height=4000)
+    img = tmp_path / "big.png"
+    page.get_pixmap().save(str(img))
+
+    captured = {}
+
+    class CapChat:
+        class completions:
+            @staticmethod
+            def create(model, messages, max_tokens):
+                captured["url"] = messages[0]["content"][1]["image_url"]["url"]
+                return FakeResponse()
+
+    class CapClient:
+        chat = CapChat()
+
+    transcribe_image(CapClient(), "m", img)
+    payload = base64.b64decode(captured["url"].split(",", 1)[1])
+    small = fitz.open(stream=payload, filetype="png")
+    pix = small[0].get_pixmap()
+    assert max(pix.width, pix.height) <= 2000
+
+
 def test_run_parse_fills_block_content_and_marks_page(conn, parsed_doc):
     from kb.parse import run_parse
 

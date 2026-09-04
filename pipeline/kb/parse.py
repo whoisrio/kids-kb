@@ -5,6 +5,7 @@ import base64
 import re
 from pathlib import Path
 
+import pymupdf as fitz
 from openai import OpenAI
 
 from kb.config import Config
@@ -35,7 +36,7 @@ def transcribe_image(client, model: str, image_path, prompt: str = TRANSCRIBE_PR
     """转录图像 -> (text, (prompt_tokens, completion_tokens))。usage 缺失时为 (None, None)。"""
     from kb.metering import extract_usage
 
-    b64 = base64.b64encode(Path(image_path).read_bytes()).decode("ascii")
+    b64 = base64.b64encode(_downscale_for_vision(image_path)).decode("ascii")
     resp = client.chat.completions.create(
         model=model,
         messages=[{
@@ -51,6 +52,26 @@ def transcribe_image(client, model: str, image_path, prompt: str = TRANSCRIBE_PR
         max_tokens=12288,
     )
     return resp.choices[0].message.content, extract_usage(resp)
+
+
+_MAX_IMAGE_DIM = 2000
+
+
+def _downscale_for_vision(image_path, max_dim: int = _MAX_IMAGE_DIM) -> bytes:
+    """超大图先降采样再送视觉模型：vision token 数随分辨率增长，
+    整页扫描图（3000px+）会让思考型模型 reasoning 爆掉输出预算。
+    小图（区块裁剪）原样返回；fitz 打不开的（假图/怪格式）也原样返回。"""
+    raw = Path(image_path).read_bytes()
+    try:
+        with fitz.open(stream=raw, filetype="png") as doc:
+            rect = doc[0].rect
+            scale = min(1.0, max_dim / max(rect.width, rect.height))
+            if scale >= 1.0:
+                return raw
+            pix = doc[0].get_pixmap(matrix=fitz.Matrix(scale, scale))
+            return pix.tobytes("png")
+    except Exception:  # noqa: BLE001 - 降采样失败不阻断转录
+        return raw
 
 
 # 走本地 rapidocr 的区块类型；其余（formula/figure/table/page）走视觉模型
