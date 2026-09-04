@@ -4,14 +4,19 @@
 
 ## 资料入库工作流
 
-用户提供文档（PDF/docx）要求入库时：
+用户提供文档（PDF/docx/md）要求入库时：
 
 1. 先从文件名和内容推断 `--subject`（语文/数学/英语/…）与 `--type`（workbook 练习册 / exam 试卷）。
 2. **科目判断不了就先提问让用户选**，确认后再执行，不要猜。
 3. 入库命令（在 pipeline/ 下）：
    `uv run python -m kb.cli ingest <文件> --title <书名> --subject <科目> --type <类型>`
-   pdf 与 docx 同一条命令，按扩展名自动分流。
-4. 完成后跑 `structure <doc_id>` 拆条、`export <doc_id>` 落盘镜像。
+   pdf / docx / md 同一条命令，按扩展名自动分流。
+   docx/md 入库即完成**章节向量化**——不拆条也能被聊天检索到。
+4. PDF（docx/md 可选）跑 `structure <doc_id>` 拆条成题目级条目。
+5. 批量复核通过：`approve <doc_id>`（可 `--chapter N` 限章）。
+   通过即自动向量化，之后聊天可检索到条目级内容；
+   也可在复核页逐条 approve（同样即时向量化）。
+6. 落盘镜像：`export <doc_id>`。
 
 ## 开发启动
 
