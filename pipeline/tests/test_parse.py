@@ -170,6 +170,34 @@ def test_run_parse_failure_marks_page_failed(conn, parsed_doc):
     assert all(s == "failed" and "模型挂了" in (e or "") for s, e in rows)
 
 
+def test_run_parse_empty_transcription_marks_page_failed(conn, parsed_doc):
+    """空转录（思考型模型 reasoning 烧穿预算的典型产物）不是成功：
+    页必须标 failed 留 parse_error，块内容保持 NULL 等重试，
+    否则空串块会被自愈逻辑永久标记为 parsed。"""
+    from kb.parse import run_parse
+
+    class EmptyChat:
+        class completions:
+            @staticmethod
+            def create(model, messages, max_tokens, **kwargs):
+                resp = FakeResponse()
+                FakeMessage.content = ""
+                return resp
+
+    class EmptyClient:
+        chat = EmptyChat()
+
+    doc_id, cfg = parsed_doc
+    n = run_parse(conn, cfg, doc_id, client=EmptyClient())
+    assert n == 0
+    with conn.cursor() as cur:
+        cur.execute("SELECT status, parse_error FROM pages WHERE document_id=%s", (doc_id,))
+        rows = cur.fetchall()
+        cur.execute("SELECT count(*) FROM blocks WHERE content_md IS NOT NULL")
+        assert cur.fetchone()[0] == 0
+    assert all(s == "failed" and e for s, e in rows)
+
+
 def test_run_parse_repairs_drifted_page_status(conn, parsed_doc):
     """历史 bug 可能把已解析页打回 rendered；run_parse 应按块内容自愈页状态。"""
     from kb.parse import run_parse

@@ -145,6 +145,14 @@ def run_parse(conn, cfg: Config, doc_id: str, client=None, ocr=None) -> int:
                     (str(e)[:500], page_id),
                 )
                 continue
+            if not (text or "").strip():
+                # 空转录是失败（思考型模型 reasoning 烧穿预算的典型产物），
+                # 不能落空串——空串块会被自愈逻辑误标为 parsed。
+                cur.execute(
+                    "UPDATE pages SET status='failed', parse_error=%s WHERE id=%s",
+                    ("转录结果为空", page_id),
+                )
+                continue
             cur.execute(
                 """UPDATE blocks SET content_md=%s, source_model=%s,
                        prompt_tokens=%s, completion_tokens=%s WHERE id=%s""",
