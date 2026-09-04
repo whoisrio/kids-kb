@@ -35,4 +35,10 @@ describe("assemblePdf", () => {
     await expect(assemblePdf([])).rejects.toThrow("至少");
     await expect(assemblePdf([{ name: "a.heic", bytes: new Uint8Array() }])).rejects.toThrow("不支持的文件类型");
   });
+
+  it("坏 PDF(垃圾字节)报可读错误而非 pdf-lib 内部报错", async () => {
+    await expect(assemblePdf([
+      { name: "corrupt.pdf", bytes: new TextEncoder().encode("junk junk junk") },
+    ])).rejects.toThrow(/PDF 无法解析.*corrupt\.pdf/);
+  });
 });

@@ -199,4 +199,13 @@ maybe("papers API（真库）", () => {
       expect((await resp.json()).error).toContain("UUID");
     }
   });
+
+  it("上传坏 PDF 返回 422 且 error 带文件名", async () => {
+    const resp = await app.request("/api/papers", { method: "POST", body: multipart(
+      { child_id: CHILD, title: "坏卷", subject: "数学" },
+      [{ name: "corrupt.pdf", bytes: new TextEncoder().encode("junk") }],
+    )});
+    expect(resp.status).toBe(422);
+    expect((await resp.json()).error).toContain("corrupt.pdf");
+  });
 });

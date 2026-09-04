@@ -51,7 +51,10 @@ export interface MatchCandidate {
 type FetchLike = typeof fetch;
 
 async function json<T>(resp: Response): Promise<T> {
-  if (!resp.ok) throw new Error(`请求失败: ${resp.status}`);
+  if (!resp.ok) {
+    const body = (await resp.json().catch(() => ({}))) as { error?: string };
+    throw new Error(body.error ?? `请求失败: ${resp.status}`);
+  }
   return (await resp.json()) as T;
 }
 

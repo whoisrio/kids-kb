@@ -16,7 +16,12 @@ export async function assemblePdf(
   for (const f of files) {
     if (!ALLOWED.test(f.name)) throw new Error(`不支持的文件类型: ${f.name}(仅 PDF/JPG/PNG)`);
     if (/\.pdf$/i.test(f.name)) {
-      const src = await PDFDocument.load(f.bytes);
+      let src: Awaited<ReturnType<typeof PDFDocument.load>>;
+      try {
+        src = await PDFDocument.load(f.bytes);
+      } catch {
+        throw new Error(`PDF 无法解析(文件损坏或加密): ${f.name}`);
+      }
       const pages = await doc.copyPages(src, src.getPageIndices());
       pages.forEach((p) => doc.addPage(p));
     } else if (/\.jpe?g$/i.test(f.name)) {

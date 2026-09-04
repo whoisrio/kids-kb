@@ -58,7 +58,7 @@ export function papersRoutes(pool: pg.Pool, deps: PaperJobDeps, cfg: BackendConf
       void drivePaper(pool, deps, paper.id, { pdfBytes: assembled.bytes });
       return c.json(paper, 201);
     } catch (err) {
-      if (err instanceof Error && /不支持的文件类型|至少上传/.test(err.message)) {
+      if (err instanceof Error && /不支持的文件类型|至少上传|PDF 无法解析/.test(err.message)) {
         return c.json({ error: err.message }, 422);
       }
       return mapPgError(c, err);
