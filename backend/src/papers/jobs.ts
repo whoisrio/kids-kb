@@ -66,12 +66,14 @@ async function runPaperJob(pool: pg.Pool, deps: PaperJobDeps, paperId: string,
     throw new Error(String(detail.detail ?? `pipeline ${resp.status}`));
   }
 
-  // 逐题自动匹配(失败不致命:人工匹配兜底)
+  // 逐题自动匹配(失败不致命:人工匹配兜底)。
+  // 页级重识别只重匹配该页:其它页人工清除过的匹配不得被自动匹配重新挂上
   const { rows: questions } = await pool.query<{ id: string; content_md: string; subject: string }>(
     `SELECT pq.id::text, pq.content_md, p.subject FROM paper_questions pq
      JOIN papers p ON p.id = pq.paper_id
-     WHERE pq.paper_id = $1 AND pq.matched_item_id IS NULL`,
-    [paperId],
+     WHERE pq.paper_id = $1 AND pq.matched_item_id IS NULL
+       AND ($2::int IS NULL OR pq.page_no = $2)`,
+    [paperId, opts.pageNo ?? null],
   );
   for (const q of questions) {
     try {

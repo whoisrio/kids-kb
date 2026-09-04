@@ -164,4 +164,21 @@ maybe("试卷后台任务（真库 + 假 pipeline fetch）", () => {
       "SELECT status FROM papers WHERE id=$1", [id])).rows[0];
     expect(paper.status).toBe("ready_for_review");
   });
+
+  it("re-recognize 只重匹配该页:其它页家长清除过的匹配不被自动重挂", async () => {
+    // 卷 ready_for_review:页 1 一条普通题;页 2 一条与 ITEM 同文、但家长人工清除了匹配(NULL)
+    const paperId = await seedPaper("ready_for_review");
+    await seedQuestion(paperId, "246 × 37 =");  // 页 1,普通未匹配
+    const { rows: [cleared] } = await pool.query(
+      `INSERT INTO paper_questions (paper_id, page_no, seq_in_page, content_md, matched_item_id)
+       VALUES ($1, 2, 1, '135 ÷ 5 =', NULL) RETURNING id::text`, [paperId]);
+    await drivePaper(pool, { ...deps, fetchImpl: vi.fn(async () =>
+      new Response(JSON.stringify({ pages: 1, questions: 1 }))) as unknown as typeof fetch },
+      paperId, { pageNo: 1 });
+    await waitSettled(paperId, "ready_for_review");
+    // 页 2 与 ITEM 同文(余弦 1):旧代码全卷重扫会把它重新挂上——这就是回归点
+    const { rows: [row] } = await pool.query(
+      "SELECT matched_item_id::text FROM paper_questions WHERE id=$1", [cleared.id]);
+    expect(row.matched_item_id).toBeNull();  // 新行为:不在重识别页,不参与自动匹配
+  });
 });
