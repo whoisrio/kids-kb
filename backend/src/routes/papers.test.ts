@@ -181,4 +181,22 @@ maybe("papers API（真库）", () => {
     expect(resp.status).toBe(200);
     expect(await resp.json()).toEqual({ pages: [1, 2] });
   });
+
+  it("非 UUID id 全族统一 422(retry/re-recognize/pages image)", async () => {
+    for (const path of [
+      "/api/papers/not-a-uuid/retry",
+      "/api/papers/not-a-uuid/re-recognize",
+      "/api/papers/not-a-uuid/pages/1/image",
+      "/api/papers/not-a-uuid/source.pdf",
+      "/api/papers/not-a-uuid/pages",
+    ]) {
+      const method = path.endsWith("/retry") || path.endsWith("/re-recognize") ? "POST" : "GET";
+      const init: RequestInit | undefined = method === "POST"
+        ? { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }
+        : undefined;
+      const resp = await app.request(path, init);
+      expect(resp.status, path).toBe(422);
+      expect((await resp.json()).error).toContain("UUID");
+    }
+  });
 });

@@ -24,6 +24,13 @@ async function withTx<T>(pool: pg.Pool, fn: (client: pg.PoolClient) => Promise<T
   }
 }
 
+/** 路由级统一:id 参数非法(非 UUID)一律 422,不再 500。 */
+function invalidId(c: Context, err: unknown): Response | null {
+  return (err as { code?: string })?.code === "22P02"
+    ? c.json({ error: "id 格式非法（须为 UUID）" }, 422)
+    : null;
+}
+
 export function paperQuestionsRoutes(pool: pg.Pool, deps: PaperJobDeps): Hono {
   const app = new Hono({ strict: false });
 
@@ -106,25 +113,34 @@ export function paperQuestionsRoutes(pool: pg.Pool, deps: PaperJobDeps): Hono {
   });
 
   app.get("/:id/candidates", async (c) => {
-    const { rows: [q] } = await pool.query(
-      `SELECT pq.content_md, p.subject FROM paper_questions pq
-       JOIN papers p ON p.id = pq.paper_id WHERE pq.id=$1`, [c.req.param("id")]);
-    if (!q) return c.json({ error: "题目不存在" }, 404);
-    const { candidates } = await matchQuestion(
-      pool, { embed: deps.embed, rerank: deps.rerank }, q.content_md, q.subject, deps.matchThreshold);
-    return c.json({ candidates });
+    try {
+      const { rows: [q] } = await pool.query(
+        `SELECT pq.content_md, p.subject FROM paper_questions pq
+         JOIN papers p ON p.id = pq.paper_id WHERE pq.id=$1`, [c.req.param("id")]);
+      if (!q) return c.json({ error: "题目不存在" }, 404);
+      const { candidates } = await matchQuestion(
+        pool, { embed: deps.embed, rerank: deps.rerank }, q.content_md, q.subject, deps.matchThreshold);
+      return c.json({ candidates });
+    } catch (err) {
+      return invalidId(c, err) ?? ((err as { code?: string })?.code === "23503"
+        ? c.json({ error: "item_id 不存在" }, 404) : (() => { throw err; })());
+    }
   });
 
   app.get("/:id/image", async (c) => {
-    const { rows: [q] } = await pool.query(
-      "SELECT image_path FROM paper_questions WHERE id=$1", [c.req.param("id")]);
-    if (!q) return c.json({ error: "题目不存在" }, 404);
-    if (!q.image_path) return c.json({ error: "该题无裁图" }, 404);
     try {
-      const buf = await readFile(q.image_path);
-      return c.body(new Uint8Array(buf), 200, { "Content-Type": "image/png" });
-    } catch {
-      return c.json({ error: "题图缺失" }, 404);
+      const { rows: [q] } = await pool.query(
+        "SELECT image_path FROM paper_questions WHERE id=$1", [c.req.param("id")]);
+      if (!q) return c.json({ error: "题目不存在" }, 404);
+      if (!q.image_path) return c.json({ error: "该题无裁图" }, 404);
+      try {
+        const buf = await readFile(q.image_path);
+        return c.body(new Uint8Array(buf), 200, { "Content-Type": "image/png" });
+      } catch {
+        return c.json({ error: "题图缺失" }, 404);
+      }
+    } catch (err) {
+      return invalidId(c, err) ?? (() => { throw err; })();
     }
   });
 

@@ -133,4 +133,9 @@ maybe("paper-questions API（真库）", () => {
     });
     expect(candidates[0].vec_score).toBeGreaterThan(0.88);
   });
+
+  it("非 UUID id 统一 422(candidates/image)", async () => {
+    expect((await app.request("/api/paper-questions/not-a-uuid/candidates")).status).toBe(422);
+    expect((await app.request("/api/paper-questions/not-a-uuid/image")).status).toBe(422);
+  });
 });

@@ -18,6 +18,13 @@ function mapPgError(c: Context, err: unknown): Response {
   throw err;
 }
 
+/** 路由级统一:id 参数非法(非 UUID)一律 422,不再 500。 */
+function invalidId(c: Context, err: unknown): Response | null {
+  return (err as { code?: string })?.code === "22P02"
+    ? c.json({ error: "id 格式非法（须为 UUID）" }, 422)
+    : null;
+}
+
 export function papersRoutes(pool: pg.Pool, deps: PaperJobDeps, cfg: BackendConfig): Hono {
   const app = new Hono({ strict: false });
 
@@ -119,30 +126,42 @@ export function papersRoutes(pool: pg.Pool, deps: PaperJobDeps, cfg: BackendConf
   });
 
   app.post("/:id/retry", async (c) => {
-    const { rows: [paper] } = await pool.query(
-      "SELECT id::text, status FROM papers WHERE id=$1", [c.req.param("id")]);
-    if (!paper) return c.json({ error: "试卷不存在" }, 404);
-    if (paper.status !== "failed") return c.json({ error: "只有 failed 卷可重试" }, 409);
-    await pool.query(
-      "UPDATE papers SET status='processing', error=NULL, updated_at=now() WHERE id=$1", [paper.id]);
-    void drivePaper(pool, deps, paper.id);
-    return c.json({ id: paper.id, status: "processing" });
+    try {
+      const { rows: [paper] } = await pool.query(
+        "SELECT id::text, status FROM papers WHERE id=$1", [c.req.param("id")]);
+      if (!paper) return c.json({ error: "试卷不存在" }, 404);
+      if (paper.status !== "failed") return c.json({ error: "只有 failed 卷可重试" }, 409);
+      await pool.query(
+        "UPDATE papers SET status='processing', error=NULL, updated_at=now() WHERE id=$1", [paper.id]);
+      void drivePaper(pool, deps, paper.id);
+      return c.json({ id: paper.id, status: "processing" });
+    } catch (err) {
+      return invalidId(c, err) ?? mapPgError(c, err);
+    }
   });
 
   app.post("/:id/re-recognize", async (c) => {
-    let body: { page_no?: number };
-    try { body = await c.req.json(); } catch { return c.json({ error: "请求体不是合法 JSON" }, 400); }
-    const pageNo = Number(body.page_no);
-    if (!Number.isInteger(pageNo) || pageNo < 1) return c.json({ error: "page_no 须为正整数" }, 422);
-    const { rows: [paper] } = await pool.query(
-      "SELECT id::text, status, page_count FROM papers WHERE id=$1", [c.req.param("id")]);
-    if (!paper) return c.json({ error: "试卷不存在" }, 404);
-    if (pageNo > paper.page_count) return c.json({ error: `page_no 越界(共 ${paper.page_count} 页)` }, 422);
-    if (paper.status === "processing") return c.json({ error: "处理中,勿并发重识别" }, 409);
-    await pool.query(
-      "UPDATE papers SET status='processing', updated_at=now() WHERE id=$1", [paper.id]);
-    void drivePaper(pool, deps, paper.id, { pageNo });
-    return c.json({ id: paper.id, status: "processing", page_no: pageNo });
+    try {
+      const id = c.req.param("id");
+      if (!/^[0-9a-f-]{36}$/i.test(id)) {
+        return c.json({ error: "id 格式非法（须为 UUID）" }, 422);
+      }
+      let body: { page_no?: number };
+      try { body = await c.req.json(); } catch { return c.json({ error: "请求体不是合法 JSON" }, 400); }
+      const pageNo = Number(body.page_no);
+      if (!Number.isInteger(pageNo) || pageNo < 1) return c.json({ error: "page_no 须为正整数" }, 422);
+      const { rows: [paper] } = await pool.query(
+        "SELECT id::text, status, page_count FROM papers WHERE id=$1", [id]);
+      if (!paper) return c.json({ error: "试卷不存在" }, 404);
+      if (pageNo > paper.page_count) return c.json({ error: `page_no 越界(共 ${paper.page_count} 页)` }, 422);
+      if (paper.status === "processing") return c.json({ error: "处理中,勿并发重识别" }, 409);
+      await pool.query(
+        "UPDATE papers SET status='processing', updated_at=now() WHERE id=$1", [paper.id]);
+      void drivePaper(pool, deps, paper.id, { pageNo });
+      return c.json({ id: paper.id, status: "processing", page_no: pageNo });
+    } catch (err) {
+      return invalidId(c, err) ?? mapPgError(c, err);
+    }
   });
 
   app.get("/:id/source.pdf", async (c) => {
@@ -187,19 +206,23 @@ export function papersRoutes(pool: pg.Pool, deps: PaperJobDeps, cfg: BackendConf
   });
 
   app.get("/:id/pages/:page_no/image", async (c) => {
-    const pageNo = Number(c.req.param("page_no"));
-    const { rows: [paper] } = await pool.query(
-      "SELECT id::text, page_count FROM papers WHERE id=$1", [c.req.param("id")]);
-    if (!paper) return c.json({ error: "试卷不存在" }, 404);
-    if (!Number.isInteger(pageNo) || pageNo < 1 || pageNo > paper.page_count) {
-      return c.json({ error: "page_no 越界" }, 422);
-    }
-    const path = join(cfg.storageRoot, "papers", paper.id, "pages", `p${String(pageNo).padStart(4, "0")}.png`);
     try {
-      const buf = await readFile(path);
-      return c.body(new Uint8Array(buf), 200, { "Content-Type": "image/png" });
-    } catch {
-      return c.json({ error: "页图缺失" }, 404);
+      const pageNo = Number(c.req.param("page_no"));
+      const { rows: [paper] } = await pool.query(
+        "SELECT id::text, page_count FROM papers WHERE id=$1", [c.req.param("id")]);
+      if (!paper) return c.json({ error: "试卷不存在" }, 404);
+      if (!Number.isInteger(pageNo) || pageNo < 1 || pageNo > paper.page_count) {
+        return c.json({ error: "page_no 越界" }, 422);
+      }
+      const path = join(cfg.storageRoot, "papers", paper.id, "pages", `p${String(pageNo).padStart(4, "0")}.png`);
+      try {
+        const buf = await readFile(path);
+        return c.body(new Uint8Array(buf), 200, { "Content-Type": "image/png" });
+      } catch {
+        return c.json({ error: "页图缺失" }, 404);
+      }
+    } catch (err) {
+      return invalidId(c, err) ?? mapPgError(c, err);
     }
   });
 
