@@ -143,4 +143,28 @@ maybe("papers API（真库）", () => {
     expect(ok.status).toBe(200);
     expect(ok.headers.get("Content-Type")).toBe("image/png");
   });
+
+  it("GET /:id/source.pdf 回传原件;缺失 404;非法 id 422", async () => {
+    const { rows: [paper] } = await pool.query(
+      `INSERT INTO papers (child_id, title, subject, status, page_count)
+       VALUES ($1,'原件卷','数学','failed',0) RETURNING id::text`, [CHILD]);
+    const srcDir = `${STORAGE_ROOT}/papers/${paper.id}`;
+    const { mkdirSync, writeFileSync } = await import("node:fs");
+    mkdirSync(srcDir, { recursive: true });
+    writeFileSync(`${srcDir}/source.pdf`, Buffer.from("%PDF-1.4 fake"));
+
+    const ok = await app.request(`/api/papers/${paper.id}/source.pdf`);
+    expect(ok.status).toBe(200);
+    expect(ok.headers.get("content-type")).toBe("application/pdf");
+    expect(Buffer.from(await ok.arrayBuffer()).toString()).toContain("%PDF-1.4");
+
+    // 缺失 404(DB 有卷但盘上无原件)
+    const { rows: [paper2] } = await pool.query(
+      `INSERT INTO papers (child_id, title, subject, status, page_count)
+       VALUES ($1,'无原件卷','数学','failed',0) RETURNING id::text`, [CHILD]);
+    expect((await app.request(`/api/papers/${paper2.id}/source.pdf`)).status).toBe(404);
+
+    // 非法 id 422(与 Task 4 的统一语义一致)
+    expect((await app.request("/api/papers/not-a-uuid/source.pdf")).status).toBe(422);
+  });
 });

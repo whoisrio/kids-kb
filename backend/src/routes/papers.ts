@@ -145,6 +145,24 @@ export function papersRoutes(pool: pg.Pool, deps: PaperJobDeps, cfg: BackendConf
     return c.json({ id: paper.id, status: "processing", page_no: pageNo });
   });
 
+  app.get("/:id/source.pdf", async (c) => {
+    try {
+      const { rows: [paper] } = await pool.query(
+        "SELECT id::text FROM papers WHERE id=$1", [c.req.param("id")]);
+      if (!paper) return c.json({ error: "试卷不存在" }, 404);
+      const path = join(cfg.storageRoot, "papers", paper.id, "source.pdf");
+      const buf = await readFile(path);
+      return c.body(new Uint8Array(buf), 200, { "Content-Type": "application/pdf" });
+    } catch (err) {
+      const code = (err as { code?: string })?.code;
+      if (code === "22P02") return c.json({ error: "id 格式非法（须为 UUID）" }, 422);
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+        return c.json({ error: "原件缺失" }, 404);
+      }
+      throw err;
+    }
+  });
+
   app.get("/:id/pages/:page_no/image", async (c) => {
     const pageNo = Number(c.req.param("page_no"));
     const { rows: [paper] } = await pool.query(
