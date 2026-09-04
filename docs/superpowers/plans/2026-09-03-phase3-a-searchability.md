@@ -58,7 +58,7 @@
 - Create: `pipeline/kb/migrations/0013_chapter_chunks.sql`
 - Modify: `pipeline/tests/test_db.py`（`test_migrate_creates_tables` 移除 item_embeddings + 新增 0013 约束测试）
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 在 `pipeline/tests/test_db.py` 末尾追加（并修改既有 `test_migrate_creates_tables`）：
 
@@ -116,12 +116,12 @@ def test_chunks_chapter_ref_after_0013(conn):
                 (str(uuid.uuid4()), ch_id, doc_id, vec))
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `cd pipeline && KB_TEST_DATABASE_URL=postgresql://localhost/kb_test uv run pytest tests/test_db.py -q`
 Expected: `test_chunks_chapter_ref_after_0013` FAIL（chapter_id 列不存在）；`test_migrate_creates_tables` FAIL（item_embeddings 仍存在、数量为 8）
 
-- [ ] **Step 3: 写 migration**
+- [x] **Step 3: 写 migration**
 
 `pipeline/kb/migrations/0013_chapter_chunks.sql`：
 
@@ -142,17 +142,17 @@ ALTER TABLE chunks ADD CONSTRAINT chunks_unit_ref CHECK (
 DROP TABLE IF EXISTS item_embeddings;
 ```
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
 Run: `cd pipeline && KB_TEST_DATABASE_URL=postgresql://localhost/kb_test uv run pytest tests/test_db.py -q`
 Expected: 全部 PASS
 
-- [ ] **Step 5: 全量回归**
+- [x] **Step 5: 全量回归**
 
 Run: `cd pipeline && KB_TEST_DATABASE_URL=postgresql://localhost/kb_test uv run pytest tests/ -q`
 Expected: 全部 PASS（0001 的 item_embeddings 建表语句先建后删，重放安全）
 
-- [ ] **Step 6: 提交**
+- [x] **Step 6: 提交**
 
 ```bash
 git add pipeline/kb/migrations/0013_chapter_chunks.sql pipeline/tests/test_db.py
@@ -168,7 +168,7 @@ git commit -m "feat(migration): chunks 支持章节级向量(item_id 可空+chap
 - Modify: `pipeline/kb/embed.py`
 - Modify: `pipeline/tests/test_embed.py`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 在 `pipeline/tests/test_embed.py` 追加（文件顶部已有 `uuid` 导入与 `_FakeEmbed`）：
 
@@ -214,12 +214,12 @@ def test_embed_chapters_segments_and_idempotent(conn, doc_chapter):
     assert embed_chapters(conn, cfg, doc_id, client=_FakeEmbed()) == 0  # 幂等
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `cd pipeline && KB_TEST_DATABASE_URL=postgresql://localhost/kb_test uv run pytest tests/test_embed.py -q -k "segment or chapters"`
 Expected: FAIL（`ImportError: cannot import name 'segment_chapter'`）
 
-- [ ] **Step 3: 实现**
+- [x] **Step 3: 实现**
 
 在 `pipeline/kb/embed.py` 中，顶部补 `import re`；
 在 `invalidate_chunk` 之前插入：
@@ -284,12 +284,12 @@ def embed_chapters(conn, cfg: Config, doc_id: str | None = None,
     return len(payloads)
 ```
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
 Run: `cd pipeline && KB_TEST_DATABASE_URL=postgresql://localhost/kb_test uv run pytest tests/test_embed.py -q`
 Expected: 全部 PASS
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add pipeline/kb/embed.py pipeline/tests/test_embed.py
@@ -308,7 +308,7 @@ git commit -m "feat(embed): 章节分段向量化 embed_chapters——未拆条 
 - Modify: `pipeline/kb/cli.py`（`.md` 分流）
 - Modify: `pipeline/tests/test_docx_ingest.py`（client 注入保测试封闭）
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 `pipeline/tests/test_md_ingest.py`（新建，fixture 风格对齐 `test_docx_ingest.py`）：
 
@@ -394,12 +394,12 @@ def test_ingest_md_idempotent_by_path(conn, cfg, tmp_path):
         assert cur.fetchone()[0] == 1
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `cd pipeline && KB_TEST_DATABASE_URL=postgresql://localhost/kb_test uv run pytest tests/test_md_ingest.py -q`
 Expected: FAIL（`ModuleNotFoundError: No module named 'kb.text_ingest'`）
 
-- [ ] **Step 3: 实现 text_ingest.py**
+- [x] **Step 3: 实现 text_ingest.py**
 
 `pipeline/kb/text_ingest.py`（新建；`split_chapters` 从 `docx_ingest.py` 原样搬来）：
 
@@ -479,7 +479,7 @@ def ingest_md(conn, cfg: Config, path, title: str,
         split_chapters(text, title), client=client)
 ```
 
-- [ ] **Step 4: 重构 docx_ingest.py 复用**
+- [x] **Step 4: 重构 docx_ingest.py 复用**
 
 `pipeline/kb/docx_ingest.py` 整体替换为：
 
@@ -531,7 +531,7 @@ def ingest_docx(conn, cfg: Config, path, title: str,
         split_chapters(markdown, title), doc_id=doc_id, client=client)
 ```
 
-- [ ] **Step 5: CLI 分流 .md**
+- [x] **Step 5: CLI 分流 .md**
 
 `pipeline/kb/cli.py` 的 ingest 分支改为：
 
@@ -554,16 +554,16 @@ def ingest_docx(conn, cfg: Config, path, title: str,
         print(f"完成 document_id={doc_id}")
 ```
 
-- [ ] **Step 6: 更新 docx 既有测试保封闭**
+- [x] **Step 6: 更新 docx 既有测试保封闭**
 
 `pipeline/tests/test_docx_ingest.py` 中给 `ingest_docx` 调用补 `client=_FakeEmbed()`（在文件内加同款假客户端类，见 test_md_ingest.py 的 `_FakeEmbed`），避免测试真调 ollama。
 
-- [ ] **Step 7: 跑测试确认通过**
+- [x] **Step 7: 跑测试确认通过**
 
 Run: `cd pipeline && KB_TEST_DATABASE_URL=postgresql://localhost/kb_test uv run pytest tests/test_md_ingest.py tests/test_docx_ingest.py -q`
 Expected: 全部 PASS
 
-- [ ] **Step 8: 提交**
+- [x] **Step 8: 提交**
 
 ```bash
 git add pipeline/kb/text_ingest.py pipeline/kb/docx_ingest.py pipeline/kb/cli.py pipeline/tests/test_md_ingest.py pipeline/tests/test_docx_ingest.py
@@ -579,7 +579,7 @@ git commit -m "feat(ingest): md 入库路径;docx/md 共用切章落库,入库�
 - Modify: `pipeline/kb/review_api.py`
 - Modify: `pipeline/tests/test_review_items.py`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 在 `pipeline/tests/test_review_items.py` 追加（文件已有 `TestClient`/`create_app` 的 client fixture 与 `doc_with_items` fixture；先读该文件确认 fixture 返回结构，`item_id` 从 `doc_with_items` 拿）：
 
@@ -629,12 +629,12 @@ def test_approve_item_survives_embed_failure(conn, doc_with_items):
 
 注意：若 `doc_with_items` fixture 的条目 `qc_status` 已是 approved 或 `content_md` 为空，先按 fixture 现状调整断言（embed 门禁要求 `content_md IS NOT NULL` 且 approved 无 chunk）。
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `cd pipeline && KB_TEST_DATABASE_URL=postgresql/kb_test uv run pytest tests/test_review_items.py -q -k approve`
 Expected: `test_approve_item_embeds_immediately` FAIL（chunks 为 0；且 `create_app` 尚无 `embed_client` 参数会 TypeError）
 
-- [ ] **Step 3: 实现**
+- [x] **Step 3: 实现**
 
 `pipeline/kb/review_api.py`：
 
@@ -672,12 +672,12 @@ docstring 追加一行：`embed_client 可注入测试用的假 embedding 客户
         return {"id": item_id, "qc_status": "approved"}
 ```
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
 Run: `cd pipeline && KB_TEST_DATABASE_URL=postgresql://localhost/kb_test uv run pytest tests/test_review_items.py tests/test_review_api.py -q`
 Expected: 全部 PASS
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add pipeline/kb/review_api.py pipeline/tests/test_review_items.py
@@ -694,7 +694,7 @@ git commit -m "feat(review): approve 条目即向量化,不再依赖手工 kb.cl
 - Modify: `pipeline/kb/cli.py`
 - Modify: `pipeline/tests/test_embed.py`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 在 `pipeline/tests/test_embed.py` 追加：
 
@@ -752,12 +752,12 @@ def test_approve_items_chapter_filter(conn, doc_chapter):
         assert cur.fetchone()[0] == "pending"  # 第一章不受影响
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `cd pipeline && KB_TEST_DATABASE_URL=postgresql://localhost/kb_test uv run pytest tests/test_embed.py -q -k approve_items`
 Expected: FAIL（`cannot import name 'approve_items'`）
 
-- [ ] **Step 3: 实现**
+- [x] **Step 3: 实现**
 
 在 `pipeline/kb/embed.py` 的 `embed_chapters` 之后加：
 
@@ -798,7 +798,7 @@ def approve_items(conn, cfg: Config, doc_id: str, chapter_no: int | None = None,
     return {"approved": len(ids), "embedded": n}
 ```
 
-- [ ] **Step 4: CLI 接线**
+- [x] **Step 4: CLI 接线**
 
 `pipeline/kb/cli.py`：
 
@@ -829,12 +829,12 @@ def approve_items(conn, cfg: Config, doc_id: str, chapter_no: int | None = None,
         print(f"新增向量: {n} 条(条目+章节)")
 ```
 
-- [ ] **Step 5: 跑测试确认通过**
+- [x] **Step 5: 跑测试确认通过**
 
 Run: `cd pipeline && KB_TEST_DATABASE_URL=postgresql://localhost/kb_test uv run pytest tests/test_embed.py -q`
 Expected: 全部 PASS
 
-- [ ] **Step 6: 提交**
+- [x] **Step 6: 提交**
 
 ```bash
 git add pipeline/kb/embed.py pipeline/kb/cli.py pipeline/tests/test_embed.py
@@ -850,7 +850,7 @@ git commit -m "feat(cli): approve 批量通过条目并即时刻意向量化;emb
 - Modify: `backend/src/retrieval/search.ts`
 - Modify: `backend/src/retrieval/search.test.ts`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 在 `backend/src/retrieval/search.test.ts` 的 beforeAll 里追加种子（复用既有 doc `11111111-…`；章节挂到该 doc，另建一个 doc 放"无条目章节"对照）：
 
@@ -901,12 +901,12 @@ git commit -m "feat(cli): approve 批量通过条目并即时刻意向量化;emb
   });
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `cd backend && KB_TEST_DATABASE_URL=postgresql://localhost/kb_test npx vitest run src/retrieval/search.test.ts`
 Expected: 三个新用例 FAIL（`chapter_id` 不在返回结构里 / 抑制未实现 / itemsOnly 未实现）
 
-- [ ] **Step 3: 实现**
+- [x] **Step 3: 实现**
 
 `backend/src/retrieval/search.ts` 整体替换为：
 
@@ -1028,12 +1028,12 @@ export async function hybridSearch(
 注意既有测试断言 `hit1.item_id === "2222…"` 之类仍成立（item 命中 item_id 不变）；
 `SearchHit.item_id` 变为可空后，检查编译错误并顺手修正引用处（`match.ts` / `tools.ts` 在 Task 7、Task 8 处理；此处先让 `npm run build`（tsc）不报错——如有引用处类型错误，先按最小改动 `h.item_id!` 处理的仅限 match.ts，tools.ts 留给 Task 8）。
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
 Run: `cd backend && KB_TEST_DATABASE_URL=postgresql://localhost/kb_test npx vitest run src/retrieval/search.test.ts`
 Expected: 全部 PASS（含既有用例）
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add backend/src/retrieval/search.ts backend/src/retrieval/search.test.ts
@@ -1049,7 +1049,7 @@ git commit -m "feat(search): 章节级 chunk 命中贯通 + 同章条目优先�
 - Modify: `backend/src/retrieval/match.ts`
 - Modify: `backend/src/retrieval/match.test.ts`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 在 `backend/src/retrieval/match.test.ts` 的 beforeAll 追加一个章节 chunk（同 doc 数学、向量同 mathVec——与查询同向，若不过滤会被当成 top 候选）：
 
@@ -1079,12 +1079,12 @@ git commit -m "feat(search): 章节级 chunk 命中贯通 + 同章条目优先�
   });
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `cd backend && KB_TEST_DATABASE_URL=postgresql://localhost/kb_test npx vitest run src/retrieval/match.test.ts`
 Expected: 新用例 FAIL（章节分段混进候选、甚至抢走 auto——章节 chunk 与查询同向且 BM25 也命中）
 
-- [ ] **Step 3: 实现**
+- [x] **Step 3: 实现**
 
 `backend/src/retrieval/match.ts` 中 `hybridSearch` 调用加 `itemsOnly`：
 
@@ -1098,12 +1098,12 @@ Expected: 新用例 FAIL（章节分段混进候选、甚至抢走 auto——章
 
 （topK 5→10 属 Phase 3-B backlog #2，不在本计划改。）
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
 Run: `cd backend && KB_TEST_DATABASE_URL=postgresql://localhost/kb_test npx vitest run src/retrieval/match.test.ts`
 Expected: 全部 PASS
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add backend/src/retrieval/match.ts backend/src/retrieval/match.test.ts
@@ -1119,7 +1119,7 @@ git commit -m "feat(match): 试卷匹配限定条目级 chunk,章节分段不进
 - Modify: `backend/src/agent/tools.ts`
 - Modify: `backend/src/agent/tools.test.ts`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 在 `backend/src/agent/tools.test.ts` 追加用例（deps.search 可注入章节型命中）：
 
@@ -1160,12 +1160,12 @@ git commit -m "feat(match): 试卷匹配限定条目级 chunk,章节分段不进
 
 并同步更新文件内所有既有 `run("xxx", {...})` 调用为 `run(deps, "xxx", {...})`。
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `cd backend && KB_TEST_DATABASE_URL=postgresql://localhost/kb_test npx vitest run src/agent/tools.test.ts`
 Expected: 新用例 FAIL（当前格式化对章节命中输出 `【1】（undefined · 第 1 讲 修辞手法）`——缺"章节"标识且 label 为 undefined）
 
-- [ ] **Step 3: 实现**
+- [x] **Step 3: 实现**
 
 `backend/src/agent/tools.ts` 中 `search_items` 的 execute 返回格式化改为：
 
@@ -1183,12 +1183,12 @@ Expected: 新用例 FAIL（当前格式化对章节命中输出 `【1】（undef
       },
 ```
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
 Run: `cd backend && KB_TEST_DATABASE_URL=postgresql://localhost/kb_test npx vitest run src/agent/tools.test.ts`
 Expected: 全部 PASS
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add backend/src/agent/tools.ts backend/src/agent/tools.test.ts
@@ -1205,7 +1205,7 @@ git commit -m "feat(tools): search_items 区分条目/章节命中展示"
 - Modify: `pipeline/kb/lexical.py`（`bm25_search` 返回 chapter_id，key 不再合并 None）
 - Modify: `pipeline/tests/test_embed.py`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 在 `pipeline/tests/test_embed.py` 追加：
 
@@ -1228,12 +1228,12 @@ def test_search_hybrid_keeps_chapter_hits_separate(conn, doc_chapter):
     assert any(h.get("label") for h in hits), "条目命中应保留"
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `cd pipeline && KB_TEST_DATABASE_URL=postgresql://localhost/kb_test uv run pytest tests/test_embed.py -q -k keeps_chapter`
 Expected: FAIL（hybrid rrf 以 `h["item_id"]` 为 key，章节行 item_id=None 全部合并成一条，`any(kind=chapter)` 可能对但条目/章节互斥覆盖——用例失败即复现）
 
-- [ ] **Step 3: 实现**
+- [x] **Step 3: 实现**
 
 `pipeline/kb/embed.py`：
 
@@ -1322,12 +1322,12 @@ CLI `search` 输出行（`kb/cli.py`）把 `h.get('label')` 兜底为章节标�
                   f"{h.get('label') or '章节'}\t{(h['content_md'] or '')[:60]}")
 ```
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
 Run: `cd pipeline && KB_TEST_DATABASE_URL=postgresql://localhost/kb_test uv run pytest tests/test_embed.py tests/test_hybrid_search.py -q`
 Expected: 全部 PASS
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add pipeline/kb/embed.py pipeline/kb/lexical.py pipeline/kb/cli.py pipeline/tests/test_embed.py
@@ -1348,7 +1348,7 @@ backend 侧 `resetDbForTest` 已有"库名须含 test"守卫，pipeline 侧没�
 - Modify: `pipeline/tests/conftest.py`
 - Modify: `pipeline/tests/test_db.py`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 在 `pipeline/tests/test_db.py` 追加：
 
@@ -1379,12 +1379,12 @@ def test_ensure_test_database_reads_dotenv(monkeypatch, tmp_path):
 
 （文件顶部如无 `import pytest`，补上。）
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `cd pipeline && KB_TEST_DATABASE_URL=postgresql://localhost/kb_test uv run pytest tests/test_db.py -q -k ensure_test`
 Expected: FAIL（`ensure_test_database` 不存在）
 
-- [ ] **Step 3: 实现**
+- [x] **Step 3: 实现**
 
 `pipeline/kb/db.py` 顶部补 `import os`，并追加：
 
@@ -1429,17 +1429,17 @@ def clean_db():
 
 （其余不动。）
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
 Run: `cd pipeline && KB_TEST_DATABASE_URL=postgresql://localhost/kb_test uv run pytest tests/ -q`
 Expected: 全部 PASS（kb_test 与 kb 不同名，守卫放行）
 
-- [ ] **Step 5: 验证守卫真实拦截**
+- [x] **Step 5: 验证守卫真实拦截**
 
 Run: `cd pipeline && KB_TEST_DATABASE_URL=postgresql://localhost/kb uv run pytest tests/test_db.py -q -k migrate_creates`
 Expected: ERROR/FAIL，报错含"拒绝 DROP SCHEMA"（证明误指生产库时被拦下）
 
-- [ ] **Step 6: 提交**
+- [x] **Step 6: 提交**
 
 ```bash
 git add pipeline/kb/db.py pipeline/tests/conftest.py pipeline/tests/test_db.py
@@ -1454,7 +1454,7 @@ git commit -m "fix(safety): pipeline 测试库防误清守卫,拒绝指向 KB_DA
 
 - Modify: `AGENTS.md`（仓库根）
 
-- [ ] **Step 1: 更新工作流**
+- [x] **Step 1: 更新工作流**
 
 把"资料入库工作流"一节替换为（对照真实链路：入库 → 拆条 → 复核通过 → 可检索；docx/md 入库即章节向量化）：
 
@@ -1476,11 +1476,11 @@ git commit -m "fix(safety): pipeline 测试库防误清守卫,拒绝指向 KB_DA
 6. 落盘镜像：`export <doc_id>`。
 ```
 
-- [ ] **Step 2: 自查**
+- [x] **Step 2: 自查**
 
 通读 AGENTS.md 全文，确认没有其它地方仍写"ingest → structure → export 就完成"的旧链路描述。
 
-- [ ] **Step 3: 提交**
+- [x] **Step 3: 提交**
 
 ```bash
 git add AGENTS.md
@@ -1495,7 +1495,7 @@ git commit -m "docs: 入库工作流补全复核/向量化步骤,收录 md 类�
 
 - Create: `e2e/specs/searchability.spec.ts`
 
-- [ ] **Step 1: 写用例**
+- [x] **Step 1: 写用例**
 
 `e2e/specs/searchability.spec.ts`（编排复用 playwright.config 的三服务；模式对齐 chat-session.spec.ts）：
 
@@ -1561,17 +1561,17 @@ test.afterAll(async () => {
 });
 ```
 
-- [ ] **Step 2: 运行**
+- [x] **Step 2: 运行**
 
 Run: `cd e2e && npx playwright test specs/searchability.spec.ts`
 Expected: PASS（若聊天回复偶发不含"燕子"，先人工看回复内容——大概率是模型没调工具，此时把 prompt 收紧为「必须先调用搜题库工具查询 E2E…」再重跑；不允许跳过工具直答）
 
-- [ ] **Step 3: 全量 e2e 回归**
+- [x] **Step 3: 全量 e2e 回归**
 
 Run: `cd e2e && npm test`
 Expected: 全部 PASS（串行，无库竞争）
 
-- [ ] **Step 4: 提交**
+- [x] **Step 4: 提交**
 
 ```bash
 git add e2e/specs/searchability.spec.ts
@@ -1582,11 +1582,17 @@ git commit -m "feat(e2e): md 入库→章节向量化→聊天检索全链路用
 
 ### Task 13: 真实资料重入库验收（manual acceptance）
 
+> **进度（2026-09-04 回写）：** Step 1 docx 两份已完成（ingest+检索+聊天引用均通，状态 parsed）。
+> Step 2 起阻塞：《学霸提优大试卷》是无目录页的试卷集合，TOC-driven `structure` 不适用
+> （显式 `--toc-pages` 时本地 qwen3.5:4b 的 TOC JSON 输出也不稳）。
+> 需 Phase 3-C 复核页迁移或新增"按 page 落章节 chunks"的简版路径来收尾，详见 .workbuddy/memory/2026-09-04.md。
+
+
 **背景：** `kb` 库为空是"查询不到资料"的现状起点。
 本任务把 `resources/` 的真实资料重新入库并验收可检索。
 PDF 是扫描件，走 VLM 管线，分钟级耗时 + 消耗远端 token——分批做。
 
-- [ ] **Step 1: docx 两份入库并验证即时可检索**
+- [x] **Step 1: docx 两份入库并验证即时可检索**
 
 ```bash
 cd pipeline

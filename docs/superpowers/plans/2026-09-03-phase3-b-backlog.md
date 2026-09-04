@@ -49,7 +49,7 @@ pipeline 服务（serve-internal）改代码必须重启进程；backend（tsx w
 - Modify: `backend/src/routes/papers.ts`
 - Modify: `backend/src/routes/papers.test.ts`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 在 `backend/src/routes/papers.test.ts` 的 describe 内追加（复用既有 `multipart`/`PNG_1PX` 与 seed 模式；`STORAGE_ROOT` 已指向 `/tmp/kb-papers-test`）：
 
@@ -79,12 +79,12 @@ pipeline 服务（serve-internal）改代码必须重启进程；backend（tsx w
   });
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `cd backend && KB_TEST_DATABASE_URL=postgresql://localhost/kb_test npx vitest run src/routes/papers.test.ts`
 Expected: 新用例 FAIL（404——路由不存在）
 
-- [ ] **Step 3: 实现**
+- [x] **Step 3: 实现**
 
 在 `backend/src/routes/papers.ts` 的 `app.get("/:id/pages/:page_no/image"` 之前加：
 
@@ -108,12 +108,12 @@ Expected: 新用例 FAIL（404——路由不存在）
   });
 ```
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
 Run: `cd backend && KB_TEST_DATABASE_URL=postgresql://localhost/kb_test npx vitest run src/routes/papers.test.ts`
 Expected: 全部 PASS
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add backend/src/routes/papers.ts backend/src/routes/papers.test.ts
@@ -129,7 +129,7 @@ git commit -m "feat(papers): source.pdf 原件回传端点(比页图更可靠的
 - Modify: `pipeline/kb/paper_pipeline.py`
 - Modify: `pipeline/tests/test_paper_pipeline.py`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 在 `pipeline/tests/test_paper_pipeline.py` 追加（文件内已有 ingest_paper 直测用例，按其 conn/cfg fixture 风格对齐；坏 PDF 用纯垃圾字节）：
 
@@ -166,12 +166,12 @@ def test_ingest_paper_accepts_valid_pdf_still_works(conn, cfg, tmp_path, monkeyp
 
 （顶部如缺 `fitz`/`uuid`/`pytest` 导入则补齐，与文件既有导入合并。）
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `cd pipeline && KB_TEST_DATABASE_URL=postgresql://localhost/kb_test uv run pytest tests/test_paper_pipeline.py -q -k "bad_pdf or valid_pdf"`
 Expected: `test_ingest_paper_rejects_bad_pdf_before_writing` FAIL（旧代码先落盘后 fitz.open——残留文件存在）
 
-- [ ] **Step 3: 实现**
+- [x] **Step 3: 实现**
 
 `pipeline/kb/paper_pipeline.py` 的 `ingest_paper` 开头部分（从 `root = ...` 到 `doc = fitz.open(...)`）替换为：
 
@@ -197,12 +197,12 @@ Expected: `test_ingest_paper_rejects_bad_pdf_before_writing` FAIL（旧代码先
 
 （后续 `for i, page in enumerate(doc, start=1):` 循环与事务块不动。）
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
 Run: `cd pipeline && KB_TEST_DATABASE_URL=postgresql://localhost/kb_test uv run pytest tests/test_paper_pipeline.py tests/test_internal_api.py -q`
 Expected: 全部 PASS
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add pipeline/kb/paper_pipeline.py pipeline/tests/test_paper_pipeline.py
@@ -221,7 +221,7 @@ git commit -m "fix(paper): 坏 PDF 先验证再落盘,切断重试死循环"
 - Modify: `frontend/src/views/ReviewView.tsx`
 - Modify: `frontend/src/views/ReviewView.test.tsx`
 
-- [ ] **Step 1: 写失败测试（backend 页图清单）**
+- [x] **Step 1: 写失败测试（backend 页图清单）**
 
 在 `backend/src/routes/papers.test.ts` 追加：
 
@@ -241,12 +241,12 @@ git commit -m "fix(paper): 坏 PDF 先验证再落盘,切断重试死循环"
   });
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `cd backend && KB_TEST_DATABASE_URL=postgresql://localhost/kb_test npx vitest run src/routes/papers.test.ts`
 Expected: FAIL（404，路由不存在）
 
-- [ ] **Step 3: 实现页图清单端点**
+- [x] **Step 3: 实现页图清单端点**
 
 在 `backend/src/routes/papers.ts` 的 source.pdf 路由后加（顶部补 `import { readdir } from "node:fs/promises";`）：
 
@@ -278,7 +278,7 @@ Expected: FAIL（404，路由不存在）
 Run: `cd backend && KB_TEST_DATABASE_URL=postgresql://localhost/kb_test npx vitest run src/routes/papers.test.ts`
 Expected: 全部 PASS
 
-- [ ] **Step 4: 写失败测试（frontend）**
+- [x] **Step 4: 写失败测试（frontend）**
 
 `frontend/src/api/papers.ts` 加两个纯函数（无网络，直接实现即可，不加测试）：
 
@@ -330,12 +330,12 @@ export function fetchPaperPages(paperId: string, fetchImpl: FetchLike = fetch) {
   });
 ```
 
-- [ ] **Step 5: 跑测试确认失败**
+- [x] **Step 5: 跑测试确认失败**
 
 Run: `cd frontend && npx vitest run src/views/ReviewView.test.tsx`
 Expected: 两个新用例 FAIL（无页图/原件元素）
 
-- [ ] **Step 6: 实现 ReviewView**
+- [x] **Step 6: 实现 ReviewView**
 
 `frontend/src/views/ReviewView.tsx`：
 
@@ -411,12 +411,12 @@ failed 渲染分支替换为：
 .fail-box .fail-source { width: 100%; height: 420px; border: 1px solid var(--line, #ddd); border-radius: 4px; margin: 8px 0; }
 ```
 
-- [ ] **Step 7: 跑测试确认通过**
+- [x] **Step 7: 跑测试确认通过**
 
 Run: `cd frontend && npx vitest run src/views/ReviewView.test.tsx`
 Expected: 全部 PASS
 
-- [ ] **Step 8: 提交**
+- [x] **Step 8: 提交**
 
 ```bash
 git add backend/src/routes/papers.ts backend/src/routes/papers.test.ts frontend/src/api/papers.ts frontend/src/views/ReviewView.tsx frontend/src/views/ReviewView.test.tsx frontend/src/index.css
@@ -432,7 +432,7 @@ git commit -m "feat(review): failed 详情页图+原件内嵌,成功卷整卷原
 - Modify: `backend/src/routes/papers.ts`、`backend/src/routes/paperQuestions.ts`
 - Modify: `backend/src/routes/papers.test.ts`、`backend/src/routes/paperQuestions.test.ts`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 `backend/src/routes/papers.test.ts` 追加：
 
@@ -462,12 +462,12 @@ git commit -m "feat(review): failed 详情页图+原件内嵌,成功卷整卷原
   });
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `cd backend && KB_TEST_DATABASE_URL=postgresql://localhost/kb_test npx vitest run src/routes/papers.test.ts src/routes/paperQuestions.test.ts`
 Expected: 新用例 FAIL（retry/re-recognize/pages-image/candidates/image 返回 500）
 
-- [ ] **Step 3: 实现**
+- [x] **Step 3: 实现**
 
 `backend/src/routes/papers.ts`：
 
@@ -526,12 +526,12 @@ function invalidId(c: Context, err: unknown): Response | null {
 
 （`GET /:id/image` 同样包裹，catch 直接 `return invalidId(c, err) ?? (() => { throw err; })();`——若嫌别扭，可只在 catch 里处理 22P02 后 rethrow。）
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
 Run: `cd backend && KB_TEST_DATABASE_URL=postgresql://localhost/kb_test npm test`
 Expected: 全部 PASS
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add backend/src/routes/papers.ts backend/src/routes/paperQuestions.ts backend/src/routes/papers.test.ts backend/src/routes/paperQuestions.test.ts
@@ -547,7 +547,7 @@ git commit -m "fix(api): 试卷族非 UUID id 统一 422,错误语义一致"
 - Modify: `backend/src/retrieval/search.ts`、`backend/src/retrieval/match.ts`
 - Modify: `backend/src/retrieval/search.test.ts`、`backend/src/retrieval/match.test.ts`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 `backend/src/retrieval/search.test.ts` 追加（beforeAll 里建一个新 doc "英语书" + 21 条英语 chunk，内容与查询词高度重合）：
 
@@ -593,12 +593,12 @@ beforeAll 追加种子（顶部补 `import { randomUUID } from "node:crypto";`�
   });
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `cd backend && KB_TEST_DATABASE_URL=postgresql://localhost/kb_test npx vitest run src/retrieval/search.test.ts src/retrieval/match.test.ts`
 Expected: 新用例 FAIL（英语 chunk 挤满 top-20 后，数学条目不在融合窗口，post-filter 后为空）
 
-- [ ] **Step 3: 实现**
+- [x] **Step 3: 实现**
 
 `backend/src/retrieval/search.ts`：
 
@@ -653,12 +653,12 @@ async function vectorHits(
   });
 ```
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
 Run: `cd backend && KB_TEST_DATABASE_URL=postgresql://localhost/kb_test npx vitest run src/retrieval/ src/agent/`
 Expected: 全部 PASS
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add backend/src/retrieval/search.ts backend/src/retrieval/match.ts backend/src/retrieval/search.test.ts backend/src/retrieval/match.test.ts
@@ -674,7 +674,7 @@ git commit -m "fix(search): subject 过滤下推 SQL(两路召回同学科窗口
 - Modify: `backend/src/papers/jobs.ts`
 - Modify: `backend/src/papers/jobs.test.ts`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 在 `backend/src/papers/jobs.test.ts` 追加：
 
@@ -700,12 +700,12 @@ git commit -m "fix(search): subject 过滤下推 SQL(两路召回同学科窗口
 （说明：核心回归点是“重识别页之外的题目不再被全卷重扫”。
 页 2 的题与 ITEM chunk 同文且被家长清除过匹配——旧代码不限页会重新挂上，新代码不会。）
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `cd backend && KB_TEST_DATABASE_URL=postgresql://localhost/kb_test npx vitest run src/papers/jobs.test.ts`
 Expected: 新用例 FAIL（旧代码不限页，页 2 的 NULL 匹配被重新挂上）
 
-- [ ] **Step 3: 实现**
+- [x] **Step 3: 实现**
 
 `backend/src/papers/jobs.ts` 的自动匹配查询改为按 `opts.pageNo` 限定：
 
@@ -721,12 +721,12 @@ Expected: 新用例 FAIL（旧代码不限页，页 2 的 NULL 匹配被重新�
   );
 ```
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
 Run: `cd backend && KB_TEST_DATABASE_URL=postgresql://localhost/kb_test npx vitest run src/papers/jobs.test.ts`
 Expected: 全部 PASS（含既有"成功路径"用例——`opts.pageNo` undefined → `$2 IS NULL` → 全卷，行为不变）
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add backend/src/papers/jobs.ts backend/src/papers/jobs.test.ts
@@ -745,7 +745,7 @@ git commit -m "fix(paper): 页级重识别只重匹配该页,人工清除的匹�
 - Modify: `backend/src/routes/papers.test.ts`
 - Modify: `frontend/src/api/papers.ts`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 `backend/src/papers/assemble.test.ts` 追加：
 
@@ -770,12 +770,12 @@ git commit -m "fix(paper): 页级重识别只重匹配该页,人工清除的匹�
   });
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `cd backend && KB_TEST_DATABASE_URL=postgresql://localhost/kb_test npx vitest run src/papers/assemble.test.ts src/routes/papers.test.ts`
 Expected: FAIL（pdf-lib 抛英文内部错误 → 路由 500）
 
-- [ ] **Step 3: 实现**
+- [x] **Step 3: 实现**
 
 `backend/src/papers/assemble.ts` 的 PDF 分支包 try/catch：
 
@@ -814,12 +814,12 @@ async function json<T>(resp: Response): Promise<T> {
 }
 ```
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
 Run: `cd backend && KB_TEST_DATABASE_URL=postgresql://localhost/kb_test npm test && cd ../frontend && npm test`
 Expected: 全部 PASS（frontend 若有依赖旧文案"请求失败"的测试，同步更新断言）
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add backend/src/papers/assemble.ts backend/src/papers/assemble.test.ts backend/src/routes/papers.ts backend/src/routes/papers.test.ts frontend/src/api/papers.ts
@@ -835,7 +835,7 @@ git commit -m "fix(upload): 坏 PDF 上传 422 带文件名;前端透传服务�
 - Modify: `pipeline/kb/internal_api.py`
 - Modify: `pipeline/tests/test_internal_api.py`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 在 `pipeline/tests/test_internal_api.py` 追加：
 
@@ -879,12 +879,12 @@ def test_endpoints_close_connection(conn, cfg):
     assert spy_holder[-1].closed == 1
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `cd pipeline && KB_TEST_DATABASE_URL=postgresql://localhost/kb_test uv run pytest tests/test_internal_api.py -q -k close_connection`
 Expected: FAIL（`closed == 0`，连接没关）
 
-- [ ] **Step 3: 实现**
+- [x] **Step 3: 实现**
 
 `pipeline/kb/internal_api.py` 的两个端点改为"开—用—关"：
 
@@ -924,12 +924,12 @@ Expected: FAIL（`closed == 0`，连接没关）
 把这些用例的注入改为 `get_conn=lambda: connect(<url>)`（每请求新开），或注入 spy。
 先跑全文件看哪些用例受影响，逐一调整。
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
 Run: `cd pipeline && KB_TEST_DATABASE_URL=postgresql://localhost/kb_test uv run pytest tests/test_internal_api.py -q`
 Expected: 全部 PASS
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add pipeline/kb/internal_api.py pipeline/tests/test_internal_api.py
@@ -949,7 +949,7 @@ git commit -m "fix(internal): 内部端点连接 try/finally 即时关闭,不靠
 - Modify: `frontend/src/components/PaperQueue.tsx`（队列显示孩子名）
 - Modify: `frontend/src/views/ReviewView.test.tsx`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 `backend/src/routes/papers.test.ts` 追加：
 
@@ -994,12 +994,12 @@ git commit -m "fix(internal): 内部端点连接 try/finally 即时关闭,不靠
 
 （stub 的 fetchRouter 如何透传 URL 以该文件的 `fetchRouter` 实现为准——先读 `frontend/src/test/support.ts`，若路由表按 path 精确匹配，需要为 `/api/papers?child_id=c1` 增加独立路由条目并记录调用。）
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `cd backend && KB_TEST_DATABASE_URL=postgresql://localhost/kb_test npx vitest run src/routes/papers.test.ts && cd ../frontend && npx vitest run src/views/ReviewView.test.tsx`
 Expected: 新用例 FAIL
 
-- [ ] **Step 3: 实现**
+- [x] **Step 3: 实现**
 
 `backend/src/routes/papers.ts` 列表 SQL 加 JOIN：
 
@@ -1068,12 +1068,12 @@ Expected: 新用例 FAIL
               {p.status === "failed" && <span className="err" title={p.error ?? ""}>重试</span>}
 ```
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
 Run: `cd backend && KB_TEST_DATABASE_URL=postgresql://localhost/kb_test npm test && cd ../frontend && npm test`
 Expected: 全部 PASS（ReviewView 既有用例的 paper() 工厂缺 child_name 字段——给工厂默认加 `child_name: "小宝"`）
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add backend/src/routes/papers.ts backend/src/routes/papers.test.ts frontend/src/api/papers.ts frontend/src/views/ReviewView.tsx frontend/src/views/ReviewView.test.tsx frontend/src/components/PaperQueue.tsx
@@ -1089,7 +1089,7 @@ git commit -m "feat(review): 试卷队列孩子维度——过滤下拉 + 队列
 - Modify: `frontend/src/views/ReviewView.tsx`
 - Modify: `frontend/src/views/ReviewView.test.tsx`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 `frontend/src/views/ReviewView.test.tsx` 追加：
 
@@ -1133,12 +1133,12 @@ git commit -m "feat(review): 试卷队列孩子维度——过滤下拉 + 队列
   });
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `cd frontend && npx vitest run src/views/ReviewView.test.tsx`
 Expected: 两个新用例 FAIL
 
-- [ ] **Step 3: 实现**
+- [x] **Step 3: 实现**
 
 `frontend/src/views/ReviewView.tsx`：
 
@@ -1171,12 +1171,12 @@ verdict 区尾部（`.keyhint` 之前）加反馈：
             {confirmError && <div className="form-error" role="alert">确认失败:{confirmError}</div>}
 ```
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
 Run: `cd frontend && npm test`
 Expected: 全部 PASS
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add frontend/src/views/ReviewView.tsx frontend/src/views/ReviewView.test.tsx
@@ -1192,7 +1192,7 @@ git commit -m "fix(review): 浮层键盘守卫补全 + 确认失败 UI 反馈"
 - Modify: `backend/src/config.ts`
 - Modify: `backend/src/config.test.ts`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 `backend/src/config.test.ts` 的 storageRoot 用例改为（原用例断言"相对 backend cwd"）：
 
@@ -1207,12 +1207,12 @@ git commit -m "fix(review): 浮层键盘守卫补全 + 确认失败 UI 反馈"
 
 （顶部补 `import { fileURLToPath } from "node:url";`。）
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `cd backend && npx vitest run src/config.test.ts`
 Expected: FAIL（旧实现 `pathResolve("../pipeline/storage")` 相对 cwd，从别的 cwd 跑不相等）
 
-- [ ] **Step 3: 实现**
+- [x] **Step 3: 实现**
 
 `backend/src/config.ts`：
 
@@ -1231,7 +1231,7 @@ import { fileURLToPath } from "node:url";
       ?? fileURLToPath(new URL("../../pipeline/storage", import.meta.url)),
 ```
 
-- [ ] **Step 4: 跑测试确认通过 + 从仓库根启动冒烟**
+- [x] **Step 4: 跑测试确认通过 + 从仓库根启动冒烟**
 
 Run: `cd backend && npx vitest run src/config.test.ts && npm test`
 Expected: PASS
@@ -1246,7 +1246,7 @@ sleep 2 && curl -s http://127.0.0.1:8787/api/health && kill %1
 （若 dist 未构建，先 `cd backend && npm run build`。）
 Expected: health OK；旧代码从仓库根启动时 storageRoot 指向仓库外。
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add backend/src/config.ts backend/src/config.test.ts
@@ -1266,7 +1266,7 @@ git commit -m "fix(config): storageRoot 相对 import.meta.url 解析,任意 cwd
 该 migration 每次测试库重建都会重放，编辑在案的 0012 是唯一修法（若它失败，后续 migration 全部跑不到）；
 生产库 `kb` 已成功应用 0012（索引 `attempts_paper_question_id_key` 已存在，已验证），不重放、无影响。
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 在 `pipeline/tests/test_db.py` 追加：
 
@@ -1310,12 +1310,12 @@ def test_0012_dedup_ties_same_timestamp(clean_db, tmp_path):
         assert cur.fetchone()[0] == 1
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `cd pipeline && KB_TEST_DATABASE_URL=postgresql://localhost/kb_test uv run pytest tests/test_db.py -q -k 0012`
 Expected: FAIL（旧行为保留 2 条，建索引抛 unique 冲突 → migrate 报错）
 
-- [ ] **Step 3: 实现**
+- [x] **Step 3: 实现**
 
 `pipeline/kb/migrations/0012_papers_attempts_unique.sql` 追加决胜段（文件末尾）：
 
@@ -1329,17 +1329,17 @@ WHERE a.paper_question_id IS NOT NULL
                 AND b.ctid < a.ctid);
 ```
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
 Run: `cd pipeline && KB_TEST_DATABASE_URL=postgresql://localhost/kb_test uv run pytest tests/ -q`
 Expected: 全部 PASS（全量重放含 0012）
 
-- [ ] **Step 5: 生产库核验不受影响**
+- [x] **Step 5: 生产库核验不受影响**
 
 Run: `psql "postgresql://localhost/kb" -c "SELECT indexname FROM pg_indexes WHERE indexname='attempts_paper_question_id_key';" -c "SELECT count(*) FROM schema_migrations WHERE name='0012_papers_attempts_unique.sql';"`
 Expected: 索引存在 + 已记账（kb 不重放 0012，编辑无副作用）
 
-- [ ] **Step 6: 提交**
+- [x] **Step 6: 提交**
 
 ```bash
 git add pipeline/kb/migrations/0012_papers_attempts_unique.sql pipeline/tests/test_db.py
@@ -1356,7 +1356,7 @@ git commit -m "fix(migration): 0012 去重加 ctid 决胜,同时间戳重复行�
 - Modify: `frontend/src/views/ReviewView.tsx`
 - Modify: `frontend/src/views/ReviewView.test.tsx`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 `frontend/src/views/ReviewView.test.tsx` 追加：
 
@@ -1375,12 +1375,12 @@ git commit -m "fix(migration): 0012 去重加 ctid 决胜,同时间戳重复行�
   });
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `cd frontend && npx vitest run src/views/ReviewView.test.tsx`
 Expected: FAIL（重试是 span，`getByRole("button")` 找不到）
 
-- [ ] **Step 3: 实现**
+- [x] **Step 3: 实现**
 
 `frontend/src/components/PaperQueue.tsx`：
 
@@ -1462,12 +1462,12 @@ export function PaperQueue({ papers, selectedId, onSelect, onUpload, onRetry }: 
       />
 ```
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
 Run: `cd frontend && npm test`
 Expected: 全部 PASS（既有用例若用 `getByText("期中卷")` 点选队列项，div role=button 仍可 click，不受影响）
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add frontend/src/components/PaperQueue.tsx frontend/src/views/ReviewView.tsx frontend/src/views/ReviewView.test.tsx frontend/src/index.css
@@ -1482,7 +1482,7 @@ git commit -m "fix(review): 队列 failed 重试改为可点按钮,直达 retry 
 
 - Modify: `e2e/specs/paper-pipeline.spec.ts`
 
-- [ ] **Step 1: 写用例**
+- [x] **Step 1: 写用例**
 
 在 `e2e/specs/paper-pipeline.spec.ts` 追加（对齐既有上传流程的 helper；垃圾字节 + .pdf 后缀）：
 
@@ -1512,17 +1512,17 @@ test("坏 PDF 上传:422 文案直达 UI,不进队列", async ({ page }) => {
 
 （选择器名以实际 UI 为准——先跑一遍看上传弹层的 label/按钮文案；`提交` 若为 `上传` 等按实际改。）
 
-- [ ] **Step 2: 运行**
+- [x] **Step 2: 运行**
 
 Run: `cd e2e && npx playwright test specs/paper-pipeline.spec.ts`
 Expected: 全部 PASS
 
-- [ ] **Step 3: 全量回归**
+- [x] **Step 3: 全量回归**
 
 Run: `cd e2e && npm test && cd ../pipeline && KB_TEST_DATABASE_URL=postgresql://localhost/kb_test uv run pytest tests/ -q && cd ../backend && KB_TEST_DATABASE_URL=postgresql://localhost/kb_test npm test && cd ../frontend && npm test`
 Expected: 四套全绿
 
-- [ ] **Step 4: 提交**
+- [x] **Step 4: 提交**
 
 ```bash
 git add e2e/specs/paper-pipeline.spec.ts
@@ -1537,12 +1537,12 @@ git commit -m "feat(e2e): 坏 PDF 上传 422 文案直达 UI 的回归用例"
 
 - Modify: `docs/superpowers/specs/2026-09-03-phase3-backlog.md`
 
-- [ ] **Step 1: 划掉已消化条目**
+- [x] **Step 1: 划掉已消化条目**
 
 按 backlog 文件头部的约定（"逐项消化后从本文件划掉"），将 P0 两项与 P1 十条全部标记完成（条目前加 `~~删除线~~` 或整段移除，保留文件头说明）。
 若本计划执行中有条目被判定不做/改设计，在 backlog 里注明原因而不是划掉。
 
-- [ ] **Step 2: 提交**
+- [x] **Step 2: 提交**
 
 ```bash
 git add docs/superpowers/specs/2026-09-03-phase3-backlog.md
