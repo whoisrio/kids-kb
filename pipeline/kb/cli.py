@@ -96,10 +96,15 @@ def main() -> None:
         print("已执行 migration:", migrate(conn) or "（无新增）")
     elif args.cmd == "ingest":
         migrate(conn)
-        if str(args.pdf).lower().endswith(".docx"):
+        lower = str(args.pdf).lower()
+        if lower.endswith(".docx"):
             from kb.docx_ingest import ingest_docx
             doc_id = ingest_docx(conn, cfg, args.pdf, args.title,
                                  subject=args.subject, grade=args.grade, doc_type=args.doc_type)
+        elif lower.endswith(".md"):
+            from kb.text_ingest import ingest_md
+            doc_id = ingest_md(conn, cfg, args.pdf, args.title,
+                               subject=args.subject, grade=args.grade, doc_type=args.doc_type)
         else:
             doc_id = ingest(conn, cfg, args.pdf, args.title,
                             subject=args.subject, grade=args.grade, doc_type=args.doc_type,

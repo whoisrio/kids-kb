@@ -36,12 +36,27 @@ def cfg(tmp_path):
     )
 
 
+class _FakeEmbed:
+    """确定性假 embedding:全 1 向量(入库即章节向量化,测试不真调 ollama)。"""
+
+    class embeddings:
+        @staticmethod
+        def create(model, input):
+            class D:
+                embedding = [1.0] * 1024
+
+            class R:
+                data = [D()]
+
+            return R()
+
+
 @pandoc_missing
 def test_ingest_docx_splits_chapters(conn, cfg, docx_file):
     from kb.docx_ingest import ingest_docx
 
     doc_id = ingest_docx(conn, cfg, docx_file, title="语法一阶 期末测试",
-                         subject="英语", doc_type="exam")
+                         subject="英语", doc_type="exam", client=_FakeEmbed())
     with conn.cursor() as cur:
         cur.execute(
             "SELECT chapter_no, title, content_md, page_start FROM chapters WHERE document_id=%s ORDER BY chapter_no",
@@ -70,7 +85,8 @@ def test_ingest_docx_idempotent(conn, cfg, docx_file):
     """同一 docx 重复入库：复用既有 doc_id，章节不翻倍，source_path 为绝对路径。"""
     from kb.docx_ingest import ingest_docx
 
-    kwargs = dict(title="语法一阶 期末测试", subject="英语", doc_type="exam")
+    kwargs = dict(title="语法一阶 期末测试", subject="英语", doc_type="exam",
+                  client=_FakeEmbed())
     doc_id1 = ingest_docx(conn, cfg, docx_file, **kwargs)
     doc_id2 = ingest_docx(conn, cfg, docx_file, **kwargs)
     assert doc_id2 == doc_id1
