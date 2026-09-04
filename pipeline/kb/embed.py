@@ -5,6 +5,8 @@
 """
 from __future__ import annotations
 
+import re
+
 from openai import OpenAI
 from psycopg.types.json import Jsonb
 
@@ -56,6 +58,65 @@ def embed_approved_items(conn, cfg: Config, doc_id: str | None = None,
                 (str(r[0]), str(r[1]), r[2], Jsonb(meta), vec),
             )
     return len(rows)
+
+
+def segment_chapter(content_md: str, max_chars: int = 1600) -> list[str]:
+    """章稿分段:空行分段落,聚合成 ≤max_chars 的段;超长单段硬切。bge-m3 上下文 8k,留足余量。"""
+    paras = [p.strip() for p in re.split(r"\n\s*\n", content_md or "") if p.strip()]
+    segs: list[str] = []
+    buf = ""
+    for p in paras:
+        if buf and len(buf) + len(p) + 2 <= max_chars:
+            buf = f"{buf}\n\n{p}"
+        else:
+            if buf:
+                segs.append(buf)
+            buf = p
+        while len(buf) > max_chars:  # 单段超长:硬切
+            segs.append(buf[:max_chars])
+            buf = buf[max_chars:]
+    if buf:
+        segs.append(buf)
+    return segs
+
+
+def embed_chapters(conn, cfg: Config, doc_id: str | None = None,
+                   client=None) -> int:
+    """有 content_md 且无 chunk 的章节 -> 分段向量化(未拆条也可见的检索底座)。幂等。"""
+    where, params = ("AND ch.document_id=%s", [doc_id]) if doc_id else ("", [])
+    with conn.cursor() as cur:
+        cur.execute(
+            f"""SELECT ch.id, ch.document_id, ch.chapter_no, ch.title, ch.content_md,
+                       d.subject, d.grade, d.title
+                FROM chapters ch JOIN documents d ON d.id = ch.document_id
+                WHERE ch.content_md IS NOT NULL
+                  AND NOT EXISTS (SELECT 1 FROM chunks c WHERE c.chapter_id = ch.id)
+                {where}""",
+            params,
+        )
+        rows = cur.fetchall()
+    if not rows:
+        return 0
+    payloads = []
+    for r in rows:
+        label = f"第 {r[2]} 讲 {r[3]}"  # 与 structure_chapter 的 items.chapter 标签同构
+        for i, seg in enumerate(segment_chapter(r[4]), start=1):
+            payloads.append((r, label, i, seg))
+    vectors = embed_texts(cfg, [f"{label}\n\n{seg}" for (_r, label, _i, seg) in payloads],
+                          client=client)
+    with conn.cursor() as cur:
+        for (r, label, i, seg), vec in zip(payloads, vectors, strict=True):
+            meta = {
+                "kind": "chapter", "chapter": label, "doc_title": r[7],
+                "subject": r[5], "grade": r[6], "seg": i,
+            }
+            cur.execute(
+                """INSERT INTO chunks (chapter_id, document_id, seg_no, content_md, meta, embedding)
+                   VALUES (%s,%s,%s,%s,%s,%s)
+                   ON CONFLICT (chapter_id, seg_no) WHERE chapter_id IS NOT NULL DO NOTHING""",
+                (str(r[0]), str(r[1]), i, f"{label}\n\n{seg}", Jsonb(meta), vec),
+            )
+    return len(payloads)
 
 
 def invalidate_chunk(conn, item_id: str) -> None:

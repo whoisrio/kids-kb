@@ -128,3 +128,44 @@ class _FakeEmbed:
                 data = [D()]
 
             return R()
+
+
+def test_segment_chapter_packs_paragraphs():
+    from kb.embed import segment_chapter
+
+    paras = "\n\n".join(f"段落{i}" + "字" * 20 for i in range(10))  # 每段约 22 字
+    segs = segment_chapter(paras, max_chars=60)
+    assert all(len(s) <= 60 for s in segs)
+    assert "段落0" in segs[0] and "段落9" in segs[-1]
+    # 超长单段硬切
+    assert [len(s) for s in segment_chapter("长" * 200, max_chars=60)] == [60, 60, 60, 20]
+    # 空内容不分段
+    assert segment_chapter("") == []
+
+
+def test_embed_chapters_segments_and_idempotent(conn, doc_chapter):
+    from kb.embed import embed_chapters
+
+    doc_id, cfg = doc_chapter
+    content = "\n\n".join(f"# 小节{i}\n内容{i}" + "字" * 30 for i in range(5))
+    with conn.cursor() as cur:
+        cur.execute(
+            """INSERT INTO chapters (id, document_id, chapter_no, title, content_md)
+               VALUES (%s,%s,2,'语法讲义',%s)""",
+            (str(uuid.uuid4()), doc_id, content),
+        )
+    n = embed_chapters(conn, cfg, doc_id, client=_FakeEmbed())
+    assert n > 0
+    with conn.cursor() as cur:
+        cur.execute(
+            """SELECT seg_no, meta->>'kind', meta->>'chapter', meta->>'doc_title',
+                      chapter_id IS NOT NULL, item_id IS NULL, vector_dims(embedding)
+               FROM chunks WHERE chapter_id IS NOT NULL ORDER BY seg_no""")
+        rows = cur.fetchall()
+        assert rows, "章节 chunk 应已写入"
+        seg_no, kind, chapter, doc_title, has_ch, no_item, dims = rows[0]
+        assert kind == "chapter"
+        assert chapter == "第 2 讲 语法讲义"  # 与 structure 的 items.chapter 标签同构,供 TS 同章抑制
+        assert doc_title == "7星学霸"
+        assert has_ch and no_item and dims == 1024
+    assert embed_chapters(conn, cfg, doc_id, client=_FakeEmbed()) == 0  # 幂等
