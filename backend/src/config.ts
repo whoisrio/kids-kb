@@ -1,6 +1,6 @@
 /** 集中配置：全部走环境变量，与 pipeline 侧 .env 习惯一致。 */
 import "dotenv/config";
-import { resolve as pathResolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 export interface BackendConfig {
   databaseUrl: string;
@@ -47,8 +47,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): BackendConfig 
     pipelineUrl: pick(env.PIPELINE_INTERNAL_URL) ?? "http://127.0.0.1:8766",
     rerankProvider: env.RERANK_PROVIDER === "none" ? "none" : "local",
     port: Number(pick(env.BACKEND_PORT) ?? 8787),
-    // 试卷页图/题图在 pipeline/storage 下;默认同仓部署,可 env 覆盖
-    storageRoot: pick(env.KB_STORAGE_ROOT) ?? pathResolve("../pipeline/storage"),
+    // 试卷页图/题图在 pipeline/storage 下;相对本文件解析(src 与 dist 同深),从任意 cwd 启动都对
+    storageRoot: pick(env.KB_STORAGE_ROOT)
+      ?? fileURLToPath(new URL("../../pipeline/storage", import.meta.url)),
     matchThreshold: (() => {
       const v = Number(pick(env.KB_MATCH_THRESHOLD));
       return Number.isFinite(v) && v > 0 && v <= 1 ? v : 0.88;

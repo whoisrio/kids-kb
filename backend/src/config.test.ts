@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { fileURLToPath } from "node:url";
 import { loadConfig } from "./config.js";
 
 describe("loadConfig", () => {
@@ -84,9 +85,11 @@ describe("loadConfig", () => {
 });
 
 describe("试卷配置", () => {
-  it("storageRoot 缺省指向 ../pipeline/storage(相对 backend cwd 解析)", () => {
+  it("storageRoot 缺省指向仓库 pipeline/storage(相对本文件解析,不依赖 cwd)", () => {
     const cfg = loadConfig({ KB_DATABASE_URL: "postgresql://localhost/kb" } as NodeJS.ProcessEnv);
-    expect(cfg.storageRoot.endsWith("pipeline/storage")).toBe(true);
+    expect(cfg.storageRoot).toBe(
+      fileURLToPath(new URL("../../pipeline/storage", import.meta.url)),
+    );
   });
   it("KB_STORAGE_ROOT 覆盖;matchThreshold 缺省 0.88 可覆盖", () => {
     const cfg = loadConfig({
