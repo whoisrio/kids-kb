@@ -27,6 +27,7 @@ maybe("agent 工具（真库）", () => {
       pool,
       search: async () => [{
         item_id: "22222222-2222-2222-2222-222222222222",
+        document_id: "11111111-1111-1111-1111-111111111111",
         content_md: "竖式谜例题与解析", score: 0.9,
         label: "例1", chapter: "第 1 讲 竖式谜", doc_title: "7星学霸",
       }],

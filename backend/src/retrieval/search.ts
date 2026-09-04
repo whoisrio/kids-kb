@@ -1,10 +1,13 @@
-/** 双路召回：向量（pgvector）+ BM25（内存）→ RRF k=60 融合 → 可选重排。
+/** 双路召回:向量(pgvector)+ BM25(内存)→ RRF k=60 融合 → 同章抑制 → 可选重排。
+    chunks 有两类单元:条目(item_id)与章节分段(chapter_id,docx/md 未拆条内容的检索底座)。
     行为对齐 pipeline/kb/embed.py 的 search(mode='hybrid')。 */
 import type pg from "pg";
 import { bm25Score } from "./bm25.js";
 
 export interface SearchHit {
-  item_id: string;
+  item_id: string | null;
+  chapter_id?: string | null;
+  document_id: string;
   content_md: string;
   score: number;
   rerank_score?: number;
@@ -19,53 +22,76 @@ export interface SearchDeps {
 }
 
 interface ChunkRow {
-  item_id: string;
+  item_id: string | null;
+  chapter_id: string | null;
+  document_id: string;
   content_md: string;
   meta: Record<string, unknown>;
   score?: number;
 }
 
-async function vectorHits(pool: pg.Pool, vec: number[], topN: number): Promise<ChunkRow[]> {
+async function vectorHits(
+  pool: pg.Pool, vec: number[], topN: number, itemsOnly: boolean,
+): Promise<ChunkRow[]> {
   const { rows } = await pool.query(
-    `SELECT c.item_id, c.content_md, c.meta,
+    `SELECT c.item_id::text, c.chapter_id::text, c.document_id::text, c.content_md, c.meta,
             1 - (c.embedding <=> $1::vector) AS score
-     FROM chunks c ORDER BY c.embedding <=> $1::vector LIMIT $2`,
+     FROM chunks c ${itemsOnly ? "WHERE c.item_id IS NOT NULL" : ""}
+     ORDER BY c.embedding <=> $1::vector LIMIT $2`,
     [`[${vec.join(",")}]`, topN],
   );
   return rows;
 }
 
 function toHit(r: ChunkRow): SearchHit {
-  return { item_id: r.item_id, content_md: r.content_md, score: r.score ?? 0, ...r.meta };
+  return {
+    item_id: r.item_id, chapter_id: r.chapter_id, document_id: r.document_id,
+    content_md: r.content_md, score: r.score ?? 0, ...r.meta,
+  };
+}
+
+/** 同章已有条目级命中时,抑制该章的章节分段命中(避免同内容重复占位)。 */
+export function suppressChapterSegs(hits: SearchHit[]): SearchHit[] {
+  const withItems = new Set(
+    hits.filter((h) => h.item_id).map((h) => `${h.document_id}|${h.chapter ?? ""}`),
+  );
+  return hits.filter(
+    (h) => h.item_id !== null || !withItems.has(`${h.document_id}|${h.chapter ?? ""}`),
+  );
 }
 
 export async function hybridSearch(
   pool: pg.Pool,
   deps: SearchDeps,
   query: string,
-  opts: { topK?: number; filters?: Record<string, string> } = {},
+  opts: { topK?: number; filters?: Record<string, string>; itemsOnly?: boolean } = {},
 ): Promise<SearchHit[]> {
   const topK = opts.topK ?? 5;
+  const itemsOnly = opts.itemsOnly ?? false;
   const [vec] = await deps.embed([query]);
-  const vecHits = await vectorHits(pool, vec, 20);
+  const vecHits = await vectorHits(pool, vec, 20, itemsOnly);
   const { rows: allChunks } = await pool.query(
-    "SELECT item_id, content_md, meta FROM chunks",
+    `SELECT item_id::text, chapter_id::text, document_id::text, content_md, meta
+     FROM chunks ${itemsOnly ? "WHERE item_id IS NOT NULL" : ""}`,
   );
-  const lexOrder = bm25Score(query, allChunks.map((r: ChunkRow) => r.content_md), 20);
 
   const rrf = new Map<string, SearchHit>();
+  const hitKey = (r: ChunkRow) => r.item_id ?? `chapter:${r.chapter_id}`;
   vecHits.forEach((r, rank) => {
-    const h = rrf.get(r.item_id) ?? { ...toHit(r), score: 0 };
+    const key = hitKey(r);
+    const h = rrf.get(key) ?? { ...toHit(r), score: 0 };
     // vec_score 取该条目各 chunk 的最大余弦(一个条目一个 chunk,当前即本身)
     h.vec_score = Math.max(h.vec_score ?? -1, r.score ?? -1);
     h.score += 1 / (60 + rank + 1);
-    rrf.set(r.item_id, h);
+    rrf.set(key, h);
   });
+  const lexOrder = bm25Score(query, allChunks.map((r: ChunkRow) => r.content_md), 20);
   lexOrder.forEach(({ index }, rank) => {
     const r = allChunks[index];
-    const h = rrf.get(r.item_id) ?? { ...toHit(r), score: 0 };
+    const key = hitKey(r);
+    const h = rrf.get(key) ?? { ...toHit(r), score: 0 };
     h.score += 1 / (60 + rank + 1);
-    rrf.set(r.item_id, h);
+    rrf.set(key, h);
   });
 
   let candidates = [...rrf.values()].sort((a, b) => b.score - a.score);
@@ -73,6 +99,7 @@ export async function hybridSearch(
   candidates = candidates.filter((h) =>
     Object.entries(filters).every(([k, v]) => h[k] === v),
   );
+  candidates = suppressChapterSegs(candidates);
 
   if (deps.rerank && candidates.length > 0) {
     const poolN = candidates.slice(0, Math.max(topK, 10));
