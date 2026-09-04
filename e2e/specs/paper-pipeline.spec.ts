@@ -78,9 +78,11 @@ test("t1 上传 3 图 -> processing -> ready_for_review,拆题与预识别正确
   await page.goto("/");
   await page.getByRole("button", { name: "复核" }).click();
   await page.getByRole("button", { name: "上传试卷" }).click();
-  await page.getByLabel("孩子").selectOption({ label: `E2E-${RUN}-小宝` });
-  await page.getByLabel("标题").fill(TITLE);
-  await page.getByLabel("科目").selectOption("数学");
+  // 队列页有"孩子"过滤下拉,上传弹窗里也有一个"孩子"——必须限定在弹窗内
+  const dialog = page.getByRole("dialog", { name: "上传试卷" });
+  await dialog.getByLabel("孩子").selectOption({ label: `E2E-${RUN}-小宝` });
+  await dialog.getByLabel("标题").fill(TITLE);
+  await dialog.getByLabel("科目").selectOption("数学");
   const files = readdirSync(paperDir()).filter((f) => f.endsWith(".png")).sort()
     .map((f) => path.join(paperDir(), f));
   await page.getByLabel("文件").setInputFiles(files);
@@ -189,10 +191,11 @@ test("坏 PDF 上传:422 文案直达 UI,不进队列", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("button", { name: "复核" }).click();
   await page.getByRole("button", { name: "上传试卷" }).click();
-  await page.getByLabel("孩子").selectOption({ label: `E2E-${RUN}-小宝` });
-  await page.getByLabel("标题").fill(badTitle);
-  await page.getByLabel("科目").selectOption("数学");
-  await page.getByLabel("文件").setInputFiles({
+  const dialog = page.getByRole("dialog", { name: "上传试卷" });
+  await dialog.getByLabel("孩子").selectOption({ label: `E2E-${RUN}-小宝` });
+  await dialog.getByLabel("标题").fill(badTitle);
+  await dialog.getByLabel("科目").selectOption("数学");
+  await dialog.getByLabel("文件").setInputFiles({
     name: "corrupt.pdf",
     mimeType: "application/pdf",
     buffer: Buffer.from("junk junk junk"),
