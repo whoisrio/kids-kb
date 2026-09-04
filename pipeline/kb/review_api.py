@@ -34,10 +34,11 @@ class PageReject(BaseModel):
 
 
 def create_app(get_conn: Callable[[], psycopg.Connection] | None = None,
-               vlm_client=None, cfg=None) -> FastAPI:
+               vlm_client=None, cfg=None, embed_client=None) -> FastAPI:
     """get_conn 可注入测试连接（不关闭）；默认每个请求从 .env 配置开新连接并关闭。
     vlm_client 可注入测试用的假 VLM 客户端（整页解析用）。
-    cfg 可注入测试配置（落盘镜像路径）；默认按需 load_config()。"""
+    cfg 可注入测试配置（落盘镜像路径）；默认按需 load_config()。
+    embed_client 可注入测试用的假 embedding 客户端（approve 即向量化用）。"""
     own = get_conn is None
     if get_conn is None:
         def get_conn() -> psycopg.Connection:  # type: ignore[misc]
@@ -407,7 +408,8 @@ def create_app(get_conn: Callable[[], psycopg.Connection] | None = None,
 
     @app.post("/api/items/{item_id}/approve")
     def approve_item(item_id: str):
-        """人工确认条目 -> qc_status=approved（向量化的准入门槛）。"""
+        """人工确认条目 -> qc_status=approved,并立即向量化(失败不阻断,可 kb.cli embed 补跑)。"""
+        from kb.embed import embed_approved_items
         with conn_ctx() as conn, conn.cursor() as cur:
             cur.execute(
                 "UPDATE items SET qc_status='approved' WHERE id=%s RETURNING id",
@@ -419,6 +421,10 @@ def create_app(get_conn: Callable[[], psycopg.Connection] | None = None,
                 "UPDATE review_queue SET status='approved' WHERE item_id=%s AND status='pending'",
                 (item_id,),
             )
+            try:
+                embed_approved_items(conn, _cfg(), client=embed_client)
+            except Exception as e:  # noqa: BLE001 - 向量化失败不阻断复核
+                print(f"warn: 条目向量化失败({e}),可 kb.cli embed 补跑")
         return {"id": item_id, "qc_status": "approved"}
 
     @app.post("/api/items/{item_id}/reject")

@@ -173,3 +173,46 @@ def test_pending_items_endpoint(client, doc_with_items, conn):
     client.post(f"/api/items/{item_id}/approve")
     items = client.get("/api/items?status=pending").json()["items"]
     assert [i["label"] for i in items] == ["1-1"]
+
+
+class _FakeEmbed:
+    class embeddings:
+        @staticmethod
+        def create(model, input):
+            class D:
+                embedding = [1.0] * 1024
+
+            class R:
+                data = [D()]
+
+            return R()
+
+
+def test_approve_item_embeds_immediately(conn, doc_with_items):
+    """approve 即向量化:qc_status=approved 的同时 chunks 立刻可见。"""
+    doc_id, item_id = doc_with_items
+    app = create_app(lambda: conn, embed_client=_FakeEmbed())
+    c = TestClient(app)
+    assert c.post(f"/api/items/{item_id}/approve").status_code == 200
+    with conn.cursor() as cur:
+        cur.execute("SELECT count(*) FROM chunks WHERE item_id=%s", (item_id,))
+        assert cur.fetchone()[0] == 1
+
+
+def test_approve_item_survives_embed_failure(conn, doc_with_items):
+    """向量化失败不阻断 approve(可 kb.cli embed 补跑)。"""
+
+    class _Boom:
+        class embeddings:
+            @staticmethod
+            def create(model, input):
+                raise RuntimeError("ollama down")
+
+    doc_id, item_id = doc_with_items
+    app = create_app(lambda: conn, embed_client=_Boom())
+    c = TestClient(app)
+    resp = c.post(f"/api/items/{item_id}/approve")
+    assert resp.status_code == 200
+    with conn.cursor() as cur:
+        cur.execute("SELECT qc_status FROM items WHERE id=%s", (item_id,))
+        assert cur.fetchone()[0] == "approved"
