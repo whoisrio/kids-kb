@@ -257,4 +257,17 @@ describe("ReviewView", () => {
     await waitFor(() =>
       expect(screen.getByText(/确认失败/)).toBeInTheDocument());
   });
+
+  it("队列里 failed 卷的重试可直接点击并触发 retry", async () => {
+    const retries: string[] = [];
+    stub({
+      "/api/children": () => jsonResponse(CHILDREN_RES),
+      "/api/papers": () => jsonResponse({ papers: [paper("failed", { error: "VLM 挂了" })] }),
+      "/api/papers/p1/retry": () => { retries.push("p1"); return jsonResponse({ id: "p1", status: "processing" }); },
+    });
+    render(<ReviewView />);
+    await waitFor(() => expect(screen.getByText("期中卷")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "重试" }));  // 队列项上的真按钮
+    await waitFor(() => expect(retries).toEqual(["p1"]));
+  });
 });

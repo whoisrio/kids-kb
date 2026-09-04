@@ -12,9 +12,10 @@ interface PaperQueueProps {
   selectedId: string | null;
   onSelect: (id: string) => void;
   onUpload: () => void;
+  onRetry: (id: string) => void;
 }
 
-export function PaperQueue({ papers, selectedId, onSelect, onUpload }: PaperQueueProps) {
+export function PaperQueue({ papers, selectedId, onSelect, onUpload, onRetry }: PaperQueueProps) {
   return (
     <aside className="papers-queue">
       <div className="pq-head">
@@ -24,22 +25,28 @@ export function PaperQueue({ papers, selectedId, onSelect, onUpload }: PaperQueu
       <div className="pq-list">
         {papers.length === 0 && <div className="empty">还没有上传试卷</div>}
         {papers.map((p) => (
-          <button
+          <div
             key={p.id}
+            role="button"
+            tabIndex={0}
             className={`paper-item${p.id === selectedId ? " active" : ""}`}
             onClick={() => onSelect(p.id)}
+            onKeyDown={(e) => { if (e.key === "Enter") onSelect(p.id); }}
           >
             <span className="t">{p.title}</span>
             <span className="m">
               <span className={`status ${p.status}`}>{STATUS_TEXT[p.status]}</span>
-              {p.status === "failed" && <span className="err" title={p.error ?? ""}>重试</span>}
+              {p.status === "failed" && (
+                <button className="err retry-btn" title={p.error ?? ""}
+                        onClick={(e) => { e.stopPropagation(); onRetry(p.id); }}>重试</button>
+              )}
               {p.total_questions > 0 && (
                 <span>{p.confirmed_questions}/{p.total_questions}</span>
               )}
               <span>{p.subject}</span>
               {p.child_name && <span className="child">{p.child_name}</span>}
             </span>
-          </button>
+          </div>
         ))}
       </div>
     </aside>

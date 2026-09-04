@@ -127,6 +127,12 @@ export function ReviewView() {
         selectedId={selectedId}
         onSelect={(id) => { setSelectedId(id); void loadDetail(id); }}
         onUpload={() => setUploadOpen(true)}
+        onRetry={(id) => {
+          void retryPaper(id).then(() => {
+            void loadPapers();
+            if (id === selectedId) void loadDetail(id);
+          }).catch((err) => console.error("重试失败", err));
+        }}
       />
       <div className="child-filter">
         <select aria-label="孩子" value={childFilter}
