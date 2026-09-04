@@ -15,9 +15,9 @@ function paper(status: string, extra: Record<string, unknown> = {}) {
   };
 }
 
-function detail(questions: unknown[]) {
+function detail(questions: unknown[], status: string = "ready_for_review") {
   return {
-    id: "p1", title: "期中卷", subject: "数学", child_id: "c1", status: "ready_for_review",
+    id: "p1", title: "期中卷", subject: "数学", child_id: "c1", status,
     error: null, page_count: 1, created_at: "2026-09-03",
     total_questions: questions.length, confirmed_questions: 0, questions,
   };
@@ -160,5 +160,38 @@ describe("ReviewView", () => {
     await waitFor(() => expect(captured!.get("title")).toBe("期中卷"));
     // 列表刷新出现新卷(用队列项断言,避免与详情区《》标题歧义)
     await waitFor(() => expect(screen.getByRole("button", { name: /期中卷/ })).toBeInTheDocument());
+  });
+
+  it("failed 详情:展示已渲染页图 + 原件内嵌兜底", async () => {
+    stub({
+      "/api/children": () => jsonResponse(CHILDREN_RES),
+      "/api/papers": () => jsonResponse({ papers: [paper("failed", { error: "VLM 超时" })] }),
+      "/api/papers/p1": () => jsonResponse({ ...detail([], "failed"), error: "VLM 超时" }),
+      "/api/papers/p1/pages": () => jsonResponse({ pages: [1] }),
+    });
+    render(<ReviewView />);
+    await waitFor(() => expect(screen.getByText("期中卷")).toBeInTheDocument());
+    fireEvent.click(screen.getByText("期中卷"));
+    await waitFor(() => expect(screen.getByText(/处理失败/)).toBeInTheDocument());
+    // 有页图:页图 <img> 指向页图端点
+    expect(screen.getByAltText(/第 1 页/)).toHaveAttribute(
+      "src", "/api/papers/p1/pages/1/image");
+    // 原件兜底:iframe 内嵌 source.pdf
+    expect(screen.getByTitle("试卷原件")).toHaveAttribute("src", "/api/papers/p1/source.pdf");
+  });
+
+  it("ready_for_review 详情:提供查看整卷原件入口", async () => {
+    stub({
+      "/api/children": () => jsonResponse(CHILDREN_RES),
+      "/api/papers": () => jsonResponse({ papers: [paper("ready_for_review")] }),
+      "/api/papers/p1": () => jsonResponse(detail([Q1])),
+    });
+    render(<ReviewView />);
+    await waitFor(() => expect(screen.getByText("期中卷")).toBeInTheDocument());
+    fireEvent.click(screen.getByText("期中卷"));
+    await waitFor(() => expect(screen.getByText("135 ÷ 5 =")).toBeInTheDocument());
+    const link = screen.getByRole("link", { name: "查看整卷原件" });
+    expect(link).toHaveAttribute("href", "/api/papers/p1/source.pdf");
+    expect(link).toHaveAttribute("target", "_blank");
   });
 });

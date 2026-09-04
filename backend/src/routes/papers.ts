@@ -1,5 +1,5 @@
 /** 试卷产品 API:上传/列表/详情/元数据修改/重试/页级重识别/图片回传。 */
-import { readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { Hono } from "hono";
 import type { Context } from "hono";
@@ -159,6 +159,29 @@ export function papersRoutes(pool: pg.Pool, deps: PaperJobDeps, cfg: BackendConf
       if ((err as NodeJS.ErrnoException).code === "ENOENT") {
         return c.json({ error: "原件缺失" }, 404);
       }
+      throw err;
+    }
+  });
+
+  app.get("/:id/pages", async (c) => {
+    try {
+      const { rows: [paper] } = await pool.query(
+        "SELECT id::text FROM papers WHERE id=$1", [c.req.param("id")]);
+      if (!paper) return c.json({ error: "试卷不存在" }, 404);
+      let names: string[] = [];
+      try {
+        names = await readdir(join(cfg.storageRoot, "papers", paper.id, "pages"));
+      } catch {
+        return c.json({ pages: [] });
+      }
+      const pages = names
+        .map((n) => Number(/^p(\d{4})\.png$/.exec(n)?.[1]))
+        .filter((n) => Number.isInteger(n))
+        .sort((a, b) => a - b);
+      return c.json({ pages });
+    } catch (err) {
+      const code = (err as { code?: string })?.code;
+      if (code === "22P02") return c.json({ error: "id 格式非法（须为 UUID）" }, 422);
       throw err;
     }
   });

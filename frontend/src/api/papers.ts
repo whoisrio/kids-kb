@@ -129,3 +129,12 @@ export function questionImageUrl(id: string): string {
 export function pageImageUrl(paperId: string, pageNo: number): string {
   return `/api/papers/${encodeURIComponent(paperId)}/pages/${pageNo}/image`;
 }
+
+export function sourcePdfUrl(paperId: string): string {
+  return `/api/papers/${encodeURIComponent(paperId)}/source.pdf`;
+}
+
+export function fetchPaperPages(paperId: string, fetchImpl: FetchLike = fetch) {
+  return fetchImpl(`/api/papers/${encodeURIComponent(paperId)}/pages`)
+    .then((r) => json<{ pages: number[] }>(r));
+}

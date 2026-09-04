@@ -167,4 +167,18 @@ maybe("papers API（真库）", () => {
     // 非法 id 422(与 Task 4 的统一语义一致)
     expect((await app.request("/api/papers/not-a-uuid/source.pdf")).status).toBe(422);
   });
+
+  it("GET /:id/pages 列出已渲染页图编号(供 failed 详情展示)", async () => {
+    const { rows: [paper] } = await pool.query(
+      `INSERT INTO papers (child_id, title, subject, status, page_count)
+       VALUES ($1,'页图卷','数学','failed',3) RETURNING id::text`, [CHILD]);
+    const { mkdirSync, writeFileSync } = await import("node:fs");
+    const pagesDir = `${STORAGE_ROOT}/papers/${paper.id}/pages`;
+    mkdirSync(pagesDir, { recursive: true });
+    writeFileSync(`${pagesDir}/p0002.png`, Buffer.from("png"));
+    writeFileSync(`${pagesDir}/p0001.png`, Buffer.from("png"));
+    const resp = await app.request(`/api/papers/${paper.id}/pages`);
+    expect(resp.status).toBe(200);
+    expect(await resp.json()).toEqual({ pages: [1, 2] });
+  });
 });

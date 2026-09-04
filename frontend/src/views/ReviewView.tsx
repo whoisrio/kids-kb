@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import {
-  confirmQuestion, fetchPapers, fetchPaperDetail, retryPaper, reRecognizePaper,
+  confirmQuestion, fetchPapers, fetchPaperDetail, fetchPaperPages, pageImageUrl,
+  reRecognizePaper, retryPaper, sourcePdfUrl,
   type PaperDetail, type PaperQuestion, type PaperSummary,
 } from "../api/papers";
 import { MatchPicker } from "../components/MatchPicker";
@@ -22,6 +23,7 @@ export function ReviewView() {
   const [uploadOpen, setUploadOpen] = useState(false);
   const [matchOpen, setMatchOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [failedPages, setFailedPages] = useState<number[]>([]);
 
   const loadPapers = useCallback(async () => {
     try {
@@ -40,8 +42,14 @@ export function ReviewView() {
 
   const loadDetail = useCallback(async (id: string) => {
     try {
-      setDetail(await fetchPaperDetail(id));
+      const d = await fetchPaperDetail(id);
+      setDetail(d);
       setQIndex(0);
+      if (d.status === "failed") {
+        setFailedPages((await fetchPaperPages(id)).pages);
+      } else {
+        setFailedPages([]);
+      }
     } catch (err) {
       console.error("试卷详情加载失败", err);
     }
@@ -122,6 +130,12 @@ export function ReviewView() {
         {detail?.status === "failed" && (
           <div className="fail-box">
             <div>处理失败:{detail.error}</div>
+            {failedPages.map((n) => (
+              <img key={n} className="fail-page" alt={`第 ${n} 页`}
+                   src={pageImageUrl(detail.id, n)} />
+            ))}
+            <iframe className="fail-source" title="试卷原件"
+                    src={sourcePdfUrl(detail.id)} />
             <button className="primary" onClick={() => {
               void retryPaper(detail.id).then(() => {
                 setDetail({ ...detail, status: "processing", error: null });
@@ -147,6 +161,8 @@ export function ReviewView() {
                   });
                 }}>重识别本页</button>
               )}
+              <a className="ghost" href={sourcePdfUrl(detail.id)} target="_blank"
+                 rel="noreferrer">查看整卷原件</a>
             </div>
             <div className="qnav">
               {detail.questions.map((q, i) => (
