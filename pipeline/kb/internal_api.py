@@ -51,24 +51,30 @@ def create_internal_app(reranker_factory=None, get_conn=None, cfg=None,
     def ingest_paper_ep(paper_id: str, file: UploadFile | None = File(default=None)):
         """整卷加工：首次带 file 上传；重驱动可不带(复用已存 source.pdf)。"""
         from kb.paper_pipeline import ingest_paper
+        conn = _conn()
         try:
             data = file.file.read() if file is not None else None
-            return ingest_paper(_conn(), cfg, paper_id, pdf_bytes=data, client=vlm_client)
+            return ingest_paper(conn, cfg, paper_id, pdf_bytes=data, client=vlm_client)
         except HTTPException:
             raise
         except Exception as e:
             # 500 带真实原因:TS 侧 jobs.ts 读 detail 落 papers.error,纯 "Internal Server Error" 不可排查
             raise HTTPException(status_code=500, detail=str(e)) from e
+        finally:
+            conn.close()
 
     @app.post("/internal/recognize-page")
     def recognize_page_ep(body: RecognizePageRequest):
         """单页重识别：只重建该页题目，其它页的人工确认不动。"""
         from kb.paper_pipeline import recognize_page
+        conn = _conn()
         try:
-            return recognize_page(_conn(), cfg, body.paper_id, body.page_no, client=vlm_client)
+            return recognize_page(conn, cfg, body.paper_id, body.page_no, client=vlm_client)
         except HTTPException:
             raise
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e)) from e
+        finally:
+            conn.close()
 
     return app

@@ -2,6 +2,7 @@
 import pytest
 from fastapi.testclient import TestClient
 
+from kb.db import connect
 from kb.internal_api import create_internal_app
 
 
@@ -64,7 +65,7 @@ class TestPaperEndpoints:
         from tests.test_paper_pipeline import FakeVLM, _paper, _vlm_json
 
         pid = _paper(conn, child)
-        app = create_internal_app(get_conn=lambda: conn, cfg=cfg, vlm_client=FakeVLM([
+        app = create_internal_app(get_conn=lambda: connect(cfg.database_url), cfg=cfg, vlm_client=FakeVLM([
             _vlm_json([{"content_md": "题1", "bbox": None}]),
             _vlm_json([{"content_md": "题1", "bbox": None}]),  # 第二次调用(幂等重跑)
         ]))
@@ -91,7 +92,7 @@ class TestPaperEndpoints:
             raise RuntimeError("磁盘写满: /dev/sdb1")
 
         monkeypatch.setattr(pp, "ingest_paper", boom)
-        client = TestClient(create_internal_app(get_conn=lambda: conn, cfg=cfg),
+        client = TestClient(create_internal_app(get_conn=lambda: connect(cfg.database_url), cfg=cfg),
                             raise_server_exceptions=False)
         r = client.post("/internal/ingest-paper?paper_id=00000000-0000-0000-0000-000000000000")
         assert r.status_code == 500
@@ -101,7 +102,7 @@ class TestPaperEndpoints:
         from fastapi.testclient import TestClient
         from kb.internal_api import create_internal_app
         # 服务器端抛异常返回 500 + 真实 detail，需关闭 raise_server_exceptions 才能断言到状态码
-        client = TestClient(create_internal_app(get_conn=lambda: conn, cfg=cfg),
+        client = TestClient(create_internal_app(get_conn=lambda: connect(cfg.database_url), cfg=cfg),
                             raise_server_exceptions=False)
         r = client.post("/internal/ingest-paper?paper_id=00000000-0000-0000-0000-000000000000",
                         files={"file": ("s.pdf", b"not a pdf", "application/pdf")})
@@ -116,7 +117,7 @@ class TestPaperEndpoints:
 
         pid = _paper(conn, child)
         # 先 ingest 一页一题
-        app = create_internal_app(get_conn=lambda: conn, cfg=cfg, vlm_client=FakeVLM([
+        app = create_internal_app(get_conn=lambda: connect(cfg.database_url), cfg=cfg, vlm_client=FakeVLM([
             _vlm_json([{"content_md": "旧", "bbox": None}]),
             _vlm_json([{"content_md": "新", "bbox": None}]),
         ]))
@@ -131,3 +132,42 @@ class TestPaperEndpoints:
         md = conn.execute(
             "SELECT content_md FROM paper_questions WHERE paper_id=%s", (pid,)).fetchone()[0]
         assert md == "新"
+
+
+class _ConnSpy:
+    """包裹真连接,数 close 调用次数。"""
+
+    def __init__(self, inner):
+        self.inner = inner
+        self.closed = 0
+
+    def close(self):
+        self.closed += 1
+        self.inner.close()
+
+    def __getattr__(self, name):
+        return getattr(self.inner, name)
+
+
+def test_endpoints_close_connection(conn, cfg):
+    """ingest-paper 端点用后即关(不再靠 GC);失败路径也关。"""
+    from kb.db import connect
+    from kb.config import Config as C
+    from kb.internal_api import create_internal_app
+
+    spy_holder = []
+
+    def get_conn():
+        c = _ConnSpy(connect(cfg.database_url))
+        spy_holder.append(c)
+        return c
+
+    real_cfg = C(database_url=cfg.database_url, storage_dir=cfg.storage_dir,
+                 vision_base_url="http://localhost:11434/v1",
+                 vision_api_key="ollama", vision_model="qwen3:4b")
+    app = create_internal_app(get_conn=get_conn, cfg=real_cfg)
+    c = TestClient(app)
+    # 不存在的卷 -> 500,但连接照样要关
+    resp = c.post("/internal/ingest-paper?paper_id=00000000-0000-0000-0000-000000000000")
+    assert resp.status_code >= 400
+    assert spy_holder[-1].closed == 1
