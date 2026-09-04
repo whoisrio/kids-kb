@@ -45,7 +45,10 @@ def transcribe_image(client, model: str, image_path, prompt: str = TRANSCRIBE_PR
                 {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64}"}},
             ],
         }],
-        max_tokens=4096,
+        # 思考型模型（如 qwen3.5）会先烧 reasoning 再出正文：预算太小会把
+        # content 截空（finish_reason=length 且 content 为空）。给足空间，
+        # 非思考模型只是用不满，无副作用。
+        max_tokens=12288,
     )
     return resp.choices[0].message.content, extract_usage(resp)
 

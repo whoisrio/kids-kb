@@ -26,6 +26,34 @@ TOC_PROMPT = (
 )
 
 
+def normalize_toc_entries(raw: list[dict]) -> list[dict]:
+    """把模型输出的目录条目规整为可落库形态。
+
+    chapter_no 必须是正整数（DB 列 INTEGER）：数字/数字字符串直取，
+    "第一单元" 之类非数字编号按出现顺序重排为 1..N；
+    无 title 的脏条目丢弃，编号重排后保证连续不跳号。
+    """
+    cleaned: list[dict] = []
+    for entry in raw:
+        title = (entry.get("title") or "").strip()
+        if not title:
+            continue
+        page = entry.get("print_page")
+        page = int(page) if isinstance(page, (int, float)) or (
+            isinstance(page, str) and page.strip().isdigit()) else None
+        no = entry.get("chapter_no")
+        if isinstance(no, int):
+            no_val = no
+        else:
+            s = str(no or "").strip()
+            m = re.search(r"\d+", s)
+            no_val = int(m.group()) if m else 0
+        cleaned.append({"chapter_no": no_val, "title": title, "print_page": page})
+    for i, entry in enumerate(cleaned, start=1):
+        entry["chapter_no"] = i
+    return cleaned
+
+
 def _parse_json_array(text: str) -> list[dict]:
     """剥掉 markdown 代码围栏后解析 JSON 数组。
 
@@ -74,7 +102,7 @@ def extract_toc(conn, cfg: Config, doc_id: str, client=None,
                 continue
             text, usage = transcribe_image(client, model, row[0], prompt=TOC_PROMPT)
             record_llm_call(conn, doc_id, "toc", model, usage)
-            for entry in _parse_json_array(text):
+            for entry in normalize_toc_entries(_parse_json_array(text)):
                 cur.execute(
                     """INSERT INTO chapters (id, document_id, chapter_no, title,
                                              print_page, taxonomy, tags)
