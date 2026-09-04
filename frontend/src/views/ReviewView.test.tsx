@@ -219,4 +219,42 @@ describe("ReviewView", () => {
     await waitFor(() => expect(calls).toBeGreaterThan(1));
     await waitFor(() => expect(screen.queryByText("英语卷")).not.toBeInTheDocument());
   });
+
+  it("匹配浮层打开时按 1/2/3 不确认底层题", async () => {
+    const confirms: unknown[] = [];
+    stub({
+      "/api/children": () => jsonResponse(CHILDREN_RES),
+      "/api/papers": () => jsonResponse({ papers: [paper("ready_for_review")] }),
+      "/api/papers/p1": () => jsonResponse(detail([Q1, Q2])),
+      "/api/paper-questions/q1/candidates": () => jsonResponse({ candidates: [] }),
+      "/api/paper-questions/q1/confirm": (init) => {
+        confirms.push(JSON.parse(String(init?.body)));
+        return jsonResponse({ id: "q1", paper_status: "ready_for_review" });
+      },
+    });
+    render(<ReviewView />);
+    await waitFor(() => expect(screen.getByText("期中卷")).toBeInTheDocument());
+    fireEvent.click(screen.getByText("期中卷"));
+    await waitFor(() => expect(screen.getByText("135 ÷ 5 =")).toBeInTheDocument());
+    fireEvent.click(screen.getByText(/待匹配/));
+    await waitFor(() => expect(screen.getByRole("dialog", { name: "选择题库条目" })).toBeInTheDocument());
+    fireEvent.keyDown(window, { key: "1" });  // 浮层开着:不得确认底层题
+    expect(confirms).toEqual([]);
+  });
+
+  it("确认失败给 UI 反馈(不再只有 console.error)", async () => {
+    stub({
+      "/api/children": () => jsonResponse(CHILDREN_RES),
+      "/api/papers": () => jsonResponse({ papers: [paper("ready_for_review")] }),
+      "/api/papers/p1": () => jsonResponse(detail([Q1])),
+      "/api/paper-questions/q1/confirm": () => jsonResponse({ error: "服务器开小差" }, 502),
+    });
+    render(<ReviewView />);
+    await waitFor(() => expect(screen.getByText("期中卷")).toBeInTheDocument());
+    fireEvent.click(screen.getByText("期中卷"));
+    await waitFor(() => expect(screen.getByText("135 ÷ 5 =")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: /✗ 错/ }));
+    await waitFor(() =>
+      expect(screen.getByText(/确认失败/)).toBeInTheDocument());
+  });
 });

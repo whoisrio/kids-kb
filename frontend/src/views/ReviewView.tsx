@@ -25,6 +25,7 @@ export function ReviewView() {
   const [busy, setBusy] = useState(false);
   const [failedPages, setFailedPages] = useState<number[]>([]);
   const [childFilter, setChildFilter] = useState("");
+  const [confirmError, setConfirmError] = useState("");
 
   const loadPapers = useCallback(async () => {
     try {
@@ -80,6 +81,7 @@ export function ReviewView() {
   const doConfirm = useCallback(async (result: string) => {
     if (!current || busy) return;
     setBusy(true);
+    setConfirmError("");
     try {
       const body: { result: string; error_cause?: string; note?: string } = { result };
       if (cause) body.error_cause = cause;
@@ -94,6 +96,7 @@ export function ReviewView() {
       if (qIndex < (detail?.questions.length ?? 0) - 1) setQIndex(qIndex + 1);
     } catch (err) {
       console.error("确认失败", err);
+      setConfirmError(err instanceof Error ? err.message : String(err));
     } finally {
       setBusy(false);
     }
@@ -102,6 +105,8 @@ export function ReviewView() {
   // 键盘流转:1=错 2=对 3=半对,Enter=采纳预选;焦点在表单控件时不触发
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      // 浮层开着:快捷键不落到底层题(焦点守卫之前先拦)
+      if (matchOpen || uploadOpen) return;
       // 焦点在表单控件时不触发;window/document 无 closest,用 instanceof 拦截
       if (e.target instanceof HTMLElement &&
           e.target.closest("input, select, textarea, button")) return;
@@ -113,7 +118,7 @@ export function ReviewView() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [current, busy, doConfirm]);
+  }, [current, busy, doConfirm, matchOpen, uploadOpen]);
 
   return (
     <div className="review-wrap">
@@ -197,6 +202,7 @@ export function ReviewView() {
               )}
             </div>
             <div className="keyhint">快捷键:1 做错 · 2 做对 · 3 半对 · Enter 采纳预选并下一条</div>
+            {confirmError && <div className="form-error" role="alert">确认失败:{confirmError}</div>}
             {matchOpen && (
               <MatchPicker question={current} onMatched={(q) => {
                 setDetail((d) => d && ({ ...d, questions: d.questions.map((x, i) => i === qIndex ? q : x) }));
