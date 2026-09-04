@@ -169,3 +169,56 @@ def test_embed_chapters_segments_and_idempotent(conn, doc_chapter):
         assert doc_title == "7星学霸"
         assert has_ch and no_item and dims == 1024
     assert embed_chapters(conn, cfg, doc_id, client=_FakeEmbed()) == 0  # 幂等
+
+
+def test_approve_items_bulk_and_embed(conn, doc_chapter):
+    from kb.embed import approve_items, embed_chapters
+
+    doc_id, cfg = doc_chapter
+    # doc_chapter 已有:例1(approved) 与 1-1(pending);补 needs_review 与 rejected
+    with conn.cursor() as cur:
+        cur.execute(
+            """INSERT INTO items (id, document_id, content_type, label, content_md, chapter, qc_status)
+               VALUES (%s,%s,'exercise','2-1','待复核题','第 1 讲 乘除法竖式谜','needs_review'),
+                      (%s,%s,'exercise','2-2','被打回的题','第 1 讲 乘除法竖式谜','rejected')""",
+            (str(uuid.uuid4()), doc_id, str(uuid.uuid4()), doc_id))
+        cur.execute(
+            """INSERT INTO review_queue (item_id, reason)
+               SELECT id, 'qc' FROM items WHERE document_id=%s AND label='2-1'""", (doc_id,))
+    out = approve_items(conn, cfg, doc_id, client=_FakeEmbed())
+    assert out["approved"] == 2  # pending(1-1) + needs_review(2-1);rejected 与已 approved 不动
+    with conn.cursor() as cur:
+        cur.execute(
+            """SELECT count(*) FROM items WHERE document_id=%s
+               AND qc_status='approved' AND label IN ('1-1','2-1')""",
+            (doc_id,))
+        assert cur.fetchone()[0] == 2
+        cur.execute(
+            """SELECT count(*) FROM review_queue r JOIN items i ON i.id=r.item_id
+               WHERE i.document_id=%s AND r.status='pending'""", (doc_id,))
+        assert cur.fetchone()[0] == 0  # 复核行一并关闭
+        cur.execute(
+            "SELECT count(*) FROM chunks WHERE document_id=%s AND item_id IS NOT NULL",
+            (doc_id,))
+        assert cur.fetchone()[0] == 3  # 例1 + 1-1 + 2-1(approve 即向量化)
+
+
+def test_approve_items_chapter_filter(conn, doc_chapter):
+    from kb.embed import approve_items
+
+    doc_id, cfg = doc_chapter
+    with conn.cursor() as cur:
+        cur.execute(
+            """INSERT INTO chapters (id, document_id, chapter_no, title, page_start, page_end)
+               VALUES (%s,%s,2,'第二章',1,2)""",
+            (str(uuid.uuid4()), doc_id))
+        cur.execute(
+            """INSERT INTO items (id, document_id, content_type, label, content_md, chapter, qc_status)
+               VALUES (%s,%s,'exercise','3-1','第二章题','第 2 讲 第二章','pending')""",
+            (str(uuid.uuid4()), doc_id))
+    out = approve_items(conn, cfg, doc_id, chapter_no=2, client=_FakeEmbed())
+    assert out["approved"] == 1
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT qc_status FROM items WHERE document_id=%s AND label='1-1'", (doc_id,))
+        assert cur.fetchone()[0] == "pending"  # 第一章不受影响

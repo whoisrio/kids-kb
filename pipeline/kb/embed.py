@@ -119,6 +119,42 @@ def embed_chapters(conn, cfg: Config, doc_id: str | None = None,
     return len(payloads)
 
 
+def approve_items(conn, cfg: Config, doc_id: str, chapter_no: int | None = None,
+                  client=None) -> dict:
+    """批量通过一个文档(可限章)的条目:非 approved/rejected 一律 approved,
+    关闭其 pending 复核行,并立即向量化(条目 + 章节)。88 页练习册不该逐条点 approve。"""
+    label = None
+    if chapter_no is not None:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT title FROM chapters WHERE document_id=%s AND chapter_no=%s",
+                (doc_id, chapter_no),
+            )
+            row = cur.fetchone()
+        if not row:
+            raise SystemExit(f"章节不存在: doc={doc_id} 第 {chapter_no} 章")
+        label = f"第 {chapter_no} 讲 {row[0]}"
+    where = "AND chapter=%s" if label else ""
+    params: list = [doc_id] + ([label] if label else [])
+    with conn.cursor() as cur:
+        cur.execute(
+            f"""UPDATE items SET qc_status='approved'
+                WHERE document_id=%s AND qc_status IN ('pending','auto_passed','needs_review')
+                {where}
+                RETURNING id""",
+            params,
+        )
+        ids = [str(r[0]) for r in cur.fetchall()]
+        if ids:
+            cur.execute(
+                "UPDATE review_queue SET status='approved' WHERE item_id = ANY(%s) AND status='pending'",
+                (ids,),
+            )
+    n = embed_approved_items(conn, cfg, doc_id, client=client)
+    n += embed_chapters(conn, cfg, doc_id, client=client)
+    return {"approved": len(ids), "embedded": n}
+
+
 def invalidate_chunk(conn, item_id: str) -> None:
     """条目内容变了，旧向量作废。"""
     with conn.cursor() as cur:

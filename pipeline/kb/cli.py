@@ -66,8 +66,11 @@ def main() -> None:
                              help="PaddleOCR-VL 整管线重处理指定页（破坏性：删旧块+相交章节 items）")
     p_repro.add_argument("doc_id")
     p_repro.add_argument("--pages", required=True, help="物理页码范围，如 9-15 或 9,10,11")
-    p_embed = sub.add_parser("embed", help="approved 条目向量化（bge-m3 -> pgvector）")
+    p_embed = sub.add_parser("embed", help="approved 条目 + 未拆条章节向量化补跑（bge-m3 -> pgvector）")
     p_embed.add_argument("doc_id", nargs="?", default=None)
+    p_approve = sub.add_parser("approve", help="批量通过条目并自动向量化(可限章)")
+    p_approve.add_argument("doc_id")
+    p_approve.add_argument("--chapter", type=int, default=None, help="只通过指定章(章号)")
     p_export = sub.add_parser("export", help="markdown 落盘镜像（页级 + 章节级）")
     p_export.add_argument("doc_id")
     p_search = sub.add_parser("search", help="语义检索")
@@ -166,9 +169,15 @@ def main() -> None:
         stats = reprocess_pages_paddleocr(conn, cfg, args.doc_id, page_nos)
         print(f"重处理页 {page_nos[0]}-{page_nos[-1]}: {stats['blocks']} 块入库, "
               f"{stats['items_deleted']} 条旧 item 已删（请重跑 structure 重建）")
+    elif args.cmd == "approve":
+        from kb.embed import approve_items
+        out = approve_items(conn, cfg, args.doc_id, chapter_no=args.chapter)
+        print(f"通过 {out['approved']} 条,新增向量 {out['embedded']} 条")
     elif args.cmd == "embed":
-        from kb.embed import embed_approved_items
-        print(f"新增向量: {embed_approved_items(conn, cfg, args.doc_id)} 条")
+        from kb.embed import embed_approved_items, embed_chapters
+        n = embed_approved_items(conn, cfg, args.doc_id)
+        n += embed_chapters(conn, cfg, args.doc_id)
+        print(f"新增向量: {n} 条(条目+章节)")
     elif args.cmd == "export":
         from kb.export_md import export_chapter_mds, export_page_mds
         print(f"落盘: {export_page_mds(conn, cfg, args.doc_id)} 页 md, "
