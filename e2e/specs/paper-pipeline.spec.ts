@@ -183,3 +183,22 @@ test("t4 改判 UPDATE 不追加;PATCH 元数据", async ({ page }) => {
   });
   expect(r.ok()).toBe(true);
 });
+
+test("坏 PDF 上传:422 文案直达 UI,不进队列", async ({ page }) => {
+  const badTitle = `E2E-${RUN}-坏卷`;
+  await page.goto("/");
+  await page.getByRole("button", { name: "复核" }).click();
+  await page.getByRole("button", { name: "上传试卷" }).click();
+  await page.getByLabel("孩子").selectOption({ label: `E2E-${RUN}-小宝` });
+  await page.getByLabel("标题").fill(badTitle);
+  await page.getByLabel("科目").selectOption("数学");
+  await page.getByLabel("文件").setInputFiles({
+    name: "corrupt.pdf",
+    mimeType: "application/pdf",
+    buffer: Buffer.from("junk junk junk"),
+  });
+  await page.getByRole("button", { name: "提交" }).click();
+  await expect(page.locator(".form-error")).toContainText(/corrupt\.pdf|PDF 无法解析/);
+  // 没有生成队列项
+  await expect(page.getByText(badTitle)).toHaveCount(0);
+});
