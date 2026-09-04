@@ -95,6 +95,47 @@ def test_transcribe_image_downscales_oversized_image(tmp_path):
     assert max(pix.width, pix.height) <= 2000
 
 
+def test_transcribe_image_disables_reasoning_and_falls_back(tmp_path):
+    """思考型模型（qwen3.5）reasoning 会烧穿输出预算把 content 截空：
+    默认带 reasoning_effort=none；服务端不认这个参数时降级为普通调用。"""
+    from kb.parse import transcribe_image
+
+    img = tmp_path / "p.png"
+    img.write_bytes(b"\x89PNG fake")
+    calls = []
+
+    class RejectChat:
+        class completions:
+            @staticmethod
+            def create(model, messages, max_tokens, **kwargs):
+                calls.append(kwargs)
+                if "extra_body" in kwargs:
+                    raise RuntimeError("reasoning_effort not supported")
+                return FakeResponse()
+
+    class RejectClient:
+        chat = RejectChat()
+
+    text, _ = transcribe_image(RejectClient(), "m", img)
+    assert text == "转录结果 $1+1=2$"
+    assert len(calls) == 2
+    assert calls[0]["extra_body"] == {"reasoning_effort": "none"}
+    assert "extra_body" not in calls[1]
+
+    class AcceptChat:
+        class completions:
+            @staticmethod
+            def create(model, messages, max_tokens, **kwargs):
+                calls.append(kwargs)
+                return FakeResponse()
+
+    class AcceptClient:
+        chat = AcceptChat()
+
+    transcribe_image(AcceptClient(), "m", img)
+    assert calls[-1]["extra_body"] == {"reasoning_effort": "none"}
+
+
 def test_run_parse_fills_block_content_and_marks_page(conn, parsed_doc):
     from kb.parse import run_parse
 

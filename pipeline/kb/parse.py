@@ -37,20 +37,27 @@ def transcribe_image(client, model: str, image_path, prompt: str = TRANSCRIBE_PR
     from kb.metering import extract_usage
 
     b64 = base64.b64encode(_downscale_for_vision(image_path)).decode("ascii")
-    resp = client.chat.completions.create(
-        model=model,
-        messages=[{
-            "role": "user",
-            "content": [
-                {"type": "text", "text": prompt},
-                {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64}"}},
-            ],
-        }],
-        # 思考型模型（如 qwen3.5）会先烧 reasoning 再出正文：预算太小会把
-        # content 截空（finish_reason=length 且 content 为空）。给足空间，
-        # 非思考模型只是用不满，无副作用。
-        max_tokens=12288,
-    )
+    messages = [{
+        "role": "user",
+        "content": [
+            {"type": "text", "text": prompt},
+            {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64}"}},
+        ],
+    }]
+    # 思考型模型（qwen3.5 等）reasoning 可烧数千 token：预算不足会把 content
+    # 截空（finish_reason=length 且 content 为空串）。默认关思考；个别
+    # OpenAI 兼容端点不认 reasoning_effort 时降级为普通调用。
+    try:
+        resp = client.chat.completions.create(
+            model=model, messages=messages,
+            # 预算给足，非思考模型用不满，无副作用。
+            max_tokens=12288,
+            extra_body={"reasoning_effort": "none"},
+        )
+    except Exception:  # noqa: BLE001 - 服务端拒绝该参数时重试
+        resp = client.chat.completions.create(
+            model=model, messages=messages, max_tokens=12288,
+        )
     return resp.choices[0].message.content, extract_usage(resp)
 
 
