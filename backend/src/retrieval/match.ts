@@ -19,6 +19,7 @@ export async function matchQuestion(
   const candidates = await hybridSearch(pool, deps, content, {
     topK: 5,
     filters: { subject },
+    itemsOnly: true,  // 试卷匹配只对题库条目;章节分段是检索底座,不是可关联的题
   });
   const top = candidates[0];
   const auto = top && top.vec_score !== undefined && top.vec_score >= threshold ? top : null;

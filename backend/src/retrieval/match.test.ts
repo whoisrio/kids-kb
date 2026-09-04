@@ -45,6 +45,18 @@ maybe("matchQuestion（真库）", () => {
          '{"subject":"英语","label":"2","chapter":null,"doc_title":"英语书"}'::jsonb, $2::vector)`,
       [vec(mathVec), vec(engVec)],
     );
+    // 章节分段:同 doc 数学、向量与 mathVec 同向(与查询同向)——若不过滤会被当成 top 候选
+    await pool.query(
+      `INSERT INTO chapters (id, document_id, chapter_no, title, content_md) VALUES
+        ('66666666-6666-6666-6666-666666666666', '11111111-1111-1111-1111-111111111111', 1, '除法', '# 除法')`,
+    );
+    await pool.query(
+      `INSERT INTO chunks (chapter_id, document_id, seg_no, content_md, meta, embedding) VALUES
+        ('66666666-6666-6666-6666-666666666666', '11111111-1111-1111-1111-111111111111', 1,
+         '第 1 讲 除法\n135 ÷ 5 = 27 讲解',
+         '{"kind":"chapter","chapter":"第 1 讲 除法","subject":"数学","doc_title":"数学书"}', $1::vector)`,
+      [vec(mathVec)],
+    );
   });
   afterAll(async () => { await pool.end(); });
 
@@ -61,5 +73,13 @@ maybe("matchQuestion（真库）", () => {
       pool, deps, "135 ÷ 5 = 27", "数学", 0.999);
     expect(auto).toBeNull();
     expect(candidates.length).toBeGreaterThan(0);  // 候选照常供人工选择
+  });
+
+  it("匹配只用条目级 chunk:章节分段不进候选(auto 仍是 item)", async () => {
+    const { candidates, auto } = await matchQuestion(
+      pool, deps, "135 ÷ 5 = 27", "数学", 0.88);
+    expect(auto?.item_id).toBe("22222222-2222-2222-2222-222222222222");
+    expect(candidates.every((c) => c.item_id !== null)).toBe(true);
+    expect(candidates.some((c) => c.chapter_id === "66666666-6666-6666-6666-666666666666")).toBe(false);
   });
 });
