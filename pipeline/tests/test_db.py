@@ -1,3 +1,6 @@
+import pytest
+
+
 def test_migrate_creates_tables(clean_db):
     from kb.db import migrate
     ran = migrate(clean_db)
@@ -132,3 +135,34 @@ def test_chunks_chapter_ref_after_0013(conn):
                 """INSERT INTO chunks (item_id, chapter_id, document_id, seg_no, content_md, meta, embedding)
                    VALUES (%s,%s,%s,1,'双挂','{}',%s)""",
                 (str(uuid.uuid4()), ch_id, doc_id, vec))
+
+
+def test_ensure_test_database_rejects_production_db(monkeypatch):
+    """KB_TEST_DATABASE_URL 与 KB_DATABASE_URL 同库时,DROP SCHEMA 前置守卫必须拒绝。"""
+    from kb.db import ensure_test_database
+
+    monkeypatch.setenv("KB_DATABASE_URL", "postgresql://localhost/kb")
+    with pytest.raises(RuntimeError, match="拒绝"):
+        ensure_test_database("postgresql://localhost/kb")
+    # 不同库放行
+    monkeypatch.setenv("KB_DATABASE_URL", "postgresql://localhost/kb")
+    ensure_test_database("postgresql://localhost/kb_test")
+
+
+def test_ensure_test_database_reads_dotenv(monkeypatch, tmp_path):
+    """环境变量未设时回落读 pipeline/.env 的 KB_DATABASE_URL。"""
+    from kb.db import ensure_test_database
+
+    env = tmp_path / ".env"
+    env.write_text("KB_DATABASE_URL=postgresql://localhost/prod_kb\n", encoding="utf-8")
+    monkeypatch.delenv("KB_DATABASE_URL", raising=False)
+    monkeypatch.setattr("kb.db._ENV_FILE", env)  # 测试可注入 env 文件路径
+    with pytest.raises(RuntimeError):
+        ensure_test_database("postgresql://localhost/prod_kb")
+
+
+def test_env_file_points_to_pipeline_dotenv():
+    """回退读的 .env 在仓库 pipeline/ 下(kb/ 上上级),不是 kb/ 内不存在的文件。"""
+    from kb.db import _ENV_FILE
+
+    assert _ENV_FILE.name == ".env" and _ENV_FILE.parent.name == "pipeline"

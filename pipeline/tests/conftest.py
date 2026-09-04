@@ -12,9 +12,12 @@ def clean_db():
 
     每个测试拿到全新 schema，天然隔离，无需 truncate 清表。
     """
+    from kb.db import ensure_test_database
+
     url = os.environ.get("KB_TEST_DATABASE_URL")
     if not url:
         pytest.skip("需要 KB_TEST_DATABASE_URL（如 postgresql://localhost/kb_test）")
+    ensure_test_database(url)
     c = psycopg.connect(url, autocommit=True)
     with c.cursor() as cur:
         cur.execute("DROP SCHEMA public CASCADE")
