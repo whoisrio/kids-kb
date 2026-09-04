@@ -166,3 +166,42 @@ def test_env_file_points_to_pipeline_dotenv():
     from kb.db import _ENV_FILE
 
     assert _ENV_FILE.name == ".env" and _ENV_FILE.parent.name == "pipeline"
+
+
+def test_0012_dedup_ties_same_timestamp(clean_db, tmp_path):
+    """0012 对 created_at 完全相同的重复行也能去重(ctid 决胜),唯一索引必成。"""
+    from kb.db import migrate
+    from pathlib import Path
+
+    migrate(clean_db)  # 先全量建好(含 0012),再构造 0012 之前的状态
+    with clean_db.cursor() as cur:
+        cur.execute("DROP INDEX IF EXISTS attempts_paper_question_id_key")
+        cur.execute("DELETE FROM schema_migrations WHERE name='0012_papers_attempts_unique.sql'")
+        # 种子:一个孩子 + 一份卷一道题
+        cur.execute("INSERT INTO children (name) VALUES ('小宝') RETURNING id")
+        child_id = str(cur.fetchone()[0])
+        cur.execute(
+            """INSERT INTO papers (id, child_id, title, subject) VALUES (gen_random_uuid(),%s,'卷','数学') RETURNING id""",
+            (child_id,))
+        paper_id = str(cur.fetchone()[0])
+        cur.execute(
+            """INSERT INTO paper_questions (id, paper_id, page_no, seq_in_page, content_md)
+               VALUES (gen_random_uuid(),%s,1,1,'题') RETURNING id""", (paper_id,))
+        pq_id = str(cur.fetchone()[0])
+        # 两条同 paper_question、created_at 完全相同的重复 attempt(触发旧行为双双保留)
+        cur.execute(
+            """INSERT INTO attempts (child_id, paper_question_id, result)
+               VALUES (%s,%s,'wrong'),(%s,%s,'wrong')""",
+            (child_id, pq_id, child_id, pq_id))
+        cur.execute(
+            "UPDATE attempts SET created_at='2026-01-01T00:00:00Z' WHERE paper_question_id=%s",
+            (pq_id,))
+    ran = migrate(clean_db)  # 重放 0012
+    assert "0012_papers_attempts_unique.sql" in ran
+    with clean_db.cursor() as cur:
+        cur.execute(
+            "SELECT count(*) FROM attempts WHERE paper_question_id=%s", (pq_id,))
+        assert cur.fetchone()[0] == 1
+        cur.execute(
+            "SELECT count(*) FROM pg_indexes WHERE indexname='attempts_paper_question_id_key'")
+        assert cur.fetchone()[0] == 1
