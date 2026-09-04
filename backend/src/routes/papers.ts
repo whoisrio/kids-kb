@@ -72,10 +72,13 @@ export function papersRoutes(pool: pg.Pool, deps: PaperJobDeps, cfg: BackendConf
     if (childId) { where = "WHERE p.child_id=$1"; params.push(childId); }
     const { rows } = await pool.query(
       `SELECT p.id::text, p.title, p.subject, p.status, p.error, p.page_count, p.created_at,
+              ch.name AS child_name,
               count(q.id)::int AS total_questions,
               count(q.id) FILTER (WHERE q.confirmed_result IS NOT NULL)::int AS confirmed_questions
-       FROM papers p LEFT JOIN paper_questions q ON q.paper_id = p.id
-       ${where} GROUP BY p.id ORDER BY p.created_at DESC`, params);
+       FROM papers p
+       JOIN children ch ON ch.id = p.child_id
+       LEFT JOIN paper_questions q ON q.paper_id = p.id
+       ${where} GROUP BY p.id, ch.name ORDER BY p.created_at DESC`, params);
     return c.json({ papers: rows });
   });
 

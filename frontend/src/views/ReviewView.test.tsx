@@ -11,7 +11,8 @@ const CHILDREN_RES = { children: CHILDREN };
 function paper(status: string, extra: Record<string, unknown> = {}) {
   return {
     id: "p1", title: "期中卷", subject: "数学", status, error: null, page_count: 1,
-    created_at: "2026-09-03", total_questions: 2, confirmed_questions: 0, ...extra,
+    created_at: "2026-09-03", total_questions: 2, confirmed_questions: 0,
+    child_name: "小宝", ...extra,
   };
 }
 
@@ -151,12 +152,13 @@ describe("ReviewView", () => {
     });
     render(<ReviewView />);
     fireEvent.click(screen.getByRole("button", { name: /上传试卷/ }));
-    fireEvent.change(await screen.findByLabelText("孩子"), { target: { value: "c1" } });
-    fireEvent.change(screen.getByLabelText("标题"), { target: { value: "期中卷" } });
-    fireEvent.change(screen.getByLabelText("科目"), { target: { value: "数学" } });
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.change(within(dialog).getByLabelText("孩子"), { target: { value: "c1" } });
+    fireEvent.change(within(dialog).getByLabelText("标题"), { target: { value: "期中卷" } });
+    fireEvent.change(within(dialog).getByLabelText("科目"), { target: { value: "数学" } });
     const file = new File([new Uint8Array([1])], "p1.png", { type: "image/png" });
-    fireEvent.change(screen.getByLabelText("文件"), { target: { files: [file] } });
-    fireEvent.click(screen.getByRole("button", { name: "提交" }));
+    fireEvent.change(within(dialog).getByLabelText("文件"), { target: { files: [file] } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "提交" }));
     await waitFor(() => expect(captured!.get("title")).toBe("期中卷"));
     // 列表刷新出现新卷(用队列项断言,避免与详情区《》标题歧义)
     await waitFor(() => expect(screen.getByRole("button", { name: /期中卷/ })).toBeInTheDocument());
@@ -193,5 +195,28 @@ describe("ReviewView", () => {
     const link = screen.getByRole("link", { name: "查看整卷原件" });
     expect(link).toHaveAttribute("href", "/api/papers/p1/source.pdf");
     expect(link).toHaveAttribute("target", "_blank");
+  });
+
+  it("队列按孩子过滤:切换下拉只显示该孩子的卷,队列项显示孩子名", async () => {
+    const allPapers = [
+      paper("ready_for_review", { id: "p1", child_name: "小宝" }),
+      paper("ready_for_review", { id: "p2", title: "英语卷", subject: "英语", child_name: "二宝" }),
+    ];
+    const filtered = allPapers.filter((p) => p.id === "p1");
+    let calls = 0;
+    stub({
+      "/api/children": () => jsonResponse({ children: [
+        ...CHILDREN, { id: "c2", name: "二宝", grade: null, created_at: "2026-01-02" }] }),
+      "/api/papers": () => { calls++; return jsonResponse({ papers: allPapers }); },
+      "/api/papers?child_id=c1": () => { calls++; return jsonResponse({ papers: filtered }); },
+      "/api/papers/p1": () => jsonResponse(detail([Q1])),
+    });
+    render(<ReviewView />);
+    await waitFor(() => expect(screen.getByText("英语卷")).toBeInTheDocument());
+    // 队列项带孩子的名字(可能与下拉选项同名,用 getAllByText)
+    expect(screen.getAllByText("小宝").length).toBeGreaterThan(0);
+    fireEvent.change(screen.getByLabelText("孩子"), { target: { value: "c1" } });
+    await waitFor(() => expect(calls).toBeGreaterThan(1));
+    await waitFor(() => expect(screen.queryByText("英语卷")).not.toBeInTheDocument());
   });
 });

@@ -12,6 +12,7 @@ export interface PaperSummary {
   created_at: string;
   total_questions: number;
   confirmed_questions: number;
+  child_name?: string;
 }
 
 export interface PaperQuestion {

@@ -208,4 +208,14 @@ maybe("papers API（真库）", () => {
     expect(resp.status).toBe(422);
     expect((await resp.json()).error).toContain("corrupt.pdf");
   });
+
+  it("列表带 child_name(队列显示用)", async () => {
+    const { rows: [paper] } = await pool.query(
+      `INSERT INTO papers (child_id, title, subject, status, page_count)
+       VALUES ($1,'孩子卷','数学','ready_for_review',1) RETURNING id::text`, [CHILD]);
+    const resp = await app.request("/api/papers");
+    const row = ((await resp.json()) as { papers: { id: string; child_name: string }[] })
+      .papers.find((p) => p.id === paper.id);
+    expect(row?.child_name).toBe("小宝");
+  });
 });

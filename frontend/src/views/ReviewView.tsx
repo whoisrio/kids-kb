@@ -24,15 +24,16 @@ export function ReviewView() {
   const [matchOpen, setMatchOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [failedPages, setFailedPages] = useState<number[]>([]);
+  const [childFilter, setChildFilter] = useState("");
 
   const loadPapers = useCallback(async () => {
     try {
-      const { papers: list } = await fetchPapers();
+      const { papers: list } = await fetchPapers(childFilter || undefined);
       setPapers(list);
     } catch (err) {
       console.error("试卷列表加载失败", err);
     }
-  }, []);
+  }, [childFilter]);
 
   useEffect(() => {
     void loadPapers();
@@ -122,6 +123,13 @@ export function ReviewView() {
         onSelect={(id) => { setSelectedId(id); void loadDetail(id); }}
         onUpload={() => setUploadOpen(true)}
       />
+      <div className="child-filter">
+        <select aria-label="孩子" value={childFilter}
+                onChange={(e) => setChildFilter(e.target.value)}>
+          <option value="">全部孩子</option>
+          {kids.map((k) => <option key={k.id} value={k.id}>{k.name}</option>)}
+        </select>
+      </div>
       <div className="review-detail">
         {!detail && <div className="chat-empty">左侧选择一份试卷,或上传新试卷。</div>}
         {detail?.status === "processing" && (

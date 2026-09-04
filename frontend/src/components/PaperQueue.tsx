@@ -37,6 +37,7 @@ export function PaperQueue({ papers, selectedId, onSelect, onUpload }: PaperQueu
                 <span>{p.confirmed_questions}/{p.total_questions}</span>
               )}
               <span>{p.subject}</span>
+              {p.child_name && <span className="child">{p.child_name}</span>}
             </span>
           </button>
         ))}
