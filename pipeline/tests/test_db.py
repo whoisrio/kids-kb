@@ -7,9 +7,15 @@ def test_migrate_creates_tables(clean_db):
             SELECT table_name FROM information_schema.tables
             WHERE table_schema = 'public' AND table_name IN
               ('documents', 'pages', 'blocks', 'items', 'item_blocks',
-               'item_embeddings', 'review_queue', 'schema_migrations')
+               'review_queue', 'schema_migrations')
         """)
-        assert cur.fetchall().__len__() == 8
+        assert cur.fetchall().__len__() == 7
+        # 0013 起清理死表:chunks(0008)已取代 item_embeddings
+        cur.execute("""
+            SELECT count(*) FROM information_schema.tables
+            WHERE table_schema='public' AND table_name='item_embeddings'
+        """)
+        assert cur.fetchone()[0] == 0
 
 
 def test_migrate_is_idempotent(clean_db):
@@ -94,3 +100,35 @@ def test_chapters_content_md_after_0010(conn):
             (str(uuid.uuid4()), doc_id),
         )
         assert cur.fetchone()[0].startswith("# 一、")
+
+
+def test_chunks_chapter_ref_after_0013(conn):
+    """0013 后:chunks 可挂章节(item_id 空、seg_no 必填);同章同段唯一;不可同时挂条目与章节。"""
+    import uuid
+    import pytest
+    with conn.cursor() as cur:
+        cur.execute("INSERT INTO documents (id, title, source_path) VALUES (%s,'t','/tmp/t.md') RETURNING id",
+                    (str(uuid.uuid4()),))
+        doc_id = str(cur.fetchone()[0])
+        cur.execute(
+            """INSERT INTO chapters (id, document_id, chapter_no, title, content_md)
+               VALUES (%s,%s,1,'大题一','# 一、选择题') RETURNING id""",
+            (str(uuid.uuid4()), doc_id))
+        ch_id = str(cur.fetchone()[0])
+        vec = "[" + ",".join(["0"] * 1024) + "]"
+        cur.execute(
+            """INSERT INTO chunks (chapter_id, document_id, seg_no, content_md, meta, embedding)
+               VALUES (%s,%s,1,'章稿段落','{}',%s)""",
+            (ch_id, doc_id, vec))
+        # 同章同段号唯一
+        with pytest.raises(Exception):
+            cur.execute(
+                """INSERT INTO chunks (chapter_id, document_id, seg_no, content_md, meta, embedding)
+                   VALUES (%s,%s,1,'重复段','{}',%s)""",
+                (ch_id, doc_id, vec))
+        # item_id 与 chapter_id 不可同挂
+        with pytest.raises(Exception):
+            cur.execute(
+                """INSERT INTO chunks (item_id, chapter_id, document_id, seg_no, content_md, meta, embedding)
+                   VALUES (%s,%s,%s,1,'双挂','{}',%s)""",
+                (str(uuid.uuid4()), ch_id, doc_id, vec))
