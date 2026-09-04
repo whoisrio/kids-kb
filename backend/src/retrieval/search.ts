@@ -31,14 +31,18 @@ interface ChunkRow {
 }
 
 async function vectorHits(
-  pool: pg.Pool, vec: number[], topN: number, itemsOnly: boolean,
+  pool: pg.Pool, vec: number[], topN: number, itemsOnly: boolean, subject: string | undefined,
 ): Promise<ChunkRow[]> {
+  const conds = [itemsOnly && "c.item_id IS NOT NULL", subject && "c.meta->>'subject' = $3"]
+    .filter(Boolean) as string[];
+  const params: unknown[] = [`[${vec.join(",")}]`, topN];
+  if (subject) params.push(subject);
   const { rows } = await pool.query(
     `SELECT c.item_id::text, c.chapter_id::text, c.document_id::text, c.content_md, c.meta,
             1 - (c.embedding <=> $1::vector) AS score
-     FROM chunks c ${itemsOnly ? "WHERE c.item_id IS NOT NULL" : ""}
+     FROM chunks c ${conds.length ? `WHERE ${conds.join(" AND ")}` : ""}
      ORDER BY c.embedding <=> $1::vector LIMIT $2`,
-    [`[${vec.join(",")}]`, topN],
+    params,
   );
   return rows;
 }
@@ -68,11 +72,16 @@ export async function hybridSearch(
 ): Promise<SearchHit[]> {
   const topK = opts.topK ?? 5;
   const itemsOnly = opts.itemsOnly ?? false;
+  const subject = opts.filters?.subject;
   const [vec] = await deps.embed([query]);
-  const vecHits = await vectorHits(pool, vec, 20, itemsOnly);
+  const vecHits = await vectorHits(pool, vec, 20, itemsOnly, subject);
+  const bm25Conds = [itemsOnly && "item_id IS NOT NULL", subject && "meta->>'subject' = $1"]
+    .filter(Boolean) as string[];
+  const bm25Params: unknown[] = subject ? [subject] : [];
   const { rows: allChunks } = await pool.query(
     `SELECT item_id::text, chapter_id::text, document_id::text, content_md, meta
-     FROM chunks ${itemsOnly ? "WHERE item_id IS NOT NULL" : ""}`,
+     FROM chunks ${bm25Conds.length ? `WHERE ${bm25Conds.join(" AND ")}` : ""}`,
+    bm25Params,
   );
 
   const rrf = new Map<string, SearchHit>();

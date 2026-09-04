@@ -82,4 +82,9 @@ maybe("matchQuestion（真库）", () => {
     expect(candidates.every((c) => c.item_id !== null)).toBe(true);
     expect(candidates.some((c) => c.chapter_id === "66666666-6666-6666-6666-666666666666")).toBe(false);
   });
+
+  it("topK=10:候选窗口按 spec 放宽到 10", async () => {
+    const { candidates } = await matchQuestion(pool, deps, "135 ÷ 5 = 27", "数学", 0.88);
+    expect(candidates.length).toBeLessThanOrEqual(10);
+  });
 });

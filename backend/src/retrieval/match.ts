@@ -17,7 +17,7 @@ export async function matchQuestion(
   threshold: number,
 ): Promise<MatchResult> {
   const candidates = await hybridSearch(pool, deps, content, {
-    topK: 5,
+    topK: 10,
     filters: { subject },
     itemsOnly: true,  // 试卷匹配只对题库条目;章节分段是检索底座,不是可关联的题
   });

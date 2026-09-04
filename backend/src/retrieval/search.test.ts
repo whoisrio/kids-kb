@@ -99,3 +99,59 @@ maybe("hybridSearch（真库）", () => {
     expect(hits.every((h) => h.item_id !== null)).toBe(true);
   });
 });
+
+maybe("hybridSearch subject 下推（真库）", () => {
+  let pool: pg.Pool;
+  const V1 = `[${[1, ...new Array(1023).fill(0)].join(",")}]`;
+  const V2 = `[${[0, 1, ...new Array(1022).fill(0)].join(",")}]`;
+  const deps: SearchDeps = {
+    embed: async () => [[1, ...new Array(1023).fill(0)]],
+    rerank: null,
+  };
+  beforeAll(async () => {
+    pool = await resetDbForTest(url!);
+    // 数学条目 1 条(同学科窗口必须留得住)
+    await pool.query(
+      `INSERT INTO documents (id, title, subject, source_path) VALUES
+        ('11111111-1111-1111-1111-111111111111', '数学书', '数学', '/tmp/x.pdf')`,
+    );
+    await pool.query(
+      `INSERT INTO items (id, document_id, content_type, label, content_md) VALUES
+        ('22222222-2222-2222-2222-222222222222', '11111111-1111-1111-1111-111111111111', 'example', '例1', '三位数乘两位数 竖式')`,
+    );
+    await pool.query(
+      `INSERT INTO chunks (item_id, document_id, content_md, meta, embedding) VALUES
+        ('22222222-2222-2222-2222-222222222222', '11111111-1111-1111-1111-111111111111',
+         '三位数乘两位数 竖式',
+         '{"label":"例1","doc_title":"数学书","subject":"数学"}'::jsonb, $1::vector)`,
+      [V1],
+    );
+    // 英语卷 21 条 chapter-chunk,内容含\"英语阅读理解\",刷满 BM25 top-20
+    await pool.query(
+      `INSERT INTO documents (id, title, subject, source_path) VALUES
+        ('77777777-7777-7777-7777-777777777777', '英语书', '英语', '/tmp/c.pdf')`,
+    );
+    await pool.query(
+      `INSERT INTO chapters (id, document_id, chapter_no, title, content_md) VALUES
+        ('88888888-8888-8888-8888-888888888888', '77777777-7777-7777-7777-777777777777', 1, '英语阅读', '# 英语阅读')`,
+    );
+    for (let i = 0; i < 21; i++) {
+      await pool.query(
+        `INSERT INTO chunks (chapter_id, document_id, seg_no, content_md, meta, embedding) VALUES
+          ('88888888-8888-8888-8888-888888888888', '77777777-7777-7777-7777-777777777777', $1,
+           '英语阅读理解 exercise long padding text number ' || $2,
+           '{"subject":"英语","doc_title":"英语书"}'::jsonb, $3::vector)`,
+        [i + 1, String(i), V2],
+      );
+    }
+  });
+  afterAll(() => pool.end());
+
+  it("subject 下推 SQL:其他学科刷满窗口也不挤掉同学科命中", async () => {
+    const hits = await hybridSearch(pool, deps, "英语阅读理解", {
+      topK: 10, filters: { subject: "数学" },
+    });
+    expect(hits.every((h) => h.subject === "数学")).toBe(true);
+    expect(hits.some((h) => h.item_id === "22222222-2222-2222-2222-222222222222")).toBe(true);
+  });
+});
