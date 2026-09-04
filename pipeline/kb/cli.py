@@ -192,7 +192,7 @@ def main() -> None:
                         mode=args.mode, reranker=reranker):
             score = h.get("rerank_score") or h.get("score") or h.get("bm25") or 0.0
             print(f"{score:.3f}\t{h.get('doc_title')} · {h.get('chapter')} · "
-                  f"{h.get('label')}\t{(h['content_md'] or '')[:60]}")
+                  f"{h.get('label') or '章节'}\t{(h['content_md'] or '')[:60]}")
 
 
 if __name__ == "__main__":

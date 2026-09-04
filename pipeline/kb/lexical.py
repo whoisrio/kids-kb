@@ -26,23 +26,23 @@ def tokenize(text: str) -> list[str]:
 
 
 def bm25_search(conn, query: str, top_k: int = 20) -> list[dict]:
-    """对全部 chunks 做 BM25。返回 [{item_id, content_md, bm25, **meta}]，降序。"""
+    """对全部 chunks 做 BM25。返回 [{item_id, chapter_id, content_md, bm25, **meta}]，降序。"""
     with conn.cursor() as cur:
-        cur.execute("SELECT item_id, content_md, meta FROM chunks")
+        cur.execute("SELECT item_id, chapter_id, content_md, meta FROM chunks")
         rows = cur.fetchall()
     if not rows:
         return []
-    docs = [(str(r[0]), r[1], r[2], Counter(tokenize(r[1]))) for r in rows]
-    avgdl = sum(sum(d[3].values()) for d in docs) / len(docs)
+    docs = [(r[0], r[1], r[2], r[3], Counter(tokenize(r[2]))) for r in rows]
+    avgdl = sum(sum(d[4].values()) for d in docs) / len(docs)
     q_terms = tokenize(query)
     # df
     df: Counter = Counter()
-    for _iid, _c, _m, tf in docs:
+    for _iid, _cid, _c, _m, tf in docs:
         for t in set(tf):
             df[t] += 1
     n_docs = len(docs)
     scored = []
-    for iid, content, meta, tf in docs:
+    for iid, cid, content, meta, tf in docs:
         dl = sum(tf.values())
         score = 0.0
         for t in q_terms:
@@ -50,6 +50,8 @@ def bm25_search(conn, query: str, top_k: int = 20) -> list[dict]:
                 continue
             idf = math.log(1 + (n_docs - df[t] + 0.5) / (df[t] + 0.5))
             score += idf * tf[t] * (_K1 + 1) / (tf[t] + _K1 * (1 - _B + _B * dl / avgdl))
-        scored.append({"item_id": iid, "content_md": content, "bm25": score, **meta})
+        scored.append({"item_id": str(iid) if iid else None,
+                       "chapter_id": str(cid) if cid else None,
+                       "content_md": content, "bm25": score, **(meta or {})})
     scored.sort(key=lambda h: -h["bm25"])
     return scored[:top_k]

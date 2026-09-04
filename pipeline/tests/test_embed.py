@@ -171,6 +171,26 @@ def test_embed_chapters_segments_and_idempotent(conn, doc_chapter):
     assert embed_chapters(conn, cfg, doc_id, client=_FakeEmbed()) == 0  # 幂等
 
 
+def test_search_hybrid_keeps_chapter_hits_separate(conn, doc_chapter):
+    """章节命中各自成行(不被 None item_id 合并),条目命中保留——供 CLI 调试与复核页试搜。"""
+    from kb.embed import embed_approved_items, embed_chapters, search
+
+    doc_id, cfg = doc_chapter
+    embed_approved_items(conn, cfg, doc_id, client=_FakeEmbed())
+    with conn.cursor() as cur:  # 两条章节都含'燕子':旧代码 rrf 以 item_id 为 key,None 合并成一条
+        cur.execute(
+            """INSERT INTO chapters (id, document_id, chapter_no, title, content_md)
+               VALUES (%s,%s,3,'语法小章','# 语法\n比喻句本体是燕子'),
+                      (%s,%s,4,'标点小章','# 标点\n燕子飞走了,省略号表示语意未尽')""",
+            (str(uuid.uuid4()), doc_id, str(uuid.uuid4()), doc_id),
+        )
+    embed_chapters(conn, cfg, doc_id, client=_FakeEmbed())
+    hits = search(conn, cfg, "燕子", mode="hybrid", client=_FakeEmbed())
+    chapter_hits = [h for h in hits if h.get("kind") == "chapter"]
+    assert len(chapter_hits) == 2, "两条章节命中应各自成行"
+    assert any(h.get("label") for h in hits), "条目命中应保留"
+
+
 def test_approve_items_bulk_and_embed(conn, doc_chapter):
     from kb.embed import approve_items, embed_chapters
 

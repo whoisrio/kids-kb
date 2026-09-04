@@ -164,15 +164,21 @@ def invalidate_chunk(conn, item_id: str) -> None:
 def _vector_hits(conn, vec: list[float], top_n: int) -> list[dict]:
     with conn.cursor() as cur:
         cur.execute(
-            """SELECT c.item_id, c.content_md, c.meta,
+            """SELECT c.item_id, c.chapter_id, c.content_md, c.meta,
                       1 - (c.embedding <=> %s::vector) AS score
                FROM chunks c ORDER BY c.embedding <=> %s::vector LIMIT %s""",
             (vec, vec, top_n),
         )
         return [
-            {"item_id": str(r[0]), "content_md": r[1], "score": float(r[3]), **r[2]}
+            {"item_id": str(r[0]) if r[0] else None,
+             "chapter_id": str(r[1]) if r[1] else None,
+             "content_md": r[2], "score": float(r[4]), **(r[3] or {})}
             for r in cur.fetchall()
         ]
+
+
+def _hit_key(h: dict) -> str:
+    return f"item:{h['item_id']}" if h.get("item_id") else f"chapter:{h.get('chapter_id')}"
 
 
 def _meta_match(hit: dict, filters: dict | None) -> bool:
@@ -198,10 +204,10 @@ def search(conn, cfg: Config, query: str, top_k: int = 5,
         lex_hits = bm25_search(conn, query, top_k=20)
         rrf: dict[str, dict] = {}
         for rank, h in enumerate(vec_hits):
-            e = rrf.setdefault(h["item_id"], {**h, "score": 0.0})
+            e = rrf.setdefault(_hit_key(h), {**h, "score": 0.0})
             e["score"] += 1 / (60 + rank + 1)
         for rank, h in enumerate(lex_hits):
-            e = rrf.setdefault(h["item_id"], {**h, "score": 0.0})
+            e = rrf.setdefault(_hit_key(h), {**h, "score": 0.0})
             e["score"] += 1 / (60 + rank + 1)
         candidates = sorted(rrf.values(), key=lambda h: -h["score"])
     candidates = [h for h in candidates if _meta_match(h, filters)]
