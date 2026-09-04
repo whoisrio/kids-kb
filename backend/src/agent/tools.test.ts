@@ -35,31 +35,48 @@ maybe("agent 工具（真库）", () => {
   });
   afterAll(() => pool.end());
 
-  const run = async (name: string, params: Record<string, unknown>) => {
-    const tool = makeTools(deps).find((t) => t.name === name)!;
+  const run = async (d: ToolDeps, name: string, params: Record<string, unknown>) => {
+    const tool = makeTools(d).find((t) => t.name === name)!;
     const result = await tool.execute("tc1", params, new AbortController().signal);
     return result.content[0].type === "text" ? result.content[0].text : "";
   };
 
   it("list_children", async () => {
-    const text = await run("list_children", {});
+    const text = await run(deps, "list_children", {});
     expect(text).toContain("小宝");
   });
 
   it("search_items 走注入的检索并带出处", async () => {
-    const text = await run("search_items", { query: "竖式谜" });
+    const text = await run(deps, "search_items", { query: "竖式谜" });
     expect(text).toContain("例1");
     expect(text).toContain("7星学霸");
   });
 
   it("get_item 返回条目详情", async () => {
-    const text = await run("get_item", { item_id: "22222222-2222-2222-2222-222222222222" });
+    const text = await run(deps, "get_item", { item_id: "22222222-2222-2222-2222-222222222222" });
     expect(text).toContain("竖式谜例题与解析");
   });
 
   it("get_child_progress 汇总做题记录", async () => {
-    const text = await run("get_child_progress", { child_id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa" });
+    const text = await run(deps, "get_child_progress", { child_id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa" });
     expect(text).toContain("错");
     expect(text).toContain("粗心");
+  });
+
+  it("search_items 展示章节命中(未拆条资料)", async () => {
+    const chapterDeps: ToolDeps = {
+      pool: deps.pool,
+      search: async () => [{
+        item_id: null, chapter_id: "cccccccc-cccc-cccc-cccc-cccccccccccc",
+        document_id: "dddddddd-dddd-dddd-dddd-dddddddddddd",
+        content_md: "第 1 讲 修辞手法\n比喻句本体是燕子", score: 0.8,
+        chapter: "第 1 讲 修辞手法", doc_title: "语法讲义",
+      }],
+    };
+    const text = await run(chapterDeps, "search_items", { query: "比喻" });
+    expect(text).toContain("章节");
+    expect(text).toContain("第 1 讲 修辞手法");
+    expect(text).toContain("语法讲义");
+    expect(text).toContain("燕子");
   });
 });

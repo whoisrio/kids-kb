@@ -35,9 +35,10 @@ export function makeTools(deps: ToolDeps): AgentTool[] {
         if (params.chapter) filters.chapter = params.chapter;
         const hits = await deps.search(params.query, filters);
         if (hits.length === 0) return toText("题库里没有找到相关内容。");
-        return toText(hits.map((h, i) =>
-          `【${i + 1}】${h.label ?? ""}（${h.doc_title} · ${h.chapter}）\n${h.content_md}`,
-        ).join("\n\n"));
+        const line = (h: SearchHit, i: number) => h.item_id
+          ? `【${i + 1}】${h.label ?? ""}（${h.doc_title} · ${h.chapter}）\n${h.content_md}`
+          : `【${i + 1}】章节 ${h.chapter}（${h.doc_title}）\n${h.content_md}`;
+        return toText(hits.map(line).join("\n\n"));
       },
     }),
     defineTool({
