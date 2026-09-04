@@ -8,6 +8,7 @@ import json as _json
 import uuid
 from pathlib import Path
 
+import pymupdf as fitz
 import pytest
 
 
@@ -258,3 +259,33 @@ class TestRecognizePage:
             "SELECT page_no, content_md, confirmed_result FROM paper_questions "
             "WHERE paper_id=%s ORDER BY page_no, seq_in_page", (pid,)).fetchall()
         assert rows == [(1, "新题", None), (2, "旧题", "correct")]  # 页1重置,页2不动
+
+
+def test_ingest_paper_rejects_bad_pdf_before_writing(conn, cfg, tmp_path):
+    """坏 PDF:先验证后落盘——不写 source.pdf 残留,报可读错误,重试不再死循环。"""
+    from kb.paper_pipeline import ingest_paper
+
+    paper_id = str(uuid.uuid4())
+    bad = b"this is not a pdf at all" * 10
+    with pytest.raises(Exception, match="(?i)pdf"):
+        ingest_paper(conn, cfg, paper_id, pdf_bytes=bad)
+    # 关键断言:不留残留文件(旧行为:0 字节/垃圾 source.pdf 留在盘上,retry 永远同错)
+    assert not (cfg.storage_dir / "papers" / paper_id / "source.pdf").exists()
+
+
+def test_ingest_paper_accepts_valid_pdf_still_works(conn, cfg, tmp_path, monkeypatch):
+    """正常 PDF 不受影响:落盘且 fitz 可开(复用既有用例语义,回归保护)。"""
+    from kb.paper_pipeline import ingest_paper
+
+    paper_id = str(uuid.uuid4())
+    d = fitz.open()
+    d.new_page()
+    pdf = tmp_path / "ok.pdf"
+    d.save(pdf)
+    # 既有用例已覆盖 VLM 路径;此处 monkeypatch 掉 _recognize_page 只验证落盘顺序
+    from kb import paper_pipeline
+    monkeypatch.setattr(paper_pipeline, "_recognize_page",
+                        lambda *a, **k: [])
+    out = ingest_paper(conn, cfg, paper_id, pdf_bytes=pdf.read_bytes())
+    assert out["pages"] == 1
+    assert (cfg.storage_dir / "papers" / paper_id / "source.pdf").exists()

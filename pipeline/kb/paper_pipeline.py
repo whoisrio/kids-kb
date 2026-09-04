@@ -192,14 +192,20 @@ def ingest_paper(conn, cfg: Config, paper_id: str, pdf_bytes: bytes | None = Non
     pages_dir, questions_dir = root / "pages", root / "questions"
     source = root / "source.pdf"
     if pdf_bytes is not None:
+        # 先验证再落盘:坏 PDF 不留残留文件(否则 retry 复用坏文件永远同错,只能重传)
+        try:
+            doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+        except Exception as e:
+            raise ValueError(f"PDF 无法解析(文件损坏或加密): {e}") from e
         root.mkdir(parents=True, exist_ok=True)
         source.write_bytes(pdf_bytes)
-    if not source.exists():
+    elif source.exists():
+        doc = fitz.open(str(source))
+    else:
         raise FileNotFoundError("source.pdf 不存在(重驱动须先上传)")
     pages_dir.mkdir(parents=True, exist_ok=True)
     questions_dir.mkdir(parents=True, exist_ok=True)
 
-    doc = fitz.open(str(source))
     recognized: list[dict] = []
     for i, page in enumerate(doc, start=1):
         img_rel = pages_dir / f"p{i:04d}.png"
