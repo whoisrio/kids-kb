@@ -17,21 +17,18 @@ function makeStore(opts: {
     open: async (id): Promise<SessionHandle | null> => {
       const data = opts.sessions?.[id];
       if (!data) return null;
-      const written: { lane?: string }[] = [];
       return {
         id,
         title: data.title ?? "",
         currentModel: async () => data.model ?? "",
         messages: async () => data.messages ?? [],
-        appendMessage: async (_m, lane) => { written.push({ lane }); },
+        appendMessage: async () => {},
         markModelChange: async () => {},
         lanes: async () => data.lanes ?? [{ id: "main", forkEntryId: null, fromLaneId: null }],
         latestLane: async () => data.lanes?.at(-1)?.id ?? "main",
         forkAt: async () => "br-fake",
-        laneExists: async (lane) => lane === "main" || (data.lanes ?? []).some((l) => l.id === lane),
+        laneExists: async (lane: string) => lane === "main" || (data.lanes ?? []).some((l) => l.id === lane),
         entryExists: async () => true,
-        delete: async () => false,
-        ...({ written } as Record<string, never>),
       } as unknown as SessionHandle;
     },
     list: async () => opts.list ?? [],
@@ -108,5 +105,18 @@ describe("/api/sessions", () => {
     const a = app(makeStore({ sessions: { s1: {} } }));
     expect((await a.request("/api/sessions/s1?lane=br-nope")).status).toBe(404);
     expect((await app(makeStore({})).request("/api/sessions/ghost")).status).toBe(404);
+  });
+
+  it("DELETE /:id：存在 → 204 并调 store.delete；不存在 → 404", async () => {
+    let deletedId: string | null = null;
+    const store: SessionStore = {
+      ...makeStore({}),
+      open: async () => null,
+      delete: async (id) => { deletedId = id; return id === "s1"; },
+    };
+    const a = app(store);
+    expect((await a.request("/api/sessions/s1", { method: "DELETE" })).status).toBe(204);
+    expect(deletedId).toBe("s1");
+    expect((await a.request("/api/sessions/ghost", { method: "DELETE" })).status).toBe(404);
   });
 });

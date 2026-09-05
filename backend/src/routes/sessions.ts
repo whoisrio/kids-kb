@@ -24,5 +24,10 @@ export function sessionsRoutes(store: SessionStore) {
       messages: await handle.messages(currentLane),
     });
   });
+  app.delete("/:id", async (c) => {
+    const ok = await store.delete(c.req.param("id"));
+    if (!ok) return c.json({ error: "会话不存在" }, 404);
+    return c.body(null, 204);
+  });
   return app;
 }
