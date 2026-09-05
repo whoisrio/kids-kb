@@ -158,6 +158,20 @@ export function chatRoute(
     if (sessionIdRaw !== undefined && typeof sessionIdRaw !== "string") {
       return c.json({ error: "session_id 须为字符串" }, 400);
     }
+    const laneRaw = (body as { lane_id?: unknown }).lane_id;
+    if (laneRaw !== undefined && typeof laneRaw !== "string") {
+      return c.json({ error: "lane_id 须为字符串" }, 400);
+    }
+    const branchRaw = (body as { branch_at?: unknown }).branch_at;
+    if (branchRaw !== undefined && branchRaw !== null && typeof branchRaw !== "string") {
+      return c.json({ error: "branch_at 须为字符串或 null" }, 400);
+    }
+    if (laneRaw !== undefined && branchRaw !== undefined) {
+      return c.json({ error: "lane_id 与 branch_at 不能同给" }, 400);
+    }
+    if (branchRaw !== undefined && !sessionIdRaw) {
+      return c.json({ error: "branch_at 仅用于已有会话" }, 400);
+    }
     const modelRaw = (body as { model?: unknown }).model;
     if (modelRaw !== undefined && (typeof modelRaw !== "string" || !modelRaw)) {
       return c.json({ error: "model 须为非空字符串" }, 400);
@@ -173,16 +187,27 @@ export function chatRoute(
 
     // 会话恢复/创建必须在 streamSSE 之前完成（404/校验前置，session 事件要是首帧）
     let handle: SessionHandle | null = null;
+    let writeLane = "main";
     if (deps.store) {
       try {
         if (sessionIdRaw) {
           handle = await deps.store.open(sessionIdRaw);
           if (!handle) return c.json({ error: "会话不存在" }, 404);
-          // 服务端历史权威：忽略客户端夹带的旧消息
-          history = await handle.messages();
-          const current = await handle.currentModel();
+          if (branchRaw !== undefined) {
+            if (typeof branchRaw === "string" && !(await handle.entryExists(branchRaw))) {
+              return c.json({ error: "branch_at 条目不存在" }, 400);
+            }
+            writeLane = await handle.forkAt(branchRaw, await handle.latestLane());
+          } else if (typeof laneRaw === "string") {
+            if (!(await handle.laneExists(laneRaw))) return c.json({ error: "分支不存在" }, 400);
+            writeLane = laneRaw;
+          } else {
+            writeLane = await handle.latestLane();
+          }
+          history = await handle.messages(writeLane);
+          const current = await handle.currentModel(writeLane);
           if (requestedModel && requestedModel !== current) {
-            await handle.markModelChange(requestedModel);
+            await handle.markModelChange(requestedModel, writeLane);
           }
           requestedModel ??= current;
         } else {
@@ -206,7 +231,10 @@ export function chatRoute(
     const usageModel = requestedModel ?? deps.defaultModel ?? "";
 
     return streamSSE(c, async (stream) => {
-      if (handle) await stream.writeSSE({ event: "session", data: JSON.stringify(handle.id) });
+      if (handle) await stream.writeSSE({
+        event: "session",
+        data: JSON.stringify({ session_id: handle.id, lane_id: writeLane }),
+      });
       stream.onAbort(() => agent.abort?.());
       let usage = { input: 0, output: 0 };
       // done/error 只发一次（agent_end 可能因订阅者异常被重发；onUsage 失败不许反噬收尾）
@@ -234,7 +262,7 @@ export function chatRoute(
           // user 与 assistant 的最终消息都落盘（toolResult 不进会话历史）；落盘失败不反噬流
           if (handle && (msg?.role === "user" || msg?.role === "assistant")) {
             try {
-              await handle.appendMessage(msg);
+              await handle.appendMessage(msg, writeLane);
             } catch (err) {
               console.error("会话消息落盘失败", err);
             }

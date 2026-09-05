@@ -29,45 +29,60 @@ function app(factory: AgentFactory, deps?: ChatDeps) {
   return app;
 }
 
-/** 内存 fake SessionStore：记录 create/append/markModelChange 调用，可预置已有会话。 */
-function fakeStore(initial?: Record<string, { model: string; messages: StoredChatMessage[]; title?: string }>) {
-  const data: Record<string, { model: string; messages: StoredChatMessage[]; title?: string }> = { ...initial };
-  const appended: Record<string, unknown[]> = {};
-  const marks: Record<string, string[]> = {};
+/** 内存 fake SessionStore：lane-aware；可预置已有会话，记录写入/fork/删除。 */
+function fakeStore(initial?: Record<string, {
+  model?: string; messages?: StoredChatMessage[]; title?: string;
+  lanes?: string[];
+}>) {
+  const data: Record<string, { model: string; messages: StoredChatMessage[]; title: string; lanes: string[] }> = {};
+  for (const [id, value] of Object.entries(initial ?? {})) {
+    data[id] = {
+      model: value.model ?? "m", messages: value.messages ?? [],
+      title: value.title ?? "", lanes: value.lanes ?? ["main"],
+    };
+  }
+  const appended: Record<string, { lane?: string; message: unknown }[]> = {};
+  const marks: Record<string, { lane?: string; model: string }[]> = {};
+  const forks: { sessionId: string; entryId: string | null; fromLane: string; lane: string }[] = [];
   const createCalls: { title: string; model: string }[] = [];
+  const deleted: string[] = [];
   let seq = 0;
+  let laneSeq = 0;
   const makeHandle = (id: string): SessionHandle => ({
     id,
-    title: data[id].title ?? "",
+    title: data[id].title,
     currentModel: async () => data[id].model,
     messages: async () => data[id].messages,
-    appendMessage: async (m: unknown) => {
-      (appended[id] ??= []).push(m);
-    },
-    markModelChange: async (modelId: string) => {
-      (marks[id] ??= []).push(modelId);
+    appendMessage: async (message, lane) => { (appended[id] ??= []).push({ lane, message }); },
+    markModelChange: async (modelId, lane) => {
+      (marks[id] ??= []).push({ lane, model: modelId });
       data[id].model = modelId;
     },
-    lanes: async () => [],
-    latestLane: async () => "main",
-    forkAt: async () => {
-      throw new Error("未使用");
+    lanes: async () => data[id].lanes.map((lane) =>
+      lane === "main" ? { id: "main", forkEntryId: null, fromLaneId: null }
+        : { id: lane, forkEntryId: "e-fork", fromLaneId: "main" }),
+    latestLane: async () => data[id].lanes.at(-1)!,
+    forkAt: async (entryId, fromLane) => {
+      const lane = `br-${++laneSeq}`;
+      data[id].lanes.push(lane);
+      forks.push({ sessionId: id, entryId, fromLane, lane });
+      return lane;
     },
-    laneExists: async () => false,
-    entryExists: async () => false,
+    laneExists: async (lane) => data[id].lanes.includes(lane),
+    entryExists: async (entryId) => entryId === "e-exists",
   });
   const store: SessionStore = {
     create: async (o) => {
       createCalls.push(o);
       const id = `s-${++seq}`;
-      data[id] = { model: o.model, title: o.title, messages: [] };
+      data[id] = { model: o.model, title: o.title, messages: [], lanes: ["main"] };
       return makeHandle(id);
     },
     open: async (id) => (data[id] ? makeHandle(id) : null),
     list: async () => [],
-    delete: async () => false,
+    delete: async (id) => { deleted.push(id); return Boolean(data[id]); },
   };
-  return { store, createCalls, appended, marks };
+  return { store, createCalls, appended, marks, forks, deleted };
 }
 
 function post(a: Hono, body: unknown, raw = false) {
@@ -188,7 +203,7 @@ describe("/api/chat 会话持久化", () => {
     const body = await resp.text();
     expect(createCalls).toEqual([{ title: longQuestion.slice(0, 20), model: "qwen3:4b" }]);
     expect(body).toContain("event: session");
-    expect(body).toContain('"s-1"');
+    expect(body).toContain('"session_id":"s-1"');
     expect(body.indexOf("event: session")).toBeLessThan(body.indexOf("event: delta"));
     expect(body).toContain("event: done");
   });
@@ -208,7 +223,7 @@ describe("/api/chat 会话持久化", () => {
       messages: [{ role: "user", content: "hi" }],
     });
     await resp.text();
-    expect(appended["s-1"]).toEqual([userMsg, assistantMsg]);
+    expect(appended["s-1"].map(({ message }) => message)).toEqual([userMsg, assistantMsg]);
   });
 
   it("带 session_id → 用会话历史（服务端权威）而非客户端历史构造 agent", async () => {
@@ -222,7 +237,10 @@ describe("/api/chat 会话持久化", () => {
       },
     });
     let factoryMessages: { role: string; content: string }[] | null = null;
-    const agent = fakeAgent([{ type: "agent_end", messages: [] }]);
+    const agent = fakeAgent([
+      { type: "message_end", message: { role: "user", content: [{ type: "text", text: "hi" }] } },
+      { type: "agent_end", messages: [] },
+    ]);
     const factory: AgentFactory = (messages) => {
       factoryMessages = messages;
       return agent;
@@ -232,8 +250,8 @@ describe("/api/chat 会话持久化", () => {
       messages: [{ role: "user", content: "客户端夹带的旧消息" }, { role: "assistant", content: "旧答" }, { role: "user", content: "新问题" }],
     });
     const body = await resp.text();
-    expect(body).toContain('"s-x"');
-    expect(factoryMessages).toEqual([
+    expect(body).toContain('"session_id":"s-x"');
+    expect(factoryMessages).toMatchObject([
       { role: "user", content: "之前的问题" },
       { role: "assistant", content: "之前的回答" },
     ]);
@@ -268,14 +286,17 @@ describe("/api/chat 会话持久化", () => {
     });
     await resp.text();
     expect(factoryModel).toBe("deepseek-v3");
-    expect(marks["s-x"]).toEqual(["deepseek-v3"]);
+    expect(marks["s-x"]).toEqual([{ lane: "main", model: "deepseek-v3" }]);
     expect(onUsage).toHaveBeenCalledWith({ input: 1, output: 1 }, "deepseek-v3");
   });
 
   it("请求 model 与会话当前模型相同 → 不留痕", async () => {
     const { store, marks } = fakeStore({ "s-x": { model: "qwen3:4b", messages: [] } });
     let factoryModel: string | undefined;
-    const agent = fakeAgent([{ type: "agent_end", messages: [] }]);
+    const agent = fakeAgent([
+      { type: "message_end", message: { role: "user", content: [{ type: "text", text: "hi" }] } },
+      { type: "agent_end", messages: [] },
+    ]);
     const factory: AgentFactory = (_messages, model) => {
       factoryModel = model;
       return agent;
@@ -371,5 +392,95 @@ describe("/api/chat 会话持久化", () => {
     const resp2 = await post(a, { model: "deepseek-v3", messages: [{ role: "user", content: "hi" }] });
     expect(resp2.status).toBe(400);
     expect(createCalls).toEqual([]);
+  });
+});
+
+describe("/api/chat 分支", () => {
+  it("branch_at 给定 → forkAt 创建分支并写入；SSE session 事件为 {session_id, lane_id} 对象", async () => {
+    const { store, forks, appended } = fakeStore({
+      "s-x": {
+        model: "qwen3:4b", messages: [
+          { role: "user", content: "q1", entryId: "e0" },
+          { role: "assistant", content: "a1", entryId: "e1" },
+        ],
+      },
+    });
+    const agent = fakeAgent([
+      { type: "message_end", message: { role: "user", content: [{ type: "text", text: "q2" }] } },
+      { type: "message_end", message: { role: "assistant", content: [{ type: "text", text: "a2" }] } },
+      { type: "agent_end", messages: [] },
+    ]);
+    const resp = await post(app(() => agent, { store, defaultModel: "qwen3:4b" }), {
+      session_id: "s-x", branch_at: "e-exists",
+      messages: [{ role: "user", content: "q2" }],
+    });
+    const body = await resp.text();
+    expect(forks).toEqual([{ sessionId: "s-x", entryId: "e-exists", fromLane: "main", lane: "br-1" }]);
+    expect(appended["s-x"].map((item) => item.lane)).toEqual(["br-1", "br-1"]);
+    expect(body).toContain("event: session");
+    expect(body).toContain(JSON.stringify({ session_id: "s-x", lane_id: "br-1" }));
+    expect(body.indexOf("event: session")).toBeLessThan(body.indexOf("event: done"));
+  });
+
+  it("branch_at: null → 根部分叉（编辑首条消息）", async () => {
+    const { store, forks } = fakeStore({
+      "s-x": { model: "m", messages: [{ role: "user", content: "q1", entryId: "e0" }] },
+    });
+    const agent = fakeAgent([{ type: "agent_end", messages: [] }]);
+    const resp = await post(app(() => agent, { store, defaultModel: "m" }), {
+      session_id: "s-x", branch_at: null, messages: [{ role: "user", content: "q1-改" }],
+    });
+    expect(resp.status).toBe(200);
+    expect(forks[0].entryId).toBeNull();
+  });
+
+  it("lane_id 给定 → 历史从该 lane 读、消息落该 lane；缺省 → latestLane", async () => {
+    const { store, appended } = fakeStore({
+      "s-x": {
+        model: "m",
+        messages: [{ role: "user", content: "分支历史", entryId: "e0" }],
+        lanes: ["main", "br-9"],
+      },
+    });
+    let factoryMessages: { role: string; content: string }[] | null = null;
+    const agent = fakeAgent([
+      { type: "message_end", message: { role: "user", content: [{ type: "text", text: "hi" }] } },
+      { type: "agent_end", messages: [] },
+    ]);
+    const factory: AgentFactory = (messages) => { factoryMessages = messages; return agent; };
+    await (await post(app(factory, { store, defaultModel: "m" }), {
+      session_id: "s-x", lane_id: "br-9", messages: [{ role: "user", content: "hi" }],
+    })).text();
+    expect(factoryMessages).toMatchObject([{ role: "user", content: "分支历史" }]);
+    expect(appended["s-x"][0]?.lane).toBe("br-9");
+    await (await post(app(factory, { store, defaultModel: "m" }), {
+      session_id: "s-x", messages: [{ role: "user", content: "again" }],
+    })).text();
+    expect(appended["s-x"][1]?.lane).toBe("br-9");
+  });
+
+  it("校验先于持久化：lane_id 不存在 / branch_at 不存在 / 两者同给 / branch_at 无 session_id → 400", async () => {
+    const { store, forks, createCalls } = fakeStore({
+      "s-x": { model: "m", messages: [{ role: "user", content: "q", entryId: "e0" }] },
+    });
+    const a = app(() => fakeAgent([]), { store, defaultModel: "m" });
+    expect((await post(a, { session_id: "s-x", lane_id: "br-nope", messages: [{ role: "user", content: "hi" }] })).status).toBe(400);
+    expect((await post(a, { session_id: "s-x", branch_at: "e-ghost", messages: [{ role: "user", content: "hi" }] })).status).toBe(400);
+    expect((await post(a, { session_id: "s-x", lane_id: "main", branch_at: "e-exists", messages: [{ role: "user", content: "hi" }] })).status).toBe(400);
+    expect((await post(a, { branch_at: "e-exists", messages: [{ role: "user", content: "hi" }] })).status).toBe(400);
+    expect(forks).toEqual([]);
+    expect(createCalls).toEqual([]);
+  });
+
+  it("模型切换留痕落在写入分支上", async () => {
+    const { store, marks } = fakeStore({
+      "s-x": { model: "qwen3:4b", messages: [], lanes: ["main", "br-9"] },
+    });
+    const agent = fakeAgent([{ type: "agent_end", messages: [] }]);
+    await (await post(app(() => agent, { store, defaultModel: "qwen3:4b", models: ["qwen3:4b", "deepseek-v3"] }), {
+      session_id: "s-x", lane_id: "br-9", model: "deepseek-v3",
+      messages: [{ role: "user", content: "hi" }],
+    })).text();
+    expect(marks["s-x"]).toEqual([{ lane: "br-9", model: "deepseek-v3" }]);
   });
 });
