@@ -27,3 +27,5 @@ e2e/test-results/
 
 # Git worktrees
 .worktrees/
+
+pipeline/.tmp/

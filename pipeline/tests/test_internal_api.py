@@ -236,7 +236,7 @@ class TestApproveItem:
         return doc_id, item_id, block_id
 
     def test_approve_item_通过并即时向量化(self, conn, cfg, doc_item):
-        """逻辑自 review_api.approve_item 迁入：qc_status=approved + 关 pending 行 + 即时向量化。"""
+        """approve 单一事实来源：qc_status=approved + 关 pending 行 + 即时向量化。"""
         from fastapi.testclient import TestClient
         from kb.db import connect
 

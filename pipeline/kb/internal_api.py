@@ -117,7 +117,7 @@ def create_internal_app(reranker_factory=None, get_conn=None, cfg=None,
     @app.post("/internal/approve-item")
     def approve_item_ep(item_id: str):
         """条目人工确认：qc_status=approved + 关 pending 复核行 + 即时向量化。
-        逻辑自 review_api.approve_item 迁入（CLI approve 与 React 复核页共用同一实现）。
+        approve 与向量化单一事实来源（CLI approve 与 React 复核页共用同一实现）。
         向量化失败不阻断（embedded=None，可 kb.cli embed 补跑）。"""
         from kb.embed import embed_approved_items
         conn = _conn()
