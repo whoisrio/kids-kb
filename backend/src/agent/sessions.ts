@@ -18,6 +18,22 @@ import { NodeExecutionEnv } from "@earendil-works/pi-agent-core/node";
 export interface StoredChatMessage {
   role: "user" | "assistant";
   content: string;
+  /** 消息 entry 的 id（前端编辑/rewind/regenerate 的分支定位）。 */
+  entryId: string;
+  /** assistant 的 thinking 块拼接；无 thinking 输出则缺省。 */
+  thinking?: string;
+}
+
+export interface BranchMeta {
+  lane: string;
+  fromLane: string | null;
+  forkEntryId: string | null;
+}
+
+export interface LaneInfo {
+  id: string;
+  forkEntryId: string | null;
+  fromLaneId: string | null;
 }
 
 export interface SessionSummary {
@@ -32,12 +48,17 @@ export interface SessionHandle {
   readonly id: string;
   /** 会话标题（创建时 metadata.title）。 */
   readonly title: string;
-  /** 当前模型：最近一次 model_change，否则创建时 metadata.model。 */
-  currentModel(): Promise<string>;
-  /** 规范化后的历史消息（仅 user/assistant，text 段拼接；空 text 与其他角色跳过）。 */
-  messages(): Promise<StoredChatMessage[]>;
-  appendMessage(message: AgentMessage): Promise<void>;
-  markModelChange(modelId: string): Promise<void>;
+  /** 当前模型：该分支路径上最近一次 model_change，否则创建时 metadata.model。缺省最新分支。 */
+  currentModel(lane?: string): Promise<string>;
+  /** 该分支路径上的历史消息（仅 user/assistant，text 段拼接；带 entryId/thinking）。缺省最新分支。 */
+  messages(lane?: string): Promise<StoredChatMessage[]>;
+  appendMessage(message: AgentMessage, lane?: string): Promise<void>;
+  markModelChange(modelId: string, lane?: string): Promise<void>;
+  lanes(): Promise<LaneInfo[]>;
+  latestLane(): Promise<string>;
+  forkAt(entryId: string | null, fromLane: string): Promise<string>;
+  laneExists(lane: string): Promise<boolean>;
+  entryExists(entryId: string): Promise<boolean>;
 }
 
 export interface SessionStore {
@@ -62,6 +83,12 @@ function messageText(m: AgentMessage): string | null {
   return null;
 }
 
+function messageThinking(m: AgentMessage): string | undefined {
+  if (m.role !== "assistant" || typeof m.content === "string") return undefined;
+  const thinking = m.content.filter((c) => c.type === "thinking").map((c) => c.thinking).join("");
+  return thinking || undefined;
+}
+
 class JsonlSessionHandle implements SessionHandle {
   constructor(
     readonly id: string,
@@ -75,15 +102,17 @@ class JsonlSessionHandle implements SessionHandle {
     if (!lanes.some((l) => l.lane === "main")) await this.session.createLane("main", null);
   }
 
-  async currentModel(): Promise<string> {
-    const [change] = (await this.session.findEntries({
+  async currentModel(lane?: string): Promise<string> {
+    const target = lane ?? (await this.latestLane());
+    const [change] = (await this.session.view(target).findEntriesOnBranch({
       type: "model_change", order: "newestFirst", limit: 1,
     })) as ModelChangeEntry[];
     return change?.modelId ?? this.createdModel;
   }
 
-  async messages(): Promise<StoredChatMessage[]> {
-    const entries = (await this.session.findEntries({
+  async messages(lane?: string): Promise<StoredChatMessage[]> {
+    const target = lane ?? (await this.latestLane());
+    const entries = (await this.session.view(target).findEntriesOnBranch({
       type: "message", order: "oldestFirst",
     })) as MessageEntry[];
     const out: StoredChatMessage[] = [];
@@ -93,22 +122,42 @@ class JsonlSessionHandle implements SessionHandle {
       if (role !== "user" && role !== "assistant") continue;
       const text = messageText(e.message);
       if (!text) continue;
-      out.push({ role, content: text });
+      out.push({ role, content: text, entryId: e.id, thinking: messageThinking(e.message) });
     }
     return out;
   }
 
-  async appendMessage(message: AgentMessage): Promise<void> {
+  async appendMessage(message: AgentMessage, lane?: string): Promise<void> {
     await this.ensureLane();
-    await this.session.appendMessage(message);
+    await this.session.appendMessage(message, lane ?? "main");
   }
 
-  async markModelChange(modelId: string): Promise<void> {
+  async markModelChange(modelId: string, lane?: string): Promise<void> {
     await this.ensureLane();
     await this.session.appendEntry(
       { type: "model_change", id: uuidv7(), provider: "chat", modelId },
-      "main",
+      lane ?? "main",
     );
+  }
+
+  async lanes(): Promise<LaneInfo[]> {
+    return [{ id: "main", forkEntryId: null, fromLaneId: null }];
+  }
+
+  async latestLane(): Promise<string> {
+    return "main";
+  }
+
+  async forkAt(_entryId: string | null, _fromLane: string): Promise<string> {
+    throw new Error("Task 2");
+  }
+
+  async laneExists(lane: string): Promise<boolean> {
+    return lane === "main";
+  }
+
+  async entryExists(_entryId: string): Promise<boolean> {
+    return false;
   }
 }
 

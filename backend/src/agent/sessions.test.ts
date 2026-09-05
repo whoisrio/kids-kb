@@ -28,6 +28,13 @@ function assistantMsg(text: string): AgentMessage {
   };
 }
 
+function thinkingAssistantMsg(thinking: string, text: string): AgentMessage {
+  return {
+    ...assistantMsg(text),
+    content: [{ type: "thinking", thinking }, { type: "text", text }],
+  };
+}
+
 /** 只有 toolCall、没有 text 段的 assistant 消息（工具调用中间态）。 */
 function toolCallOnlyAssistantMsg(): AgentMessage {
   return {
@@ -71,7 +78,7 @@ describe("JsonlSessionStore", () => {
 
     const reopened = await store.open(h.id);
     expect(reopened).not.toBeNull();
-    expect(await reopened!.messages()).toEqual([
+    expect(await reopened!.messages()).toMatchObject([
       { role: "user", content: "帮我出几道口算题" },
       { role: "assistant", content: "好的，这是三道题" },
     ]);
@@ -164,5 +171,40 @@ describe("JsonlSessionStore", () => {
     expect(h.title).toBe("四口算题");
     const reopened = await store.open(h.id);
     expect(reopened!.title).toBe("四口算题");
+  });
+
+  it("messages() 带出 entryId 与 thinking（assistant 的 thinking 块拼接）", async () => {
+    const { store } = makeStore();
+    const h = await store.create({ title: "t", model: "m" });
+    await h.appendMessage(userMsg("难题"));
+    await h.appendMessage(thinkingAssistantMsg("先拆位值", "答案是 12"));
+    const msgs = await h.messages();
+    expect(msgs).toHaveLength(2);
+    expect(msgs[0]).toMatchObject({ role: "user", content: "难题" });
+    expect(typeof msgs[0].entryId).toBe("string");
+    expect(msgs[1]).toMatchObject({
+      role: "assistant", content: "答案是 12", thinking: "先拆位值",
+    });
+    expect(typeof msgs[1].entryId).toBe("string");
+  });
+
+  it("messages()/currentModel() 缺省读最新分支；显式 lane 读该分支", async () => {
+    const { store } = makeStore();
+    const h = await store.create({ title: "t", model: "m0" });
+    await h.appendMessage(userMsg("q1"));
+    await h.appendMessage(assistantMsg("a1"));
+    await h.markModelChange("m1");
+    // 在 q1 处开叉（forkAt Task 2 实现；这里先通过底层 session 验证读端）
+    const fork = await h.forkAt((await h.messages())[0].entryId, "main");
+    await h.appendMessage(userMsg("q2'"), fork);
+    await h.appendMessage(assistantMsg("a2'"), fork);
+
+    // 缺省 = 最新分支（叶 seq 最大者 = fork）
+    expect((await h.messages()).map((m) => m.content)).toEqual(["q1", "q2'", "a2'"]);
+    // 显式 main 只读原路径
+    expect((await h.messages("main")).map((m) => m.content)).toEqual(["q1", "a1"]);
+    // currentModel 同口径：main 上有 model_change，fork 路径也含它（fork 在其后）
+    expect(await h.currentModel("main")).toBe("m1");
+    expect(await h.currentModel(fork)).toBe("m1");
   });
 });
