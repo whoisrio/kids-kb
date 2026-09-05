@@ -32,6 +32,7 @@ def normalize_toc_entries(raw: list[dict]) -> list[dict]:
     chapter_no 必须是正整数（DB 列 INTEGER）：数字/数字字符串直取，
     "第一单元" 之类非数字编号按出现顺序重排为 1..N；
     无 title 的脏条目丢弃，编号重排后保证连续不跳号。
+    taxonomy/tags 是该书词表的唯一事实来源，必须原样保留（仅规整空白）。
     """
     cleaned: list[dict] = []
     for entry in raw:
@@ -41,6 +42,11 @@ def normalize_toc_entries(raw: list[dict]) -> list[dict]:
         page = entry.get("print_page")
         page = int(page) if isinstance(page, (int, float)) or (
             isinstance(page, str) and page.strip().isdigit()) else None
+        taxonomy = entry.get("taxonomy")
+        taxonomy = taxonomy.strip() or None if isinstance(taxonomy, str) else None
+        tags = entry.get("tags")
+        tags = [t.strip() for t in tags if isinstance(t, str) and t.strip()] \
+            if isinstance(tags, list) else []
         no = entry.get("chapter_no")
         if isinstance(no, int):
             no_val = no
@@ -48,7 +54,8 @@ def normalize_toc_entries(raw: list[dict]) -> list[dict]:
             s = str(no or "").strip()
             m = re.search(r"\d+", s)
             no_val = int(m.group()) if m else 0
-        cleaned.append({"chapter_no": no_val, "title": title, "print_page": page})
+        cleaned.append({"chapter_no": no_val, "title": title, "print_page": page,
+                        "taxonomy": taxonomy, "tags": tags})
     for i, entry in enumerate(cleaned, start=1):
         entry["chapter_no"] = i
     return cleaned
