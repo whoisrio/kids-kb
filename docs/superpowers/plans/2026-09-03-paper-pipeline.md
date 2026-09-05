@@ -31,7 +31,7 @@
 - Create: `pipeline/kb/migrations/0011_papers.sql`
 - Test: `pipeline/tests/test_paper_pipeline.py`
 
-- [ ] **Step 1: 写失败的 schema 测试**
+- [x] **Step 1: 写失败的 schema 测试**
 
 ```python
 """试卷管线:页图渲染 -> 每页单次 VLM 拆题+对错识别 -> 裁题图 -> 全量替换落库。
@@ -107,12 +107,12 @@ def test_attempts_relaxed_for_paper(conn, child):
         assert n == 0
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `cd pipeline && KB_TEST_DATABASE_URL=postgresql://localhost/kb_test uv run pytest tests/test_paper_pipeline.py -q`
 Expected: FAIL——`relation "papers" does not exist`。
 
-- [ ] **Step 3: 写 migration**
+- [x] **Step 3: 写 migration**
 
 ```sql
 -- 0011_papers.sql：试卷管线(papers/paper_questions)+ attempts 放宽 + llm_calls.paper_id
@@ -164,12 +164,12 @@ ALTER TABLE attempts ADD CONSTRAINT attempts_source_check
 ALTER TABLE llm_calls ADD COLUMN paper_id uuid REFERENCES papers(id) ON DELETE SET NULL;
 ```
 
-- [ ] **Step 4: 跑测试确认通过(含迁移账本一致性回归)**
+- [x] **Step 4: 跑测试确认通过(含迁移账本一致性回归)**
 
 Run: `cd pipeline && KB_TEST_DATABASE_URL=postgresql://localhost/kb_test uv run pytest tests/test_paper_pipeline.py tests/test_db.py -q`
 Expected: PASS。
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add pipeline/kb/migrations/0011_papers.sql pipeline/tests/test_paper_pipeline.py
@@ -185,7 +185,7 @@ git commit -m "feat(pipeline): migration 0011——papers/paper_questions + atte
 - Modify: `pipeline/kb/metering.py`
 - Test: `pipeline/tests/test_metering.py`(追加)
 
-- [ ] **Step 1: 写失败测试(追加到 test_metering.py)**
+- [x] **Step 1: 写失败测试(追加到 test_metering.py)**
 
 ```python
 def test_record_llm_call_paper_fields(conn):
@@ -207,12 +207,12 @@ def test_record_llm_call_paper_fields(conn):
     assert row == (None, pid, "paper_vlm", "qwen3.8-27b", "image", 11, 22)
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `cd pipeline && KB_TEST_DATABASE_URL=postgresql://localhost/kb_test uv run pytest tests/test_metering.py -q`
 Expected: FAIL——`TypeError: record_llm_call() got an unexpected keyword argument 'paper_id'`。
 
-- [ ] **Step 3: 实现**
+- [x] **Step 3: 实现**
 
 `kb/metering.py` 的 `record_llm_call` 替换为:
 
@@ -230,12 +230,12 @@ def record_llm_call(conn, doc_id: str | None, purpose: str, model: str,
         )
 ```
 
-- [ ] **Step 4: 全量回归**
+- [x] **Step 4: 全量回归**
 
 Run: `cd pipeline && KB_TEST_DATABASE_URL=postgresql://localhost/kb_test uv run pytest tests/ -q`
 Expected: 全部 PASS(既有调用点位置参数不变,签名向后兼容)。
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add pipeline/kb/metering.py pipeline/tests/test_metering.py
@@ -251,7 +251,7 @@ git commit -m "feat(pipeline): record_llm_call 支持 paper_id/modality"
 - Create: `pipeline/kb/paper_pipeline.py`
 - Test: `pipeline/tests/test_paper_pipeline.py`(追加)
 
-- [ ] **Step 1: 写失败测试(追加)**
+- [x] **Step 1: 写失败测试(追加)**
 
 ```python
 class TestParsePageQuestions:
@@ -299,12 +299,12 @@ class TestParsePageQuestions:
             self._run('{"questions": [{"answer_excerpt": "无题干"}]}')
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `cd pipeline && KB_TEST_DATABASE_URL=postgresql/kb_test uv run pytest tests/test_paper_pipeline.py::TestParsePageQuestions -q`
 Expected: FAIL——`ModuleNotFoundError: No module named 'kb.paper_pipeline'`。
 
-- [ ] **Step 3: 实现(本任务只写纯函数与 prompt 常量)**
+- [x] **Step 3: 实现(本任务只写纯函数与 prompt 常量)**
 
 ```python
 """试卷管线:页图渲染 -> 每页单次 VLM 拆题+对错识别 -> 裁题图 -> 全量替换落库。
@@ -391,12 +391,12 @@ def parse_page_questions(text: str) -> list[dict]:
     return out
 ```
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
 Run: `cd pipeline && KB_TEST_DATABASE_URL=postgresql://localhost/kb_test uv run pytest tests/test_paper_pipeline.py -q`
 Expected: PASS。
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add pipeline/kb/paper_pipeline.py pipeline/tests/test_paper_pipeline.py
@@ -412,7 +412,7 @@ git commit -m "feat(pipeline): 试卷 VLM 输出解析与规范化(纯函数)"
 - Modify: `pipeline/kb/paper_pipeline.py`(追加)
 - Test: `pipeline/tests/test_paper_pipeline.py`(追加)
 
-- [ ] **Step 1: 写失败测试(追加)**
+- [x] **Step 1: 写失败测试(追加)**
 
 ```python
 import json as _json
@@ -558,12 +558,12 @@ def cfg(tmp_path):
     )
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `cd pipeline && KB_TEST_DATABASE_URL=postgresql://localhost/kb_test uv run pytest tests/test_paper_pipeline.py -q -k "Ingest or Recognize"`
 Expected: FAIL——`ImportError: cannot import name 'ingest_paper'`。
 
-- [ ] **Step 3: 实现(追加到 kb/paper_pipeline.py)**
+- [x] **Step 3: 实现(追加到 kb/paper_pipeline.py)**
 
 ```python
 import base64
@@ -722,12 +722,12 @@ def recognize_page(conn, cfg: Config, paper_id: str, page_no: int, client=None) 
     return {"pages": 1, "questions": len(questions)}
 ```
 
-- [ ] **Step 4: 跑测试确认通过 + 全量回归**
+- [x] **Step 4: 跑测试确认通过 + 全量回归**
 
 Run: `cd pipeline && KB_TEST_DATABASE_URL=postgresql://localhost/kb_test uv run pytest tests/ -q`
 Expected: 全部 PASS。
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add pipeline/kb/paper_pipeline.py pipeline/tests/test_paper_pipeline.py
@@ -743,7 +743,7 @@ git commit -m "feat(pipeline): ingest_paper/recognize_page——渲染+VLM+裁�
 - Modify: `pipeline/kb/internal_api.py`
 - Test: `pipeline/tests/test_internal_api.py`(追加)
 
-- [ ] **Step 1: 写失败测试(追加到 test_internal_api.py)**
+- [x] **Step 1: 写失败测试(追加到 test_internal_api.py)**
 
 ```python
 class TestPaperEndpoints:
@@ -805,12 +805,12 @@ class TestPaperEndpoints:
 
 注意:`conn` fixture 每测试重置 schema;跨文件导入 helper(`FakeVLM/_paper/_vlm_json`)即可,不要复制。
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `cd pipeline && KB_TEST_DATABASE_URL=postgresql://localhost/kb_test uv run pytest tests/test_internal_api.py -q -k Paper`
 Expected: FAIL——`TypeError: create_internal_app() got an unexpected keyword argument 'get_conn'`。
 
-- [ ] **Step 3: 实现**
+- [x] **Step 3: 实现**
 
 `kb/internal_api.py` 全量替换为:
 
@@ -911,12 +911,12 @@ def create_internal_app(reranker_factory=None, get_conn: Callable[[], psycopg.Co
 
 `python-multipart` 已是 fastapi 传递依赖(uv.lock 在列),无需新增。
 
-- [ ] **Step 4: 跑测试确认通过 + 全量回归**
+- [x] **Step 4: 跑测试确认通过 + 全量回归**
 
 Run: `cd pipeline && KB_TEST_DATABASE_URL=postgresql://localhost/kb_test uv run pytest tests/ -q`
 Expected: 全部 PASS。
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add pipeline/kb/internal_api.py pipeline/tests/test_internal_api.py
@@ -932,7 +932,7 @@ git commit -m "feat(pipeline): /internal/ingest-paper + /internal/recognize-page
 - Modify: `backend/src/config.ts`
 - Test: `backend/src/config.test.ts`(追加)
 
-- [ ] **Step 1: 写失败测试(追加)**
+- [x] **Step 1: 写失败测试(追加)**
 
 ```ts
 describe("试卷配置", () => {
@@ -958,12 +958,12 @@ describe("试卷配置", () => {
 });
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `cd backend && npx vitest run src/config.test.ts`
 Expected: FAIL——`storageRoot` 不存在。
 
-- [ ] **Step 3: 实现**
+- [x] **Step 3: 实现**
 
 `BackendConfig` 接口加两个字段;`loadConfig` 返回值补(文件顶部补 `import { resolve as pathResolve } from "node:path";`):
 
@@ -983,12 +983,12 @@ Expected: FAIL——`storageRoot` 不存在。
     })(),
 ```
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
 Run: `cd backend && npx vitest run src/config.test.ts`
 Expected: PASS。
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add backend/src/config.ts backend/src/config.test.ts
@@ -1004,7 +1004,7 @@ git commit -m "feat(backend): KB_STORAGE_ROOT / KB_MATCH_THRESHOLD 配置"
 - Modify: `backend/src/retrieval/search.ts`
 - Test: `backend/src/retrieval/search.test.ts`(追加)
 
-- [ ] **Step 1: 写失败测试(追加)**
+- [x] **Step 1: 写失败测试(追加)**
 
 ```ts
   it("hit 贯通 vec_score(向量余弦),供匹配阈值判定", async () => {
@@ -1020,12 +1020,12 @@ git commit -m "feat(backend): KB_STORAGE_ROOT / KB_MATCH_THRESHOLD 配置"
   });
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `cd backend && KB_TEST_DATABASE_URL=postgresql://localhost/kb_test npx vitest run src/retrieval/search.test.ts`
 Expected: FAIL——`vec_score` 为 undefined。
 
-- [ ] **Step 3: 实现**
+- [x] **Step 3: 实现**
 
 `SearchHit` 接口加:
 
@@ -1053,12 +1053,12 @@ Expected: FAIL——`vec_score` 为 undefined。
   });
 ```
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
 Run: `cd backend && KB_TEST_DATABASE_URL=postgresql://localhost/kb_test npx vitest run src/retrieval/search.test.ts`
 Expected: PASS(其余用例不回归——rerank 排序逻辑不动)。
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add backend/src/retrieval/search.ts backend/src/retrieval/search.test.ts
@@ -1074,7 +1074,7 @@ git commit -m "feat(backend): hybridSearch 贯通 vec_score(余弦)供匹配阈�
 - Create: `backend/src/retrieval/match.ts`
 - Test: `backend/src/retrieval/match.test.ts`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 ```ts
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -1136,12 +1136,12 @@ maybe("matchQuestion（真库）", () => {
 });
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `cd backend && KB_TEST_DATABASE_URL=postgresql://localhost/kb_test npx vitest run src/retrieval/match.test.ts`
 Expected: FAIL——`Cannot find module './match.js'`。
 
-- [ ] **Step 3: 实现**
+- [x] **Step 3: 实现**
 
 ```ts
 /** 试卷题目 → 题库匹配:同学科混合检索 + rerank,第一名余弦超阈值自动关联。 */
@@ -1172,12 +1172,12 @@ export async function matchQuestion(
 }
 ```
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
 Run: `cd backend && KB_TEST_DATABASE_URL=postgresql://localhost/kb_test npx vitest run src/retrieval/match.test.ts`
 Expected: PASS。
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add backend/src/retrieval/match.ts backend/src/retrieval/match.test.ts
@@ -1195,7 +1195,7 @@ git commit -m "feat(backend): matchQuestion——同学科混合检索+阈值自
 
 依赖:`cd backend && npm install pdf-lib`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 ```ts
 import { describe, expect, it } from "vitest";
@@ -1237,12 +1237,12 @@ describe("assemblePdf", () => {
 });
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `cd backend && npx vitest run src/papers/assemble.test.ts`
 Expected: FAIL——模块不存在。
 
-- [ ] **Step 3: 实现**
+- [x] **Step 3: 实现**
 
 ```ts
 /** 上传文件归一化:多张 JPG/PNG(每图一页)+ 可选 PDF → 合成单个 PDF。 */
@@ -1280,12 +1280,12 @@ export async function assemblePdf(
 }
 ```
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
 Run: `cd backend && npx vitest run src/papers/assemble.test.ts`
 Expected: PASS(JPG 用例若因基准 base64 损坏失败,按测试注释用 pymupdf 重新生成替换后重跑)。
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add backend/src/papers/assemble.ts backend/src/papers/assemble.test.ts backend/package.json backend/package-lock.json
@@ -1301,7 +1301,7 @@ git commit -m "feat(backend): pdf-lib 上传合成(多图每图一页/PDF 并入
 - Create: `backend/src/papers/jobs.ts`
 - Test: `backend/src/papers/jobs.test.ts`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 ```ts
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
@@ -1419,12 +1419,12 @@ maybe("试卷后台任务（真库 + 假 pipeline fetch）", () => {
 });
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `cd backend && KB_TEST_DATABASE_URL=postgresql://localhost/kb_test npx vitest run src/papers/jobs.test.ts`
 Expected: FAIL——模块不存在。
 
-- [ ] **Step 3: 实现**
+- [x] **Step 3: 实现**
 
 ```ts
 /** 试卷后台任务:调 pipeline 加工 -> 逐题自动匹配 -> 状态推进。
@@ -1530,12 +1530,12 @@ export async function redriveStuckPapers(pool: pg.Pool, deps: PaperJobDeps): Pro
 }
 ```
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
 Run: `cd backend && KB_TEST_DATABASE_URL=postgresql://localhost/kb_test npx vitest run src/papers/jobs.test.ts`
 Expected: PASS。
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add backend/src/papers/jobs.ts backend/src/papers/jobs.test.ts
@@ -1551,7 +1551,7 @@ git commit -m "feat(backend): drivePaper 后台任务——pipeline 加工+自�
 - Create: `backend/src/routes/papers.ts`
 - Test: `backend/src/routes/papers.test.ts`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 ```ts
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -1693,12 +1693,12 @@ maybe("papers API（真库）", () => {
 
 注意:上传路由 `void drivePaper(...)` 会真实执行后台任务(用 fakeDeps 的 fetchImpl 返回 `{}`→JSON 解析 ok 但 resp.ok 检查……`new Response("{}")` status 200 → 匹配阶段 embed 抛错被 catch → 卷 ready/failed 由题目数决定;新建行无题目 → failed)。断言只看建行结果,不脆弱。
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `cd backend && KB_TEST_DATABASE_URL=postgresql://localhost/kb_test npx vitest run src/routes/papers.test.ts`
 Expected: FAIL——模块不存在。
 
-- [ ] **Step 3: 实现**
+- [x] **Step 3: 实现**
 
 ```ts
 /** 试卷产品 API:上传/列表/详情/元数据修改/重试/页级重识别/图片回传。 */
@@ -1868,12 +1868,12 @@ export function papersRoutes(pool: pg.Pool, deps: PaperJobDeps, cfg: BackendConf
 }
 ```
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
 Run: `cd backend && KB_TEST_DATABASE_URL=postgresql://localhost/kb_test npx vitest run src/routes/papers.test.ts`
 Expected: PASS。
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add backend/src/routes/papers.ts backend/src/routes/papers.test.ts
@@ -1889,7 +1889,7 @@ git commit -m "feat(backend): papers API——上传/列表/详情/元数据/重
 - Create: `backend/src/routes/paperQuestions.ts`
 - Test: `backend/src/routes/paperQuestions.test.ts`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 ```ts
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -2019,12 +2019,12 @@ maybe("paper-questions API（真库）", () => {
 });
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `cd backend && KB_TEST_DATABASE_URL=postgresql://localhost/kb_test npx vitest run src/routes/paperQuestions.test.ts`
 Expected: FAIL——模块不存在。
 
-- [ ] **Step 3: 实现**
+- [x] **Step 3: 实现**
 
 ```ts
 /** 试卷题确认流:对错确认(attempts upsert)、题库匹配设置、实时候选、题图回传。 */
@@ -2165,12 +2165,12 @@ export function paperQuestionsRoutes(pool: pg.Pool, deps: PaperJobDeps): Hono {
 }
 ```
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
 Run: `cd backend && KB_TEST_DATABASE_URL=postgresql://localhost/kb_test npx vitest run src/routes/paperQuestions.test.ts`
 Expected: PASS。
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add backend/src/routes/paperQuestions.ts backend/src/routes/paperQuestions.test.ts
@@ -2186,7 +2186,7 @@ git commit -m "feat(backend): paper-questions 确认/匹配/候选/题图 API(at
 - Modify: `backend/src/index.ts`
 - Test: `backend/src/index.test.ts`(若不存在则 Create;用 chat.test.ts 的注入模式)
 
-- [ ] **Step 1: 写失败测试(Create backend/src/index.test.ts)**
+- [x] **Step 1: 写失败测试(Create backend/src/index.test.ts)**
 
 ```ts
 import { describe, expect, it, vi } from "vitest";
@@ -2214,12 +2214,12 @@ it("createApp 挂载试卷路由(未挂载时是 404 not found,挂载后是业�
 
 实现说明:`createApp(cfg, opts?: { paperJobs?: PaperJobDeps })`——第二个参数只透传给试卷任务;缺省现场组装(embed 用 cfg、rerank 用 makeReranker)。此测试只验证路由挂载,不触库细节。
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `cd backend && npx vitest run src/index.test.ts`
 Expected: FAIL——createApp 不接受第二参数/路由未挂载(404)。
 
-- [ ] **Step 3: 实现**
+- [x] **Step 3: 实现**
 
 `backend/src/index.ts` 的 `createApp` 改为:
 
@@ -2302,12 +2302,12 @@ if (process.env.VITEST === undefined) {
 }
 ```
 
-- [ ] **Step 4: 全量回归 + 构建**
+- [x] **Step 4: 全量回归 + 构建**
 
 Run: `cd backend && KB_TEST_DATABASE_URL=postgresql://localhost/kb_test npm test && npm run build`
 Expected: 全部 PASS + tsc 构建通过。
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add backend/src/index.ts backend/src/index.test.ts
@@ -2323,7 +2323,7 @@ git commit -m "feat(backend): 试卷路由接线 + 启动重驱动滞留卷"
 - Create: `frontend/src/api/papers.ts`
 - Test: `frontend/src/api/papers.test.ts`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 ```ts
 import { describe, expect, it } from "vitest";
@@ -2371,12 +2371,12 @@ describe("papers api", () => {
 });
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `cd frontend && npx vitest run src/api/papers.test.ts`
 Expected: FAIL——模块不存在。
 
-- [ ] **Step 3: 实现**
+- [x] **Step 3: 实现**
 
 ```ts
 /** 试卷产品 API(frontend 视角)。类型与 backend 路由返回对齐。 */
@@ -2512,12 +2512,12 @@ export function pageImageUrl(paperId: string, pageNo: number): string {
 }
 ```
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
 Run: `cd frontend && npx vitest run src/api/papers.test.ts`
 Expected: PASS。
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add frontend/src/api/papers.ts frontend/src/api/papers.test.ts
@@ -2540,7 +2540,7 @@ git commit -m "feat(frontend): 试卷 api 层"
 - Modify: `frontend/src/theme.css`(复核样式)
 - Test: `frontend/src/views/ReviewView.test.tsx`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 ```tsx
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
@@ -2706,12 +2706,12 @@ describe("ReviewView", () => {
 });
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `cd frontend && npx vitest run src/views/ReviewView.test.tsx`
 Expected: FAIL——模块不存在。
 
-- [ ] **Step 3: 实现组件**
+- [x] **Step 3: 实现组件**
 
 `frontend/src/components/PaperQueue.tsx`:
 
@@ -3301,12 +3301,12 @@ button.ghost:hover { color: var(--redpen); border-color: var(--redpen); }
 .cand .m { font-size: 12px; color: var(--pencil); font-family: var(--mono); }
 ```
 
-- [ ] **Step 4: 跑测试确认通过 + 全量回归**
+- [x] **Step 4: 跑测试确认通过 + 全量回归**
 
 Run: `cd frontend && npx vitest run`
 Expected: 全部 PASS(既有 34 用例 + 新增 5 用例)。
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add frontend/src
@@ -3322,7 +3322,7 @@ git commit -m "feat(frontend): 复核视图——试卷队列/上传弹层/键�
 - Create: `e2e/fixtures/make_paper.py`
 - Create: `e2e/specs/paper-pipeline.spec.ts`
 
-- [ ] **Step 0: 真库应用 migration(E2E 用真库 kb,需先上表结构)**
+- [x] **Step 0: 真库应用 migration(E2E 用真库 kb,需先上表结构)**
 
 ```bash
 cd pipeline && uv run python -m kb.cli migrate
@@ -3330,7 +3330,7 @@ cd pipeline && uv run python -m kb.cli migrate
 
 Expected: `已执行 migration: 0011_papers.sql`(或后续重跑显示无新增)。
 
-- [ ] **Step 1: 生成合成试卷的 fixture 脚本**
+- [x] **Step 1: 生成合成试卷的 fixture 脚本**
 
 ```python
 """生成 E2E 合成试卷:3 张 PNG(每张一题),第 1 题红 ✗、第 2 题红 ✓、第 3 题无痕迹。
@@ -3378,7 +3378,7 @@ if __name__ == "__main__":
 验证脚本可跑:`cd e2e && uv run --project ../pipeline python fixtures/make_paper.py /tmp/kb-paper-fixture && ls /tmp/kb-paper-fixture`
 Expected: 3 个 PNG。
 
-- [ ] **Step 2: 写 E2E spec**
+- [x] **Step 2: 写 E2E spec**
 
 ```ts
 import { execSync } from "node:child_process";
@@ -3568,12 +3568,12 @@ test("t4 改判 UPDATE 不追加;PATCH 元数据", async ({ page }) => {
 });
 ```
 
-- [ ] **Step 3: 跑 E2E(全链路,慢——真 VLM)**
+- [x] **Step 3: 跑 E2E(全链路,慢——真 VLM)**
 
 Run: `cd e2e && npx playwright test specs/paper-pipeline.spec.ts`
 Expected: 4 passed(首跑观察 VLM 对合成试卷的识别质量;若痕迹识别不稳,按测试内的降级断言通过,并记录到 spec 风险节)。
 
-- [ ] **Step 4: 全套件回归**
+- [x] **Step 4: 全套件回归**
 
 Run: `cd pipeline && KB_TEST_DATABASE_URL=postgresql://localhost/kb_test uv run pytest tests/ -q`
 Run: `cd backend && KB_TEST_DATABASE_URL=postgresql://localhost/kb_test npm test && npm run build`
@@ -3581,7 +3581,7 @@ Run: `cd frontend && npm test && npm run build`
 Run: `cd e2e && npx playwright test`
 Expected: 四层全绿(含 Phase 1.5 的 chat-session spec)。
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add e2e/fixtures e2e/specs/paper-pipeline.spec.ts
@@ -3592,8 +3592,8 @@ git commit -m "test(e2e): 试卷管线全链路——合成试卷上传/VLM/匹�
 
 ## 完成核对(spec 验收标准)
 
-- [ ] 拍 3 张照片顺序上传 → 合成 PDF → 复核视图出现,题目拆分与预识别正确(t1)
-- [ ] 键盘 1/2/3 + Enter 连续确认,attempts 与 paper_questions 逐字段正确(t3)
-- [ ] 同题已在题库 → 自动关联;不满足阈值 → 人工候选选择(t2 + 单测)
-- [ ] 改判与元数据修改即时生效;页级重识别重置该页;failed 可重试(t4 + 单测)
-- [ ] 四层测试绿:pipeline + backend + frontend + Playwright E2E(Task 16 Step 4)
+- [x] 拍 3 张照片顺序上传 → 合成 PDF → 复核视图出现,题目拆分与预识别正确(t1)
+- [x] 键盘 1/2/3 + Enter 连续确认,attempts 与 paper_questions 逐字段正确(t3)
+- [x] 同题已在题库 → 自动关联;不满足阈值 → 人工候选选择(t2 + 单测)
+- [x] 改判与元数据修改即时生效;页级重识别重置该页;failed 可重试(t4 + 单测)
+- [x] 四层测试绿:pipeline + backend + frontend + Playwright E2E(Task 16 Step 4)
