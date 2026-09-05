@@ -462,3 +462,14 @@ button.ghost:hover { color: var(--redpen); border-color: var(--redpen); }
   padding: 5px 12px; font-size: 12.5px; cursor: pointer; }
 .ghost:hover { border-color: var(--redpen); color: var(--redpen); }
 .row { display: flex; gap: 6px; align-items: center; }
+.item-detail { display: flex; flex-direction: column; gap: 10px; min-height: 0; flex: 1; }
+.id-body { display: grid; grid-template-columns: 1fr minmax(240px, 40%); gap: 14px; min-height: 0; flex: 1; }
+.id-content { border: 1px solid var(--line); border-radius: 10px; background: var(--card); padding: 12px; overflow-y: auto; }
+.id-content .meta { font-size: 12px; color: var(--pencil); margin-bottom: 8px; }
+.id-content pre { white-space: pre-wrap; font: inherit; margin: 0 0 8px; }
+.id-content textarea { width: 100%; min-height: 120px; border: 1px solid var(--line);
+  border-radius: 8px; padding: 8px; font: inherit; }
+.id-reviews { margin-top: 10px; display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; }
+.id-reviews .approved { color: var(--pencil); }
+.id-blocks { display: flex; flex-direction: column; gap: 8px; overflow-y: auto; }
+.id-blocks img { max-width: 100%; border-radius: 6px; border: 1px solid var(--line); }

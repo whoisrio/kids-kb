@@ -52,6 +52,6 @@ describe("MaterialsView", () => {
       }),
     })} />);
     fireEvent.click(await screen.findByText(/第 3 页/));
-    await waitFor(() => expect(screen.getByText("（Task 9 实现）")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole("button", { name: "✓ 整页通过" })).toBeInTheDocument());
   });
 });
