@@ -198,4 +198,70 @@ maybe("review API（真库）", () => {
     expect(seen).toEqual({ q: "竖式计算", filters: { subject: "数学" } });
     expect((await a.request("/api/review/search?q=")).status).toBe(422);
   });
+
+  it("PATCH /blocks/:id：编辑转录（纯 DB 写，不刷镜像）", async () => {
+    const resp = await app.request(`/api/review/blocks/${block11}`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content_md: "24+37=61（改）" }),
+    });
+    expect(resp.status).toBe(200);
+    const row = (await pool.query("SELECT content_md FROM blocks WHERE id=$1", [block11])).rows[0];
+    expect(row.content_md).toBe("24+37=61（改）");
+    expect((await app.request("/api/review/blocks/00000000-0000-0000-0000-000000000000", {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content_md: "x" }),
+    })).status).toBe(404);
+  });
+
+  it("PATCH /items/:id：编辑条目内容并作废旧向量", async () => {
+    await pool.query(
+      `INSERT INTO chunks (item_id, document_id, content_md, meta, embedding)
+       VALUES ($1,$2,'旧内容','{}'::jsonb, $3::vector)`,
+      [itemId, docId, `[${Array.from({ length: 1024 }, () => 1.0).join(",")}]`]);
+    const resp = await app.request(`/api/review/items/${itemId}`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content_md: "24+37=61（条目改）" }),
+    });
+    expect(resp.status).toBe(200);
+    expect((await pool.query("SELECT content_md FROM items WHERE id=$1", [itemId])).rows[0].content_md)
+      .toBe("24+37=61（条目改）");
+    expect((await pool.query("SELECT count(*)::int AS n FROM chunks WHERE item_id=$1", [itemId])).rows[0].n)
+      .toBe(0);
+  });
+
+  it("POST /pages/:id/reject 与 /items/:id/reject：建 pending 复核行（body.reason 必填）", async () => {
+    const r1 = await app.request(`/api/review/pages/${page2}/reject`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reason: "缺题" }),
+    });
+    expect(r1.status).toBe(201);
+    const row = (await pool.query(
+      "SELECT reason, status FROM review_queue WHERE page_id=$1 ORDER BY created_at DESC LIMIT 1",
+      [page2])).rows[0];
+    expect(row).toMatchObject({ reason: "缺题", status: "pending" });
+    const r2 = await app.request(`/api/review/items/${itemId}/reject`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reason: "串章" }),
+    });
+    expect(r2.status).toBe(201);
+    expect((await app.request(`/api/review/pages/${page2}/reject`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: "{}",
+    })).status).toBe(422);
+  });
+
+  it("POST /pages/:id/adopt：采用版本切换（page_md 需已有整页转录）", async () => {
+    const bad = await app.request(`/api/review/pages/${page1}/adopt`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ source: "page_md" }),
+    });
+    expect(bad.status).toBe(409);
+    await pool.query("UPDATE pages SET page_md='整页稿', page_md_model='qwen' WHERE id=$1", [page1]);
+    const ok = await app.request(`/api/review/pages/${page1}/adopt`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ source: "page_md" }),
+    });
+    expect(ok.status).toBe(200);
+    expect((await pool.query("SELECT adopted_source FROM pages WHERE id=$1", [page1])).rows[0].adopted_source)
+      .toBe("page_md");
+  });
 });

@@ -191,5 +191,95 @@ export function reviewRoutes(pool: pg.Pool, deps: ReviewDeps): Hono {
     return c.json({ hits: await deps.search(q, filters) });
   });
 
+  async function readJson(c: Context): Promise<Record<string, unknown> | null> {
+    try { return await c.req.json(); } catch { return null; }
+  }
+
+  app.patch("/blocks/:id", async (c) => {
+    const body = await readJson(c);
+    if (body === null) return c.json({ error: "请求体不是合法 JSON" }, 400);
+    if (typeof body.content_md !== "string") return c.json({ error: "content_md 必填" }, 422);
+    try {
+      const { rows: [b] } = await pool.query(
+        "UPDATE blocks SET content_md=$2 WHERE id=$1 RETURNING id::text, content_md",
+        [c.req.param("id"), body.content_md]);
+      if (!b) return c.json({ error: "block 不存在" }, 404);
+      return c.json(b);
+    } catch (err) {
+      return invalidId(c, err) ?? (() => { throw err; })();
+    }
+  });
+
+  app.patch("/items/:id", async (c) => {
+    const body = await readJson(c);
+    if (body === null) return c.json({ error: "请求体不是合法 JSON" }, 400);
+    if (typeof body.content_md !== "string") return c.json({ error: "content_md 必填" }, 422);
+    const id = c.req.param("id");
+    try {
+      const { rows: [item] } = await pool.query(
+        "UPDATE items SET content_md=$2, updated_at=now() WHERE id=$1 RETURNING id::text, content_md",
+        [id, body.content_md]);
+      if (!item) return c.json({ error: "item 不存在" }, 404);
+      await pool.query("DELETE FROM chunks WHERE item_id=$1", [id]);
+      return c.json(item);
+    } catch (err) {
+      return invalidId(c, err) ?? (() => { throw err; })();
+    }
+  });
+
+  app.post("/pages/:id/reject", async (c) => {
+    const body = await readJson(c);
+    const reason = typeof body?.reason === "string" ? body.reason.trim() : "";
+    if (!reason) return c.json({ error: "reason 必填" }, 422);
+    try {
+      const { rows: [page] } = await pool.query(
+        "SELECT id::text FROM pages WHERE id=$1", [c.req.param("id")]);
+      if (!page) return c.json({ error: "page 不存在" }, 404);
+      const { rows: [row] } = await pool.query(
+        `INSERT INTO review_queue (page_id, reason) VALUES ($1,$2)
+         RETURNING id::text, status`, [page.id, reason]);
+      return c.json(row, 201);
+    } catch (err) {
+      return invalidId(c, err) ?? (() => { throw err; })();
+    }
+  });
+
+  app.post("/items/:id/reject", async (c) => {
+    const body = await readJson(c);
+    const reason = typeof body?.reason === "string" ? body.reason.trim() : "";
+    if (!reason) return c.json({ error: "reason 必填" }, 422);
+    try {
+      const { rows: [item] } = await pool.query(
+        "SELECT id::text FROM items WHERE id=$1", [c.req.param("id")]);
+      if (!item) return c.json({ error: "item 不存在" }, 404);
+      const { rows: [row] } = await pool.query(
+        `INSERT INTO review_queue (item_id, reason) VALUES ($1,$2)
+         RETURNING id::text, status`, [item.id, reason]);
+      return c.json(row, 201);
+    } catch (err) {
+      return invalidId(c, err) ?? (() => { throw err; })();
+    }
+  });
+
+  app.post("/pages/:id/adopt", async (c) => {
+    const body = await readJson(c);
+    const source = body?.source;
+    if (source !== "blocks" && source !== "page_md") {
+      return c.json({ error: "source 取值: blocks|page_md" }, 422);
+    }
+    try {
+      const { rows: [page] } = await pool.query(
+        "SELECT id::text, page_md FROM pages WHERE id=$1", [c.req.param("id")]);
+      if (!page) return c.json({ error: "page 不存在" }, 404);
+      if (source === "page_md" && !page.page_md) {
+        return c.json({ error: "该页还没有整页转录" }, 409);
+      }
+      await pool.query("UPDATE pages SET adopted_source=$2 WHERE id=$1", [page.id, source]);
+      return c.json({ page_id: page.id, adopted_source: source });
+    } catch (err) {
+      return invalidId(c, err) ?? (() => { throw err; })();
+    }
+  });
+
   return app;
 }
