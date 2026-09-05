@@ -18,6 +18,9 @@
 **Spec 偏差记录:**
 
 - `embed_flat_pages` / `approve_flat_pages` / `build_flat_chapter` 抛 `ValueError`（非 spec 里的 SystemExit）：库函数不该杀进程，CLI/SystemExit 留在编排层；internal 端点靠 `except Exception` 转 500。
+- 实现期新增（审核认可）：flat→toc 模式切换保护——无 items/chunks 时删合成章放行 TOC 重跑，有内容则拒绝（SystemExit，CLI 语义）；原计划未覆盖模式切换。
+- 实现期新增（审核认可）：`approve_flat_pages` 同时关闭页级与块级 pending 复核行（与旧 approve_page 语义对齐，计划只关了页级行）；向量化解包在事务内，embed 失败回滚（含测试）。
+- 实现期新增（审核认可）：`page_contents` 块排序加 `id` 决胜（同事务插入的块 created_at 相同，消除非确定性）；空内容页重建时清理旧 chunk。
 
 ---
 
@@ -43,7 +46,7 @@
 - Create: `pipeline/kb/migrations/0014_documents_struct_mode.sql`
 - Test: `pipeline/tests/test_flat.py`
 
-- [ ] **Step 1: 写失败的 schema 测试（创建 tests/test_flat.py）**
+- [x] **Step 1: 写失败的 schema 测试（创建 tests/test_flat.py）**
 
 ```python
 """flat 入库：无目录文档的整卷按页模式——模式判定、合成章、按页对齐向量化、approve 分流。
@@ -73,12 +76,12 @@ def test_documents_struct_mode_schema(conn):
             cur.execute("UPDATE documents SET struct_mode='bogus' WHERE id=%s", (doc_id,))
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `cd pipeline && KB_TEST_DATABASE_URL=postgresql://localhost/kb_test uv run pytest tests/test_flat.py -q`
 Expected: FAIL——`column "struct_mode" of relation "documents" does not exist`。
 
-- [ ] **Step 3: 写 migration**
+- [x] **Step 3: 写 migration**
 
 ```sql
 -- 0014_documents_struct_mode.sql：structure 模式显式化（toc=按目录拆章拆条 / flat=整卷按页）
@@ -86,12 +89,12 @@ Expected: FAIL——`column "struct_mode" of relation "documents" does not exist
 ALTER TABLE documents ADD COLUMN struct_mode text CHECK (struct_mode IN ('toc', 'flat'));
 ```
 
-- [ ] **Step 4: 跑测试确认通过（含迁移账本一致性回归）**
+- [x] **Step 4: 跑测试确认通过（含迁移账本一致性回归）**
 
 Run: `cd pipeline && KB_TEST_DATABASE_URL=postgresql://localhost/kb_test uv run pytest tests/test_flat.py tests/test_db.py -q`
 Expected: PASS。
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add pipeline/kb/migrations/0014_documents_struct_mode.sql pipeline/tests/test_flat.py
@@ -107,7 +110,7 @@ git commit -m "feat(pipeline): migration 0014——documents.struct_mode（toc|f
 - Create: `pipeline/kb/flat.py`
 - Test: `pipeline/tests/test_flat.py`（追加）
 
-- [ ] **Step 1: 写失败测试（追加；fixture 是后续所有任务的公共底座）**
+- [x] **Step 1: 写失败测试（追加；fixture 是后续所有任务的公共底座）**
 
 ```python
 @pytest.fixture()
@@ -163,12 +166,12 @@ def test_page_contents_adopts_and_skips(conn, flat_doc):
     ]  # 页 3 无内容，不出现
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `cd pipeline && KB_TEST_DATABASE_URL=postgresql://localhost/kb_test uv run pytest tests/test_flat.py -q -k page_contents`
 Expected: FAIL——`ModuleNotFoundError: No module named 'kb.flat'`。
 
-- [ ] **Step 3: 实现（创建 kb/flat.py）**
+- [x] **Step 3: 实现（创建 kb/flat.py）**
 
 ```python
 """flat 入库：无目录文档（试卷集合等）的整卷按页模式。
@@ -215,12 +218,12 @@ def page_contents(cur, doc_id: str) -> list[tuple[int, str]]:
 
 （`Jsonb`/`Config`/`uuid` 本任务暂未用到，后续 Task 3-7 会在本文件追加使用。）
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
 Run: `cd pipeline && KB_TEST_DATABASE_URL=postgresql://localhost/kb_test uv run pytest tests/test_flat.py -q`
 Expected: PASS。
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add pipeline/kb/flat.py pipeline/tests/test_flat.py
@@ -236,7 +239,7 @@ git commit -m "feat(pipeline): flat.page_contents——按页采用内容（整�
 - Modify: `pipeline/kb/flat.py`（追加）
 - Test: `pipeline/tests/test_flat.py`（追加）
 
-- [ ] **Step 1: 写失败测试（追加）**
+- [x] **Step 1: 写失败测试（追加）**
 
 ```python
 def test_build_flat_chapter_idempotent(conn, flat_doc):
@@ -273,12 +276,12 @@ def test_build_flat_chapter_refuses_multi_chapter_doc(conn, flat_doc):
         build_flat_chapter(conn, doc_id)
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `cd pipeline && KB_TEST_DATABASE_URL=postgresql://localhost/kb_test uv run pytest tests/test_flat.py -q -k build_flat`
 Expected: FAIL——`ImportError: cannot import name 'build_flat_chapter'`。
 
-- [ ] **Step 3: 实现（追加到 kb/flat.py）**
+- [x] **Step 3: 实现（追加到 kb/flat.py）**
 
 ```python
 def build_flat_chapter(conn, doc_id: str) -> str:
@@ -310,12 +313,12 @@ def build_flat_chapter(conn, doc_id: str) -> str:
     return chapter_id
 ```
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
 Run: `cd pipeline && KB_TEST_DATABASE_URL=postgresql://localhost/kb_test uv run pytest tests/test_flat.py -q`
 Expected: PASS。
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add pipeline/kb/flat.py pipeline/tests/test_flat.py
@@ -331,7 +334,7 @@ git commit -m "feat(pipeline): flat.build_flat_chapter——合成章 + struct_m
 - Modify: `pipeline/kb/flat.py`（追加）
 - Test: `pipeline/tests/test_flat.py`（追加）
 
-- [ ] **Step 1: 写失败测试（追加）**
+- [x] **Step 1: 写失败测试（追加）**
 
 ```python
 class _FakeEmbed:
@@ -411,12 +414,12 @@ def test_embed_flat_pages_guards(conn, flat_doc):
         embed_flat_pages(conn, cfg, doc_id, client=_FakeEmbed())
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `cd pipeline && KB_TEST_DATABASE_URL=postgresql://localhost/kb_test uv run pytest tests/test_flat.py -q -k embed_flat`
 Expected: FAIL——`ImportError: cannot import name 'embed_flat_pages'`。
 
-- [ ] **Step 3: 实现（追加到 kb/flat.py）**
+- [x] **Step 3: 实现（追加到 kb/flat.py）**
 
 ```python
 def embed_flat_pages(conn, cfg: Config, doc_id: str, page_no: int | None = None,
@@ -476,12 +479,12 @@ def embed_flat_pages(conn, cfg: Config, doc_id: str, page_no: int | None = None,
     return len(payloads)
 ```
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
 Run: `cd pipeline && KB_TEST_DATABASE_URL=postgresql://localhost/kb_test uv run pytest tests/test_flat.py -q`
 Expected: PASS。
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add pipeline/kb/flat.py pipeline/tests/test_flat.py
@@ -498,7 +501,7 @@ git commit -m "feat(pipeline): flat.embed_flat_pages——按页对齐切段向�
 - Modify: `pipeline/kb/flat.py`（追加 `resolve_mode`）
 - Test: `pipeline/tests/test_flat.py`（追加）
 
-- [ ] **Step 1: 写失败测试（追加）**
+- [x] **Step 1: 写失败测试（追加）**
 
 ```python
 def test_resolve_mode(conn, flat_doc):
@@ -519,12 +522,12 @@ def test_resolve_mode(conn, flat_doc):
         assert resolve_mode(cur, doc_id, flat=False, toc_pages=None) == "toc"
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `cd pipeline && KB_TEST_DATABASE_URL=postgresql://localhost/kb_test uv run pytest tests/test_flat.py -q -k resolve_mode`
 Expected: FAIL——`ImportError: cannot import name 'resolve_mode'`。
 
-- [ ] **Step 3: 实现**
+- [x] **Step 3: 实现**
 
 `kb/toc.py` 两处改名（`_detect_toc_pages` → `detect_toc_pages`，docstring 去掉私有语气）：
 
@@ -548,12 +551,12 @@ def resolve_mode(cur, doc_id: str, flat: bool, toc_pages: list[int] | None) -> s
     return "toc" if detect_toc_pages(cur, doc_id) else "flat"
 ```
 
-- [ ] **Step 4: 跑测试确认通过 + toc 回归**
+- [x] **Step 4: 跑测试确认通过 + toc 回归**
 
 Run: `cd pipeline && KB_TEST_DATABASE_URL=postgresql://localhost/kb_test uv run pytest tests/test_flat.py tests/test_toc.py -q`
 Expected: PASS（改名不动行为）。
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add pipeline/kb/toc.py pipeline/kb/flat.py pipeline/tests/test_flat.py
@@ -570,7 +573,7 @@ git commit -m "feat(pipeline): flat.resolve_mode——模式判定（显式优�
 - Modify: `pipeline/kb/cli.py:61-64`（parser 加 `--flat`）、`cli.py:133-160`（structure 分支改薄）
 - Test: `pipeline/tests/test_flat.py`（追加）
 
-- [ ] **Step 1: 写失败测试（追加）**
+- [x] **Step 1: 写失败测试（追加）**
 
 ```python
 _FENCE = "`" * 3
@@ -658,12 +661,12 @@ def test_run_structure_toc_marks_mode(conn, flat_doc):
         assert cur.fetchone()[0] == "toc"
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `cd pipeline && KB_TEST_DATABASE_URL=postgresql://localhost/kb_test uv run pytest tests/test_flat.py -q -k run_structure`
 Expected: FAIL——`ImportError: cannot import name 'run_structure'`。
 
-- [ ] **Step 3: 实现**
+- [x] **Step 3: 实现**
 
 `kb/structure.py` 末尾追加（`structure_chapter`/`pair_items` 已在文件内，import 收敛到函数体保持模块加载轻）：
 
@@ -731,12 +734,12 @@ def run_structure(conn, cfg: Config, doc_id: str, toc_pages: list[int] | None = 
         run_structure(conn, cfg, args.doc_id, toc_pages=toc_pages, flat=args.flat)
 ```
 
-- [ ] **Step 4: 跑测试确认通过 + structure/toc 回归**
+- [x] **Step 4: 跑测试确认通过 + structure/toc 回归**
 
 Run: `cd pipeline && KB_TEST_DATABASE_URL=postgresql://localhost/kb_test uv run pytest tests/test_flat.py tests/test_structure.py tests/test_toc.py -q`
 Expected: PASS（run_structure 是 CLI 原逻辑搬运，行为不变）。
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add pipeline/kb/structure.py pipeline/kb/cli.py pipeline/tests/test_flat.py
@@ -753,7 +756,7 @@ git commit -m "feat(pipeline): structure 自动回退 flat + --flat 强制；编
 - Modify: `pipeline/kb/cli.py:172-175`（approve 分支按 struct_mode 分流）
 - Test: `pipeline/tests/test_flat.py`（追加）
 
-- [ ] **Step 1: 写失败测试（追加）**
+- [x] **Step 1: 写失败测试（追加）**
 
 ```python
 def test_approve_flat_pages_closes_rows_and_embeds(conn, flat_doc):
@@ -785,12 +788,12 @@ def test_approve_flat_pages_guards(conn, flat_doc):
         approve_flat_pages(conn, cfg, doc_id, client=_FakeEmbed())
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `cd pipeline && KB_TEST_DATABASE_URL=postgresql://localhost/kb_test uv run pytest tests/test_flat.py -q -k approve_flat`
 Expected: FAIL——`ImportError: cannot import name 'approve_flat_pages'`。
 
-- [ ] **Step 3: 实现（追加到 kb/flat.py）**
+- [x] **Step 3: 实现（追加到 kb/flat.py）**
 
 ```python
 def approve_flat_pages(conn, cfg: Config, doc_id: str, client=None) -> dict:
@@ -835,12 +838,12 @@ def approve_flat_pages(conn, cfg: Config, doc_id: str, client=None) -> dict:
 
 （flat 文档只有 1 条合成章，`--chapter` 参数对 flat 无意义，忽略。）
 
-- [ ] **Step 4: 跑测试确认通过 + 全量回归**
+- [x] **Step 4: 跑测试确认通过 + 全量回归**
 
 Run: `cd pipeline && KB_TEST_DATABASE_URL=postgresql://localhost/kb_test uv run pytest tests/ -q`
 Expected: 全部 PASS。
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add pipeline/kb/flat.py pipeline/kb/cli.py pipeline/tests/test_flat.py
@@ -856,7 +859,7 @@ git commit -m "feat(pipeline): approve 按 struct_mode 分流——flat 文档�
 - Modify: `pipeline/kb/internal_api.py`
 - Test: `pipeline/tests/test_internal_api.py`（追加）
 
-- [ ] **Step 1: 写失败测试（追加到 test_internal_api.py；fixture 跨文件导入，同 paper 端点先例）**
+- [x] **Step 1: 写失败测试（追加到 test_internal_api.py；fixture 跨文件导入，同 paper 端点先例）**
 
 ```python
 class TestEmbedFlatPage:
@@ -888,12 +891,12 @@ class TestEmbedFlatPage:
         assert "flat" in r.json()["detail"]
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `cd pipeline && KB_TEST_DATABASE_URL=postgresql://localhost/kb_test uv run pytest tests/test_internal_api.py -q -k EmbedFlatPage`
 Expected: FAIL——`TypeError: create_internal_app() got an unexpected keyword argument 'embed_client'`。
 
-- [ ] **Step 3: 实现**
+- [x] **Step 3: 实现**
 
 `kb/internal_api.py`：
 
@@ -925,12 +928,12 @@ class EmbedFlatPageRequest(BaseModel):
                 raise HTTPException(status_code=500, detail=str(e)) from e
 ```
 
-- [ ] **Step 4: 跑测试确认通过 + 全量回归**
+- [x] **Step 4: 跑测试确认通过 + 全量回归**
 
 Run: `cd pipeline && KB_TEST_DATABASE_URL=postgresql://localhost/kb_test uv run pytest tests/ -q`
 Expected: 全部 PASS。
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add pipeline/kb/internal_api.py pipeline/tests/test_internal_api.py
@@ -945,7 +948,7 @@ git commit -m "feat(pipeline): /internal/embed-flat-page——复核页整页通
 
 - Create: `e2e/specs/flat-ingest.spec.ts`
 
-- [ ] **Step 1: 写 spec（DB 种子不经 VLM，聚焦 flat 链路；聊天断言复用 searchability 手法）**
+- [x] **Step 1: 写 spec（DB 种子不经 VLM，聚焦 flat 链路；聊天断言复用 searchability 手法）**
 
 ```typescript
 import { execSync } from "node:child_process";
@@ -1043,12 +1046,12 @@ test.afterAll(async () => {
 });
 ```
 
-- [ ] **Step 2: 跑 E2E 确认通过**
+- [x] **Step 2: 跑 E2E 确认通过**
 
 Run: `cd e2e && npx playwright test specs/flat-ingest.spec.ts`
 Expected: 1 passed（三服务自动复用/拉起；聊天段约 1-3 分钟）。
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add e2e/specs/flat-ingest.spec.ts
@@ -1065,7 +1068,7 @@ git commit -m "test(e2e): flat 入库全链路——自动回退/approve 页级�
 - Modify: `AGENTS.md`（入库工作流第 4 步）
 - Modify: `docs/superpowers/plans/2026-09-03-phase3-a-searchability.md`（Task 13 口径注记）
 
-- [ ] **Step 1: README 加 flat 段（「## 检索期：向量化与语义查询」之前插入）**
+- [x] **Step 1: README 加 flat 段（「## 检索期：向量化与语义查询」之前插入）**
 
 ```markdown
 ## 整卷按页模式（flat）：无目录文档回退
@@ -1075,7 +1078,7 @@ git commit -m "test(e2e): flat 入库全链路——自动回退/approve 页级�
 适合无目录页的试卷集合（如《学霸提优大试卷》）；`documents.struct_mode` 记录模式（toc|flat）。
 ```
 
-- [ ] **Step 2: AGENTS.md 入库工作流第 4 步替换**
+- [x] **Step 2: AGENTS.md 入库工作流第 4 步替换**
 
 原文：
 
@@ -1089,7 +1092,7 @@ git commit -m "test(e2e): flat 入库全链路——自动回退/approve 页级�
 4. PDF（docx/md 可选）跑 `structure <doc_id>` 拆条成题目级条目；无目录页的试卷集合自动回退「整卷按页」模式（不拆条，页级检索，`--flat` 显式强制）。
 ```
 
-- [ ] **Step 3: 3-A 计划 Task 13 加口径注记（「详见 .workbuddy/memory/2026-09-04.md。」一行之后插入）**
+- [x] **Step 3: 3-A 计划 Task 13 加口径注记（「详见 .workbuddy/memory/2026-09-04.md。」一行之后插入）**
 
 ```markdown
 > **口径修订（2026-09-05，`2026-09-05-phase3-c-design.md` D4）：**
@@ -1097,7 +1100,7 @@ git commit -m "test(e2e): flat 入库全链路——自动回退/approve 页级�
 > 「命中页级章节 chunk（meta 带 page_no，可定位到页）」。
 ```
 
-- [ ] **Step 4: 全量回归（三侧 + 新 E2E）**
+- [x] **Step 4: 全量回归（三侧 + 新 E2E）**
 
 Run: `cd pipeline && KB_TEST_DATABASE_URL=postgresql://localhost/kb_test uv run pytest tests/ -q`
 Expected: 全部 PASS。
@@ -1107,7 +1110,7 @@ Expected: 2 passed（searchability 守护章节 chunk 主链路未被 flat 改�
 
 （backend/frontend 本计划零改动，不跑。）
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add README.md AGENTS.md docs/superpowers/plans/2026-09-03-phase3-a-searchability.md
