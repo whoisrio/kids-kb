@@ -65,7 +65,7 @@ export function makeAgentFactory(
     api: "openai-completions",
     provider: "chat",
     baseUrl: cfg.chatBaseUrl,
-    reasoning: false,
+    reasoning: cfg.chatThinking !== "off",
     input: ["text"],
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
     contextWindow: 131072,
@@ -93,6 +93,7 @@ export function makeAgentFactory(
         model,
         tools,
         messages: toAgentMessages(messages, model),
+        thinkingLevel: cfg.chatThinking,
       },
       streamFn: models.streamSimple.bind(models),
     });
@@ -254,8 +255,14 @@ export function chatRoute(
           : { event: "done", data: "" });
       };
       agent.subscribe(async (event) => {
-        if (event.type === "message_update" && event.assistantMessageEvent?.type === "text_delta") {
-          await stream.writeSSE({ event: "delta", data: JSON.stringify(event.assistantMessageEvent.delta) });
+        if (event.type === "message_update") {
+          const assistantEvent = event.assistantMessageEvent;
+          if (assistantEvent?.type === "thinking_delta") {
+            await stream.writeSSE({ event: "thinking", data: JSON.stringify(assistantEvent.delta) });
+          }
+          if (assistantEvent?.type === "text_delta") {
+            await stream.writeSSE({ event: "delta", data: JSON.stringify(assistantEvent.delta) });
+          }
         }
         if (event.type === "message_end") {
           const msg = event.message;

@@ -107,3 +107,13 @@ describe("试卷配置", () => {
     expect(cfg.matchThreshold).toBe(0.88);
   });
 });
+
+describe("KB_CHAT_THINKING", () => {
+  const base = { KB_DATABASE_URL: "postgresql://localhost/kb" };
+  it("缺省 medium；合法值透传；off 关闭；非法值报错", () => {
+    expect(loadConfig({ ...base }).chatThinking).toBe("medium");
+    expect(loadConfig({ ...base, KB_CHAT_THINKING: "high" }).chatThinking).toBe("high");
+    expect(loadConfig({ ...base, KB_CHAT_THINKING: "off" }).chatThinking).toBe("off");
+    expect(() => loadConfig({ ...base, KB_CHAT_THINKING: "bogus" })).toThrow(/KB_CHAT_THINKING/);
+  });
+});

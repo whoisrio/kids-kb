@@ -18,6 +18,8 @@ export interface BackendConfig {
   storageRoot: string;
   /** 题库自动匹配阈值(余弦相似度)。 */
   matchThreshold: number;
+  /** 聊天 thinking 档位（off|minimal|low|medium|high|xhigh|max）。 */
+  chatThinking: "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
 }
 
 /** 取第一个非空值：dotenv 把 `KEY=` 解析为空串，空串视同未设置。 */
@@ -53,6 +55,14 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): BackendConfig 
     matchThreshold: (() => {
       const v = Number(pick(env.KB_MATCH_THRESHOLD));
       return Number.isFinite(v) && v > 0 && v <= 1 ? v : 0.88;
+    })(),
+    chatThinking: (() => {
+      const raw = pick(env.KB_CHAT_THINKING);
+      const allowed = ["off", "minimal", "low", "medium", "high", "xhigh", "max"];
+      if (raw !== undefined && !allowed.includes(raw)) {
+        throw new Error(`KB_CHAT_THINKING 取值: ${allowed.join("|")}`);
+      }
+      return (raw ?? "medium") as BackendConfig["chatThinking"];
     })(),
   };
 }

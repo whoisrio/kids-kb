@@ -109,6 +109,20 @@ describe("/api/chat", () => {
     expect(body).toContain("event: done");
   });
 
+  it("thinking_delta → SSE thinking 事件（data 为 JSON 字符串，编码同 delta）", async () => {
+    const agent = fakeAgent([
+      { type: "message_update", assistantMessageEvent: { type: "thinking_delta", delta: "先想" } },
+      { type: "message_update", assistantMessageEvent: { type: "thinking_delta", delta: "一下" } },
+      delta("答案"),
+      { type: "agent_end", messages: [] },
+    ]);
+    const resp = await post(app(() => agent), { messages: [{ role: "user", content: "hi" }] });
+    const body = await resp.text();
+    expect(body).toContain('event: thinking\ndata: "先想"');
+    expect(body).toContain('event: thinking\ndata: "一下"');
+    expect(body.indexOf("event: thinking")).toBeLessThan(body.indexOf("event: delta"));
+  });
+
   it("message_end 携带 usage 时 onUsage 汇总且只调用一次", async () => {
     const onUsage = vi.fn(async () => {});
     const agent = fakeAgent([
