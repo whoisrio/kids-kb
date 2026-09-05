@@ -140,4 +140,24 @@ def create_internal_app(reranker_factory=None, get_conn=None, cfg=None,
         finally:
             conn.close()
 
+    @app.post("/internal/page-vlm")
+    def page_vlm_ep(body: PageVlmRequest):
+        """页级 VLM 重跑（复核页「远端整页解析」）：覆盖旧 page_md，采用版本仍由 adopt 决定。
+        镜像不在此刷新（B3：镜像改由 export 重算）。"""
+        from kb.pagelvl import transcribe_page
+        conn = _conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT 1 FROM pages WHERE id=%s", (body.page_id,))
+                if not cur.fetchone():
+                    raise HTTPException(status_code=404, detail="page 不存在")
+            md = transcribe_page(conn, cfg, body.page_id, client=vlm_client)
+            return {"page_id": body.page_id, "page_md_len": len(md)}
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e)) from e
+        finally:
+            conn.close()
+
     return app

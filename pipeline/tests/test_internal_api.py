@@ -295,3 +295,37 @@ class _FakeEmbedLike:
                 data = [D()]
 
             return R()
+
+
+class TestPageVlm:
+    def test_重跑整页转录(self, conn, cfg, tmp_path):
+        """transcribe_page 走假 VLM：page_md 覆盖、模型留痕；不刷镜像（B3：镜像 export 重算）。"""
+        import uuid
+        from tests.test_paper_pipeline import FakeVLM, _vlm_json
+
+        with conn.cursor() as cur:
+            doc_id = str(uuid.uuid4())
+            cur.execute("INSERT INTO documents (id, title, source_path) VALUES (%s,'书',%s)",
+                        (doc_id, f"/tmp/{doc_id}.pdf"))
+            page_id = str(uuid.uuid4())
+            png = tmp_path / "p.png"
+            import base64
+            png.write_bytes(base64.b64decode(
+                "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJ"
+                "AAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="))
+            cur.execute(
+                "INSERT INTO pages (id, document_id, page_no, image_path, status) VALUES (%s,%s,1,%s,'parsed')",
+                (page_id, doc_id, str(png)))
+        app = create_internal_app(get_conn=lambda: connect(cfg.database_url), cfg=cfg,
+                                  vlm_client=FakeVLM([_vlm_json("# 第 1 讲 口算\n\n整页稿")]))
+        r = TestClient(app).post("/internal/page-vlm", json={"page_id": page_id})
+        assert r.status_code == 200
+        assert r.json()["page_md_len"] > 0
+        row = conn.execute("SELECT page_md FROM pages WHERE id=%s", (page_id,)).fetchone()
+        assert "口算" in row[0]
+
+    def test_页不存在_404(self, conn, cfg):
+        app = create_internal_app(get_conn=lambda: connect(cfg.database_url), cfg=cfg)
+        r = TestClient(app).post("/internal/page-vlm",
+                                 json={"page_id": "00000000-0000-0000-0000-000000000000"})
+        assert r.status_code == 404
