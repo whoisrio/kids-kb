@@ -405,3 +405,133 @@ def test_run_structure_recovers_from_flat_to_toc(conn, flat_doc):
             (doc_id,),
         )
         assert cur.fetchone() == ("toc", "口算", 0, 0)
+
+
+def test_approve_flat_pages_closes_rows_and_embeds(conn, flat_doc):
+    from kb.flat import approve_flat_pages, build_flat_chapter
+
+    doc_id, cfg = flat_doc
+    build_flat_chapter(conn, doc_id)
+    with conn.cursor() as cur:  # 同一文档同时挂页级 + 块级 pending 复核行
+        cur.execute("SELECT id FROM pages WHERE document_id=%s AND page_no=1", (doc_id,))
+        page_id = cur.fetchone()[0]
+        cur.execute("SELECT id FROM blocks WHERE page_id=%s AND content_md=%s",
+                    (page_id, "一、口算 24+37="))
+        block_id = cur.fetchone()[0]
+        cur.execute(
+            "INSERT INTO review_queue (id, page_id, reason) VALUES (%s,%s,'empty')",
+            (str(uuid.uuid4()), page_id),
+        )
+        cur.execute(
+            "INSERT INTO review_queue (id, block_id, reason) VALUES (%s,%s,'empty')",
+            (str(uuid.uuid4()), block_id),
+        )
+    out = approve_flat_pages(conn, cfg, doc_id, client=_FakeEmbed())
+    assert out == {"pages": 2, "chunks": 2, "resolved": 2}
+    with conn.cursor() as cur:
+        cur.execute(
+            """SELECT count(*) FROM review_queue
+               WHERE (page_id=%s OR block_id=%s) AND status='approved'""",
+            (page_id, block_id),
+        )
+        assert cur.fetchone()[0] == 2
+        cur.execute(
+            """SELECT document_id, meta->>'page_no', seg_no
+               FROM chunks WHERE chapter_id IS NOT NULL ORDER BY seg_no"""
+        )
+        rows = cur.fetchall()
+    assert [(str(r[0]), r[1], r[2]) for r in rows] == [
+        (doc_id, "1", 1001),
+        (doc_id, "2", 2001),
+    ]
+
+
+def test_approve_flat_pages_is_idempotent(conn, flat_doc):
+    from kb.flat import approve_flat_pages, build_flat_chapter
+
+    doc_id, cfg = flat_doc
+    build_flat_chapter(conn, doc_id)
+    with conn.cursor() as cur:
+        cur.execute("SELECT id FROM pages WHERE document_id=%s ORDER BY page_no", (doc_id,))
+        page_id = cur.fetchone()[0]
+        cur.execute(
+            "SELECT id FROM blocks WHERE page_id=%s AND content_md=%s",
+            (page_id, "一、口算 24+37="),
+        )
+        block_id = cur.fetchone()[0]
+        cur.execute(
+            "INSERT INTO review_queue (id, page_id, reason) VALUES (%s,%s,'empty')",
+            (str(uuid.uuid4()), page_id),
+        )
+        cur.execute(
+            "INSERT INTO review_queue (id, block_id, reason) VALUES (%s,%s,'empty')",
+            (str(uuid.uuid4()), block_id),
+        )
+
+    first = approve_flat_pages(conn, cfg, doc_id, client=_FakeEmbed())
+    assert first == {"pages": 2, "chunks": 2, "resolved": 2}
+
+    second = approve_flat_pages(conn, cfg, doc_id, client=_FakeEmbed())
+    assert second == {"pages": 2, "chunks": 2, "resolved": 0}
+    with conn.cursor() as cur:
+        cur.execute(
+            """SELECT document_id, meta->>'kind', meta->>'page_no'
+               FROM chunks WHERE chapter_id IS NOT NULL ORDER BY seg_no"""
+        )
+        rows = cur.fetchall()
+        cur.execute(
+            "SELECT count(*) FROM review_queue WHERE status='pending'"
+        )
+        pending = cur.fetchone()[0]
+    assert [(str(row[0]), row[1], row[2]) for row in rows] == [
+        (doc_id, "chapter", "1"),
+        (doc_id, "chapter", "2"),
+    ]
+    assert pending == 0
+
+
+def test_approve_flat_pages_rolls_back_on_embedding_failure(conn, flat_doc, monkeypatch):
+    import kb.flat
+    from kb.flat import approve_flat_pages, build_flat_chapter
+
+    doc_id, cfg = flat_doc
+    build_flat_chapter(conn, doc_id)
+    with conn.cursor() as cur:
+        cur.execute("SELECT id FROM pages WHERE document_id=%s AND page_no=1", (doc_id,))
+        page_id = cur.fetchone()[0]
+        cur.execute("SELECT id FROM blocks WHERE page_id=%s AND content_md=%s",
+                    (page_id, "一、口算 24+37="))
+        block_id = cur.fetchone()[0]
+        cur.execute(
+            "INSERT INTO review_queue (id, page_id, reason) VALUES (%s,%s,'empty')",
+            (str(uuid.uuid4()), page_id),
+        )
+        cur.execute(
+            "INSERT INTO review_queue (id, block_id, reason) VALUES (%s,%s,'empty')",
+            (str(uuid.uuid4()), block_id),
+        )
+
+    def fail_embedding(*args, **kwargs):
+        raise RuntimeError("embedding failed")
+
+    monkeypatch.setattr(kb.flat, "embed_flat_pages", fail_embedding)
+    with pytest.raises(RuntimeError, match="embedding failed"):
+        approve_flat_pages(conn, cfg, doc_id, client=_FakeEmbed())
+    with conn.cursor() as cur:
+        cur.execute(
+            """SELECT count(*) FROM review_queue
+               WHERE (page_id=%s OR block_id=%s) AND status='pending'""",
+            (page_id, block_id),
+        )
+        assert cur.fetchone()[0] == 2
+
+
+def test_approve_flat_pages_guards(conn, flat_doc):
+    from kb.flat import approve_flat_pages
+
+    doc_id, cfg = flat_doc
+    with pytest.raises(ValueError, match="非 flat"):
+        approve_flat_pages(conn, cfg, doc_id, client=_FakeEmbed())
+
+    with pytest.raises(ValueError, match="文档不存在"):
+        approve_flat_pages(conn, cfg, str(uuid.uuid4()), client=_FakeEmbed())

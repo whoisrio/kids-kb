@@ -150,8 +150,18 @@ def main() -> None:
               f"{stats['items_deleted']} 条旧 item 已删（请重跑 structure 重建）")
     elif args.cmd == "approve":
         from kb.embed import approve_items
-        out = approve_items(conn, cfg, args.doc_id, chapter_no=args.chapter)
-        print(f"通过 {out['approved']} 条,新增向量 {out['embedded']} 条")
+        from kb.flat import approve_flat_pages
+        with conn.cursor() as cur:
+            cur.execute("SELECT struct_mode FROM documents WHERE id=%s", (args.doc_id,))
+            row = cur.fetchone()
+        if not row:
+            raise SystemExit(f"文档不存在: {args.doc_id}")
+        if row and row[0] == "flat":
+            out = approve_flat_pages(conn, cfg, args.doc_id)
+            print(f"通过 {out['pages']} 页,新增向量 {out['chunks']} 条(页级)")
+        else:
+            out = approve_items(conn, cfg, args.doc_id, chapter_no=args.chapter)
+            print(f"通过 {out['approved']} 条,新增向量 {out['embedded']} 条")
     elif args.cmd == "embed":
         from kb.embed import embed_approved_items, embed_chapters
         n = embed_approved_items(conn, cfg, args.doc_id)

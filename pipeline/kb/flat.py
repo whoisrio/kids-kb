@@ -138,6 +138,36 @@ def embed_flat_pages(conn, cfg: Config, doc_id: str, page_no: int | None = None,
     return len(payloads)
 
 
+def approve_flat_pages(conn, cfg: Config, doc_id: str, client=None) -> dict:
+    """flat 文档批量通过：关闭该文档全部 pending 复核行 + 全页向量化（重建式幂等）。
+    返回 {pages: 有内容的页数, chunks: 新增 chunk 数, resolved: 关闭的复核行数}。"""
+    with conn.transaction():
+        with conn.cursor() as cur:
+            cur.execute("SELECT struct_mode FROM documents WHERE id=%s", (doc_id,))
+            row = cur.fetchone()
+            if not row:
+                raise ValueError(f"文档不存在: {doc_id}")
+            if row[0] != "flat":
+                raise ValueError("非 flat 文档（struct_mode 不是 flat）")
+            cur.execute(
+                """UPDATE review_queue SET status='approved'
+                   WHERE status='pending'
+                     AND (page_id IN (SELECT id FROM pages WHERE document_id=%s)
+                          OR block_id IN (
+                              SELECT id FROM blocks
+                              WHERE page_id IN (
+                                  SELECT id FROM pages WHERE document_id=%s
+                              )
+                          ))""",
+                (doc_id, doc_id),
+            )
+            resolved = cur.rowcount
+        chunks = embed_flat_pages(conn, cfg, doc_id, client=client)
+    with conn.cursor() as cur:
+        n_pages = len(page_contents(cur, doc_id))
+    return {"pages": n_pages, "chunks": chunks, "resolved": resolved}
+
+
 def resolve_mode(cur, doc_id: str, flat: bool, toc_pages: list[int] | None) -> str:
     """structure 模式判定：显式 --flat > 显式 --toc-pages > 自动探测目录页。"""
     if flat:
