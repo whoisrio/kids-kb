@@ -12,7 +12,11 @@
   "dependencies": {
     "katex": "^0.18.5",
     "react": "^19.2.8",
-    "react-dom": "^19.2.8"
+    "react-dom": "^19.2.8",
+    "react-markdown": "^10.1.0",
+    "rehype-katex": "^7.0.1",
+    "remark-gfm": "^4.0.1",
+    "remark-math": "^6.0.0"
   },
   "devDependencies": {
     "@rolldown/binding-darwin-arm64": "^1.2.6",
