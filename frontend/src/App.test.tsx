@@ -12,6 +12,17 @@ const MODELS = [
   { provider: "chat", id: "deepseek-v3", name: "deepseek-v3" },
 ];
 
+const S1_DETAIL = {
+  title: "口算题",
+  currentModel: "qwen3:4b",
+  currentLane: "main",
+  lanes: [{ id: "main", forkEntryId: null, fromLaneId: null }],
+  messages: [
+    { role: "user", content: "第一问", entryId: "e0" },
+    { role: "assistant", content: "第一答", entryId: "e1" },
+  ],
+};
+
 function stubFetch(routes: Record<string, (init?: RequestInit) => Response>) {
   vi.stubGlobal("fetch", fetchRouter(routes));
 }
@@ -22,15 +33,8 @@ describe("App 集成（会话侧栏 + 模型下拉 + 聊天流）", () => {
       "/api/models": () => jsonResponse(MODELS),
       "/api/sessions": () =>
         jsonResponse([{ id: "s1", title: "口算题", model: "qwen3:4b", createdAt: 1, modifiedAt: 2 }]),
-      "/api/sessions/s1": () =>
-        jsonResponse({
-          title: "口算题",
-          currentModel: "qwen3:4b",
-          messages: [
-            { role: "user", content: "第一问" },
-            { role: "assistant", content: "第一答" },
-          ],
-        }),
+      "/api/sessions/s1": () => jsonResponse(S1_DETAIL),
+      "/api/sessions/s1?lane=main": () => jsonResponse(S1_DETAIL),
     });
     render(<App />);
     // 侧栏出现历史会话
@@ -57,11 +61,21 @@ describe("App 集成（会话侧栏 + 模型下拉 + 聊天流）", () => {
         chatBody = JSON.parse(String(init?.body));
         sessions = [{ id: "s-new", title: "小宝最近计算错得多吗", model: "qwen3:4b", createdAt: 1, modifiedAt: 2 }];
         return sseResponse([
-          'event: session\ndata: "s-new"\n\n',
+          'event: session\ndata: {"session_id":"s-new","lane_id":"main"}\n\n',
           'event: delta\ndata: "还好"\n\n',
           "event: done\ndata: \n\n",
         ]);
       },
+      "/api/sessions/s-new?lane=main": () => jsonResponse({
+        title: "小宝最近计算错得多吗",
+        currentModel: "qwen3:4b",
+        currentLane: "main",
+        lanes: [{ id: "main", forkEntryId: null, fromLaneId: null }],
+        messages: [
+          { role: "user", content: "小宝最近计算错得多吗", entryId: "e0" },
+          { role: "assistant", content: "还好", entryId: "e1" },
+        ],
+      }),
     });
     render(<App />);
     await waitFor(() =>
@@ -85,12 +99,8 @@ describe("App 集成（会话侧栏 + 模型下拉 + 聊天流）", () => {
       "/api/models": () => jsonResponse(MODELS),
       "/api/sessions": () =>
         jsonResponse([{ id: "s1", title: "口算题", model: "qwen3:4b", createdAt: 1, modifiedAt: 2 }]),
-      "/api/sessions/s1": () =>
-        jsonResponse({
-          title: "口算题",
-          currentModel: "qwen3:4b",
-          messages: [{ role: "user", content: "第一问" }],
-        }),
+      "/api/sessions/s1": () => jsonResponse(S1_DETAIL),
+      "/api/sessions/s1?lane=main": () => jsonResponse(S1_DETAIL),
     });
     render(<App />);
     await waitFor(() => expect(screen.getByText("口算题")).toBeInTheDocument());
@@ -126,7 +136,7 @@ describe("App 集成（会话侧栏 + 模型下拉 + 聊天流）", () => {
     await waitFor(() => expect(screen.getByText("hi")).toBeInTheDocument());
     expect(document.querySelector(".chat-wrap")).toHaveAttribute("data-streaming", "true");
     // 流收尾：标记复位
-    push('event: session\ndata: "s1"\n\n');
+    push('event: session\ndata: {"session_id":"s1","lane_id":"main"}\n\n');
     push('event: delta\ndata: "好"\n\n');
     push("event: done\ndata: \n\n");
     await waitFor(() =>
@@ -142,8 +152,9 @@ describe("App 集成（会话侧栏 + 模型下拉 + 聊天流）", () => {
       "/api/sessions": () => jsonResponse([]),
       "/api/chat": (init) => {
         chatBody = JSON.parse(String(init?.body));
-        return sseResponse(['event: session\ndata: "s1"\n\n', "event: done\ndata: \n\n"]);
+        return sseResponse(['event: session\ndata: {"session_id":"s1","lane_id":"main"}\n\n', "event: done\ndata: \n\n"]);
       },
+      "/api/sessions/s1?lane=main": () => jsonResponse(S1_DETAIL),
     });
     render(<App />);
     await waitFor(() =>
@@ -155,5 +166,35 @@ describe("App 集成（会话侧栏 + 模型下拉 + 聊天流）", () => {
     fireEvent.change(screen.getByLabelText("输入问题"), { target: { value: "hi" } });
     fireEvent.click(screen.getByRole("button", { name: "发送" }));
     await waitFor(() => expect(chatBody).toMatchObject({ model: "deepseek-v3" }));
+  });
+
+  it("删除会话先确认，确认后回到新会话态并刷新侧栏", async () => {
+    let sessions: unknown[] = [
+      { id: "s1", title: "口算题", model: "qwen3:4b", createdAt: 1, modifiedAt: 2 },
+    ];
+    let deleteCalled = false;
+    stubFetch({
+      "/api/models": () => jsonResponse(MODELS),
+      "/api/sessions": () => jsonResponse(sessions),
+      "/api/sessions/s1": (init) => {
+        if (init?.method === "DELETE") {
+          deleteCalled = true;
+          sessions = [];
+          return new Response(null, { status: 204 });
+        }
+        return jsonResponse(S1_DETAIL);
+      },
+      "/api/sessions/s1?lane=main": () => jsonResponse(S1_DETAIL),
+    });
+    render(<App />);
+    await waitFor(() => expect(screen.getByText("口算题")).toBeInTheDocument());
+    fireEvent.click(screen.getByText("口算题"));
+    await waitFor(() => expect(screen.getByText("第一问")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "删除会话 口算题" }));
+    expect(screen.getByRole("dialog", { name: "删除会话" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "删除" }));
+    await waitFor(() => expect(deleteCalled).toBe(true));
+    await waitFor(() => expect(screen.queryByText("第一问")).not.toBeInTheDocument());
+    expect(screen.queryByText("口算题")).not.toBeInTheDocument();
   });
 });

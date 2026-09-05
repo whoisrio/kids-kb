@@ -1,4 +1,4 @@
-import { memo, useState } from "react";
+import { memo, useState, type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
@@ -28,9 +28,10 @@ interface MessageBubbleProps {
   isLast: boolean;
   streaming: boolean;
   actions?: BubbleActions;
+  switcher?: ReactNode;
 }
 
-export function MessageBubble({ message, index, isLast, streaming, actions }: MessageBubbleProps) {
+export function MessageBubble({ message, index, isLast, streaming, actions, switcher }: MessageBubbleProps) {
   const isUser = message.role === "user";
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(message.content);
@@ -50,7 +51,10 @@ export function MessageBubble({ message, index, isLast, streaming, actions }: Me
     <div className={`msg ${isUser ? "user" : "agent"}`}>
       <div className="avatar">{isUser ? "我" : "答"}</div>
       <div className="msg-main">
-        <div className="who">{isUser ? "我" : "学习助手"}</div>
+        <div className="who">
+          {isUser ? "我" : "学习助手"}
+          {switcher}
+        </div>
         {message.thinking && (
           <div className={`thinking${thinkingOpen ? " open" : ""}`} data-thinking-open={thinkingOpen}>
             <button className="thinking-head" onClick={() => setManualOpen(!thinkingOpen)}>

@@ -12,9 +12,10 @@ interface SessionsSidebarProps {
   activeId: string | null;
   onSelect: (id: string) => void;
   onNew: () => void;
+  onDelete: (id: string) => void;
 }
 
-export function SessionsSidebar({ sessions, activeId, onSelect, onNew }: SessionsSidebarProps) {
+export function SessionsSidebar({ sessions, activeId, onSelect, onNew, onDelete }: SessionsSidebarProps) {
   return (
     <aside className="sessions">
       <div className="head">
@@ -35,6 +36,12 @@ export function SessionsSidebar({ sessions, activeId, onSelect, onNew }: Session
             <span className="m">
               <span className="model">{s.model}</span>
               <span>{formatTime(s.modifiedAt)}</span>
+              <span
+                className="del"
+                role="button"
+                aria-label={`删除会话 ${s.title}`}
+                onClick={(event) => { event.stopPropagation(); onDelete(s.id); }}
+              >🗑</span>
             </span>
           </button>
         ))}

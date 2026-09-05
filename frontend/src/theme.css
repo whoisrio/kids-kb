@@ -333,3 +333,60 @@ button.ghost:hover { color: var(--redpen); border-color: var(--redpen); }
 .retry-btn { background: none; border: none; color: var(--redpen); cursor: pointer;
   padding: 0; text-decoration: underline; font: inherit; }
 .cand .m { font-size: 12px; color: var(--pencil); font-family: var(--mono); }
+/* ---- 3-C1 聊天增强 ---- */
+.msg-main { min-width: 0; }
+.msg .who { display: flex; align-items: center; gap: 8px; }
+.msg-actions { display: none; gap: 4px; margin-top: 2px; }
+.msg:hover .msg-actions { display: inline-flex; }
+.msg-actions button { border: 1px solid var(--line); background: var(--card); border-radius: 6px;
+  font-size: 11px; padding: 2px 8px; cursor: pointer; color: var(--ink); }
+.msg-actions button:hover { border-color: var(--redpen); color: var(--redpen); }
+.branch-switch { display: inline-flex; align-items: center; gap: 2px; font-size: 11px;
+  color: var(--pencil); font-family: var(--mono); }
+.branch-switch button { border: none; background: none; cursor: pointer; font-size: 13px;
+  color: var(--pencil); padding: 0 3px; }
+.branch-switch button:hover { color: var(--redpen); }
+.thinking { margin: 2px 0 6px; border: 1px dashed var(--line); border-radius: 8px;
+  background: rgba(255,255,255,.55); }
+.thinking-head { border: none; background: none; cursor: pointer; font-size: 11.5px;
+  color: var(--pencil); padding: 4px 10px; width: 100%; text-align: left; }
+.thinking-body { font-size: 12.5px; color: var(--pencil); padding: 0 10px 8px;
+  white-space: pre-wrap; max-height: 240px; overflow-y: auto; }
+.thinking.open .thinking-head { color: var(--ink); }
+.bubble .md > :first-child { margin-top: 0; }
+.bubble .md > :last-child { margin-bottom: 0; }
+.bubble .md p { margin: 6px 0; }
+.bubble .md pre { background: rgba(43,43,38,.06); padding: 8px 10px; border-radius: 6px;
+  overflow-x: auto; font-family: var(--mono); font-size: 12.5px; }
+.bubble .md code { font-family: var(--mono); font-size: 12.5px; }
+.bubble .md table { border-collapse: collapse; margin: 6px 0; }
+.bubble .md th, .bubble .md td { border: 1px solid var(--line); padding: 3px 8px; font-size: 12.5px; }
+.bubble .md .katex-display { margin: 8px 0; overflow-x: auto; }
+.edit-box textarea { width: 100%; min-height: 64px; border: 1px solid var(--line);
+  border-radius: 8px; padding: 8px; font: inherit; }
+.edit-actions { display: flex; gap: 6px; margin-top: 4px; }
+.rewind-banner { display: flex; align-items: center; gap: 10px; margin: 4px 16px;
+  padding: 8px 12px; border: 1px dashed var(--redpen); border-radius: 8px;
+  color: var(--redpen); font-size: 12.5px; }
+.session-item { position: relative; }
+.session-item .del { display: none; position: absolute; right: 8px; bottom: 8px;
+  cursor: pointer; font-size: 12px; opacity: .6; }
+.session-item:hover .del { display: inline; }
+.session-item .del:hover { opacity: 1; }
+.toast { position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%);
+  background: var(--ink); color: #fff; font-size: 13px; padding: 8px 18px;
+  border-radius: 999px; z-index: 60; }
+.dialog-mask { position: fixed; inset: 0; background: rgba(43,43,38,.35); z-index: 50;
+  display: flex; align-items: center; justify-content: center; }
+.dialog { background: var(--paper); border-radius: 12px; padding: 20px 24px;
+  box-shadow: 0 12px 40px rgba(43,43,38,.18); min-width: 280px; }
+.dialog p { margin: 0 0 14px; font-size: 14px; }
+.dialog-actions { display: flex; gap: 8px; justify-content: flex-end; }
+.dialog-actions .danger { background: var(--redpen); color: #fff; border: none;
+  border-radius: 8px; padding: 6px 16px; cursor: pointer; }
+.topbar .ghost { border: 1px solid var(--line); background: var(--card); border-radius: 8px;
+  padding: 5px 12px; font-size: 12.5px; cursor: pointer; color: var(--ink); }
+.topbar .ghost:hover { border-color: var(--redpen); color: var(--redpen); }
+.edit-box .primary, .dialog-actions .danger { font-weight: 500; }
+.edit-box .ghost { border: 1px solid var(--line); background: none; border-radius: 8px;
+  padding: 6px 16px; cursor: pointer; }
