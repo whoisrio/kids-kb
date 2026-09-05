@@ -28,6 +28,7 @@ maybe("review API（真库）", () => {
   let page2 = "";
   let block11 = "";
   let block12 = "";
+  let itemId = "";
 
   beforeAll(async () => {
     pool = await resetDbForTest(url!);
@@ -87,6 +88,16 @@ maybe("review API（真库）", () => {
       "INSERT INTO chapters (document_id, chapter_no, title, content_md) VALUES ($1,1,'学霸提优大试卷','第二套 竖式计算')",
       [flatDocId]);
     void fp;
+
+    const item = await pool.query(
+      `INSERT INTO items (document_id, content_type, label, content_md, chapter, taxonomy, tags, qc_status)
+       VALUES ($1,'exercise','例 1','24+37=61','第 1 讲 加法','计算类',ARRAY['口算','进位加'],'pending')
+       RETURNING id::text`, [docId]);
+    itemId = item.rows[0].id;
+    await pool.query(
+      "INSERT INTO item_blocks (item_id, block_id, role) VALUES ($1,$2,'stem')", [itemId, block11]);
+    await pool.query(
+      "INSERT INTO review_queue (item_id, reason) VALUES ($1,'ungrounded:例 1 摘录')", [itemId]);
   });
   afterAll(async () => { await pool.end(); });
 
@@ -142,5 +153,49 @@ maybe("review API（真库）", () => {
   it("GET /pages/:id 不存在 → 404；id 非法 → 422", async () => {
     expect((await app.request("/api/review/pages/not-a-uuid")).status).toBe(422);
     expect((await app.request("/api/review/pages/00000000-0000-0000-0000-000000000000")).status).toBe(404);
+  });
+
+  it("GET /items?doc_id=&status=pending：qc pending 或有 pending 复核行的条目", async () => {
+    const resp = await app.request(`/api/review/items?doc_id=${docId}&status=pending`);
+    expect(resp.status).toBe(200);
+    const { items } = (await resp.json()) as {
+      items: { id: string; label: string; chapter: string; qc_status: string; pending_reasons: string[] }[];
+    };
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({
+      id: itemId, label: "例 1", chapter: "第 1 讲 加法", qc_status: "pending",
+      pending_reasons: ["ungrounded:例 1 摘录"],
+    });
+  });
+
+  it("GET /items/:id：详情 + grounding 块（带裁图 URL）+ 复核行", async () => {
+    const resp = await app.request(`/api/review/items/${itemId}`);
+    expect(resp.status).toBe(200);
+    const d = (await resp.json()) as {
+      content_md: string; taxonomy: string | null; tags: string[] | null;
+      blocks: { id: string; role: string; content_md: string | null; crop_url: string }[];
+      reviews: { reason: string; status: string }[];
+    };
+    expect(d.content_md).toBe("24+37=61");
+    expect(d.taxonomy).toBe("计算类");
+    expect(d.blocks).toEqual([
+      { id: block11, role: "stem", block_type: "text", content_md: "24+37=61", source_model: null,
+        crop_url: `/api/review/blocks/${block11}/crop` },
+    ]);
+    expect(d.reviews[0]).toMatchObject({ reason: "ungrounded:例 1 摘录", status: "pending" });
+  });
+
+  it("GET /search?q=：复用注入的检索（带 subject 过滤透传）", async () => {
+    let seen: { q: string; filters?: Record<string, string> } | null = null;
+    const a = new Hono();
+    a.route("/api/review", reviewRoutes(pool, {
+      search: async (q, filters) => { seen = { q, filters }; return [{ item_id: itemId, document_id: docId, content_md: "命中", score: 1 }]; },
+      pipelineUrl: "http://x", storageRoot,
+    }));
+    const resp = await a.request("/api/review/search?q=竖式计算&subject=数学");
+    expect(resp.status).toBe(200);
+    expect((await resp.json()).hits).toHaveLength(1);
+    expect(seen).toEqual({ q: "竖式计算", filters: { subject: "数学" } });
+    expect((await a.request("/api/review/search?q=")).status).toBe(422);
   });
 });

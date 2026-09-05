@@ -132,5 +132,64 @@ export function reviewRoutes(pool: pg.Pool, deps: ReviewDeps): Hono {
     }
   });
 
+  app.get("/items", async (c) => {
+    const docId = c.req.query("doc_id");
+    const status = c.req.query("status");
+    if (status !== undefined && status !== "pending") {
+      return c.json({ error: "status 取值: pending" }, 422);
+    }
+    const params: unknown[] = [];
+    let where = "";
+    if (docId) { where = "WHERE i.document_id = $1::uuid"; params.push(docId); }
+    if (status === "pending") {
+      where += (where ? " AND " : "WHERE ") +
+        "(i.qc_status = 'pending' OR pr.reasons IS NOT NULL)";
+    }
+    const { rows } = await pool.query(
+      `SELECT i.id::text, i.content_type, i.label, i.chapter, i.qc_status, d.title AS doc_title,
+              pr.reasons, i.content_md, i.source_model
+       FROM items i
+       JOIN documents d ON d.id = i.document_id
+       LEFT JOIN LATERAL (
+         SELECT array_agg(r.reason ORDER BY r.created_at) AS reasons
+         FROM review_queue r WHERE r.item_id = i.id AND r.status = 'pending'
+       ) pr ON true
+       ${where} ORDER BY d.title, i.chapter, i.created_at`, params);
+    return c.json({ items: rows.map((r) => ({ ...r, pending_reasons: r.reasons ?? [] })) });
+  });
+
+  app.get("/items/:id", async (c) => {
+    try {
+      const { rows: [item] } = await pool.query(
+        `SELECT i.id::text, i.content_type, i.label, i.chapter, i.qc_status, i.content_md,
+                i.taxonomy, i.tags, d.title AS doc_title, i.source_model
+         FROM items i JOIN documents d ON d.id = i.document_id WHERE i.id = $1`,
+        [c.req.param("id")]);
+      if (!item) return c.json({ error: "item 不存在" }, 404);
+      const { rows: blocks } = await pool.query(
+        `SELECT b.id::text, ib.role, b.block_type, b.content_md, b.source_model
+         FROM item_blocks ib JOIN blocks b ON b.id = ib.block_id
+         WHERE ib.item_id = $1 ORDER BY b.created_at, b.id`, [item.id]);
+      const { rows: reviews } = await pool.query(
+        "SELECT id::text, reason, status FROM review_queue WHERE item_id = $1 ORDER BY created_at",
+        [item.id]);
+      return c.json({
+        ...item,
+        blocks: blocks.map((b) => ({ ...b, crop_url: `/api/review/blocks/${b.id}/crop` })),
+        reviews,
+      });
+    } catch (err) {
+      return invalidId(c, err) ?? (() => { throw err; })();
+    }
+  });
+
+  app.get("/search", async (c) => {
+    const q = (c.req.query("q") ?? "").trim();
+    if (!q) return c.json({ error: "q 不能为空" }, 422);
+    const subject = c.req.query("subject");
+    const filters = subject ? { subject } : undefined;
+    return c.json({ hits: await deps.search(q, filters) });
+  });
+
   return app;
 }
