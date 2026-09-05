@@ -31,7 +31,7 @@ def page_contents(cur, doc_id: str) -> list[tuple[int, str]]:
         cur.execute(
             """SELECT content_md FROM blocks
                WHERE page_id=%s AND NOT (block_type = ANY(%s)) AND content_md IS NOT NULL
-               ORDER BY created_at""",
+               ORDER BY created_at, id""",
             (page_id, list(_SKIP_TYPES)),
         )
         text = "\n".join(r[0] for r in cur.fetchall())

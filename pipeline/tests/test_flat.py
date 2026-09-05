@@ -76,3 +76,35 @@ def test_page_contents_adopts_and_skips(conn, flat_doc):
         (1, "一、口算 24+37=\n二、竖式 135÷5="),  # header 跳过，块按 created_at 序拼接
         (2, "第二套 素养达标 竖式计算题"),           # 整页稿原样
     ]  # 页 3 无内容，不出现
+
+
+def test_page_contents_orders_blocks_with_equal_created_at(conn):
+    """同页块 created_at 相同时按 id 排序，避免 PostgreSQL 返回不确定顺序。"""
+    from kb.flat import page_contents
+
+    doc_id = "00000000-0000-0000-0000-000000000001"
+    page_id = "00000000-0000-0000-0000-000000000002"
+    created_at = "2026-01-01T00:00:00+00:00"
+    with conn.cursor() as cur:
+        cur.execute(
+            "INSERT INTO documents (id, title, source_path) VALUES (%s, 'flat', %s)",
+            (doc_id, f"/tmp/{uuid.uuid4()}.pdf"),
+        )
+        cur.execute(
+            """INSERT INTO pages (id, document_id, page_no, image_path, status, adopted_source)
+               VALUES (%s,%s,1,'/tmp/flat-order.png','parsed','blocks')""",
+            (page_id, doc_id),
+        )
+        for block_id, content in [
+            ("00000000-0000-0000-0000-000000000004", "Z block"),
+            ("00000000-0000-0000-0000-000000000003", "A block"),
+        ]:
+            cur.execute(
+                """INSERT INTO blocks (id, page_id, block_type, crop_path, content_md, created_at)
+                   VALUES (%s,%s,'text','/tmp/flat-order.png',%s,%s)""",
+                (block_id, page_id, content, created_at),
+            )
+
+    with conn.cursor() as cur:
+        contents = page_contents(cur, doc_id)
+    assert contents == [(1, "A block\nZ block")]
