@@ -108,3 +108,37 @@ def test_page_contents_orders_blocks_with_equal_created_at(conn):
     with conn.cursor() as cur:
         contents = page_contents(cur, doc_id)
     assert contents == [(1, "A block\nZ block")]
+
+
+def test_build_flat_chapter_idempotent(conn, flat_doc):
+    from kb.flat import build_flat_chapter
+
+    doc_id, _cfg = flat_doc
+    ch1 = build_flat_chapter(conn, doc_id)
+    ch2 = build_flat_chapter(conn, doc_id)  # 重跑（页面被复核编辑后）更新内容不重建
+    assert ch1 == ch2
+    with conn.cursor() as cur:
+        cur.execute(
+            """SELECT ch.chapter_no, ch.title, ch.content_md, d.struct_mode
+               FROM chapters ch JOIN documents d ON d.id = ch.document_id WHERE ch.id=%s""",
+            (ch1,),
+        )
+        no, title, content_md, mode = cur.fetchone()
+    assert (no, title, mode) == (1, "学霸提优大试卷", "flat")
+    assert "一、口算 24+37=" in content_md
+    assert "第二套 素养达标 竖式计算题" in content_md
+    assert "\n\n" in content_md  # 页间以空行拼接
+
+
+def test_build_flat_chapter_refuses_multi_chapter_doc(conn, flat_doc):
+    """多章文档（已按目录拆章）不允许混用 flat（防止合成章覆盖真章）。"""
+    from kb.flat import build_flat_chapter
+
+    doc_id, _cfg = flat_doc
+    with conn.cursor() as cur:
+        cur.execute(
+            "INSERT INTO chapters (id, document_id, chapter_no, title) VALUES (%s,%s,2,'真章')",
+            (str(uuid.uuid4()), doc_id),
+        )
+    with pytest.raises(ValueError, match="已有章节"):
+        build_flat_chapter(conn, doc_id)

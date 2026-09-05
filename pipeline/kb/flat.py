@@ -38,3 +38,32 @@ def page_contents(cur, doc_id: str) -> list[tuple[int, str]]:
         if text.strip():
             out.append((page_no, text))
     return out
+
+
+def build_flat_chapter(conn, doc_id: str) -> str:
+    """建/更新合成章（chapter_no=1，title=文档名，content_md=全页采用内容拼接）并置
+    struct_mode='flat'。返回 chapter_id。幂等：重跑更新 content_md。
+    防混用：文档已有第 2+ 章视为 TOC 拆过章，拒绝。"""
+    with conn.cursor() as cur:
+        cur.execute("SELECT title FROM documents WHERE id=%s", (doc_id,))
+        row = cur.fetchone()
+        if not row:
+            raise ValueError(f"文档不存在: {doc_id}")
+        cur.execute(
+            "SELECT chapter_no FROM chapters WHERE document_id=%s ORDER BY chapter_no",
+            (doc_id,),
+        )
+        chapters = [r[0] for r in cur.fetchall()]
+        if chapters and chapters != [1]:
+            raise ValueError("文档已有章节（可能已按目录拆章），--flat 仅用于未拆章文档")
+        content_md = "\n\n".join(text for _no, text in page_contents(cur, doc_id))
+        cur.execute(
+            """INSERT INTO chapters (id, document_id, chapter_no, title, content_md)
+               VALUES (%s,%s,1,%s,%s)
+               ON CONFLICT (document_id, chapter_no) DO UPDATE SET content_md = EXCLUDED.content_md
+               RETURNING id""",
+            (str(uuid.uuid4()), doc_id, row[0], content_md),
+        )
+        chapter_id = str(cur.fetchone()[0])
+        cur.execute("UPDATE documents SET struct_mode='flat' WHERE id=%s", (doc_id,))
+    return chapter_id
