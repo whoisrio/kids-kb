@@ -24,3 +24,6 @@ resources
 
 # Playwright E2E 运行产物（trace/error context）
 e2e/test-results/
+
+# Git worktrees
+.worktrees/
