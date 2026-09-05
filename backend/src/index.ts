@@ -13,6 +13,7 @@ import { sessionsRoutes } from "./routes/sessions.js";
 import { modelsRoutes } from "./routes/models.js";
 import { papersRoutes } from "./routes/papers.js";
 import { paperQuestionsRoutes } from "./routes/paperQuestions.js";
+import { reviewRoutes } from "./routes/review.js";
 import { redriveWhenPipelineReady, type PaperJobDeps } from "./papers/jobs.js";
 
 export function createApp(
@@ -54,6 +55,9 @@ export function createApp(
   app.route("/api/attempts", attemptsRoutes(pool));
   app.route("/api/papers", papersRoutes(pool, paperJobs, cfg));
   app.route("/api/paper-questions", paperQuestionsRoutes(pool, paperJobs));
+  app.route("/api/review", reviewRoutes(pool, {
+    search, pipelineUrl: cfg.pipelineUrl, storageRoot: cfg.storageRoot,
+  }));
   return app;
 }
 

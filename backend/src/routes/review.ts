@@ -281,5 +281,75 @@ export function reviewRoutes(pool: pg.Pool, deps: ReviewDeps): Hono {
     }
   });
 
+  async function forwardInternal(c: Context, path: string, body?: unknown): Promise<Response> {
+    try {
+      const resp = await fetch(`${deps.pipelineUrl}${path}`, {
+        method: "POST",
+        headers: body !== undefined ? { "Content-Type": "application/json" } : undefined,
+        body: body !== undefined ? JSON.stringify(body) : undefined,
+      });
+      const text = await resp.text();
+      return c.newResponse(text.length ? text : null, resp.status, {
+        "Content-Type": resp.headers.get("content-type") ?? "application/json",
+      });
+    } catch (err) {
+      console.error("pipeline internal 调用失败", path, err);
+      return c.json({ error: "内部服务不可达" }, 502);
+    }
+  }
+
+  app.post("/pages/:id/approve", async (c) => {
+    try {
+      const { rows: [page] } = await pool.query(
+        `SELECT p.id::text, p.page_no, d.id::text AS doc_id, d.struct_mode
+         FROM pages p JOIN documents d ON d.id = p.document_id WHERE p.id = $1`,
+        [c.req.param("id")]);
+      if (!page) return c.json({ error: "page 不存在" }, 404);
+      const { rows: closed } = await pool.query(
+        `UPDATE review_queue SET status='approved' WHERE status='pending' AND (
+           page_id=$1 OR block_id IN (SELECT id FROM blocks WHERE page_id=$1))
+         RETURNING id`, [page.id]);
+      if (page.struct_mode === "flat") {
+        try {
+          const resp = await fetch(`${deps.pipelineUrl}/internal/embed-flat-page`, {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ doc_id: page.doc_id, page_no: page.page_no }),
+          });
+          if (!resp.ok) throw new Error(await resp.text());
+          const { chunks } = await resp.json() as { chunks: number };
+          return c.json({ id: page.id, resolved: closed.length, embedded: chunks });
+        } catch (err) {
+          console.error("flat 页向量化失败", err);
+          return c.json({ id: page.id, resolved: closed.length, embed_error: "向量化失败，可重新通过该页重试" });
+        }
+      }
+      return c.json({ id: page.id, resolved: closed.length });
+    } catch (err) {
+      return invalidId(c, err) ?? (() => { throw err; })();
+    }
+  });
+
+  app.post("/items/:id/approve", async (c) => {
+    try {
+      const { rows: [item] } = await pool.query(
+        "SELECT id::text FROM items WHERE id=$1", [c.req.param("id")]);
+      if (!item) return c.json({ error: "item 不存在" }, 404);
+      return forwardInternal(c, `/internal/approve-item?item_id=${encodeURIComponent(item.id)}`);
+    } catch (err) {
+      return invalidId(c, err) ?? (() => { throw err; })();
+    }
+  });
+
+  app.post("/pages/:id/page-vlm", async (c) => {
+    try {
+      const { rows: [page] } = await pool.query(
+        "SELECT id::text FROM pages WHERE id=$1", [c.req.param("id")]);
+      if (!page) return c.json({ error: "page 不存在" }, 404);
+      return forwardInternal(c, "/internal/page-vlm", { page_id: page.id });
+    } catch (err) {
+      return invalidId(c, err) ?? (() => { throw err; })();
+    }
+  });
+
   return app;
 }

@@ -264,4 +264,84 @@ maybe("review API（真库）", () => {
     expect((await pool.query("SELECT adopted_source FROM pages WHERE id=$1", [page1])).rows[0].adopted_source)
       .toBe("page_md");
   });
+
+  it("POST /pages/:id/approve：关闭该页 pending 行；flat 文档同时调 /internal/embed-flat-page（失败不回滚行）", async () => {
+    const calls: { doc_id: string; page_no: number }[] = [];
+    const stubPipeline = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const url = String(input);
+      if (url.endsWith("/internal/embed-flat-page")) {
+        calls.push(JSON.parse(String(init?.body)));
+        return new Response(JSON.stringify({ chunks: 1 }), {
+          status: 200, headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (url.includes("/internal/")) return new Response("{}", {
+        status: 200, headers: { "Content-Type": "application/json" },
+      });
+      return new Response("no route", { status: 404 });
+    };
+    const a = new Hono();
+    a.route("/api/review", reviewRoutes(pool, {
+      search: async () => [], pipelineUrl: "http://pipeline.test", storageRoot,
+    }));
+    const { vi } = await import("vitest");
+    vi.stubGlobal("fetch", stubPipeline);
+    try {
+      const r1 = await a.request(`/api/review/pages/${page1}/approve`, { method: "POST" });
+      expect(r1.status).toBe(200);
+      expect((await r1.json()).resolved).toBe(1);
+      expect((await pool.query(
+        "SELECT count(*)::int AS n FROM review_queue WHERE block_id=$1 AND status='pending'",
+        [block12])).rows[0].n).toBe(0);
+      expect(calls).toEqual([]);
+
+      const flatPage = (await pool.query(
+        "SELECT id::text FROM pages WHERE document_id=$1", [flatDocId])).rows[0].id;
+      const r2 = await a.request(`/api/review/pages/${flatPage}/approve`, { method: "POST" });
+      expect(r2.status).toBe(200);
+      const body2 = await r2.json();
+      expect(body2.embedded).toBe(1);
+      expect(calls).toEqual([{ doc_id: flatDocId, page_no: 1 }]);
+
+      vi.stubGlobal("fetch", async () => new Response("boom", { status: 500 }));
+      const r3 = await a.request(`/api/review/pages/${flatPage}/approve`, { method: "POST" });
+      expect(r3.status).toBe(200);
+      const body3 = await r3.json();
+      expect(body3.embed_error).toBeTruthy();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("POST /items/:id/approve 与 /pages/:id/page-vlm：转发 internal，透传响应/错误", async () => {
+    const { vi } = await import("vitest");
+    const posts: string[] = [];
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (init?.method === "POST" || url.includes("approve-item") || url.includes("page-vlm")) {
+        posts.push(url);
+        return new Response(JSON.stringify({ ok: true }), {
+          status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      return new Response("no route", { status: 404 });
+    });
+    const a = new Hono();
+    a.route("/api/review", reviewRoutes(pool, {
+      search: async () => [], pipelineUrl: "http://pipeline.test", storageRoot,
+    }));
+    try {
+      const r1 = await a.request(`/api/review/items/${itemId}/approve`, { method: "POST" });
+      expect(r1.status).toBe(200);
+      expect(await r1.json()).toEqual({ ok: true });
+      const r2 = await a.request(`/api/review/pages/${page1}/page-vlm`, { method: "POST" });
+      expect(r2.status).toBe(200);
+      expect(posts[0]).toBe("http://pipeline.test/internal/approve-item?item_id=" + itemId);
+      expect(posts[1]).toBe("http://pipeline.test/internal/page-vlm");
+      vi.stubGlobal("fetch", async () => { throw new Error("ECONNREFUSED"); });
+      const r3 = await a.request(`/api/review/items/${itemId}/approve`, { method: "POST" });
+      expect(r3.status).toBe(502);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
 });
