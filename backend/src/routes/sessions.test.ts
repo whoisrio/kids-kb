@@ -6,7 +6,7 @@ import type { SessionHandle, SessionStore } from "../agent/sessions.js";
 
 function makeStore(opts: {
   list?: Awaited<ReturnType<SessionStore["list"]>>;
-  sessions?: Record<string, { title?: string; model?: string; messages: { role: "user" | "assistant"; content: string }[] }>;
+  sessions?: Record<string, { title?: string; model?: string; messages: { role: "user" | "assistant"; content: string; entryId: string }[] }>;
 }): SessionStore {
   return {
     create: async () => {
@@ -22,9 +22,17 @@ function makeStore(opts: {
         messages: async () => data.messages,
         appendMessage: async () => {},
         markModelChange: async () => {},
+        lanes: async () => [],
+        latestLane: async () => "main",
+        forkAt: async () => {
+          throw new Error("未使用");
+        },
+        laneExists: async () => false,
+        entryExists: async () => false,
       };
     },
     list: async () => opts.list ?? [],
+    delete: async () => false,
   };
 }
 
@@ -56,8 +64,8 @@ describe("/api/sessions", () => {
           title: "口算题",
           model: "deepseek-v3",
           messages: [
-            { role: "user", content: "问题" },
-            { role: "assistant", content: "回答" },
+            { role: "user", content: "问题", entryId: "m1" },
+            { role: "assistant", content: "回答", entryId: "m2" },
           ],
         },
       },

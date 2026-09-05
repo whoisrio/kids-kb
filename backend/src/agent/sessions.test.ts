@@ -32,7 +32,7 @@ function thinkingAssistantMsg(thinking: string, text: string): AgentMessage {
   return {
     ...assistantMsg(text),
     content: [{ type: "thinking", thinking }, { type: "text", text }],
-  };
+  } as unknown as AgentMessage;
 }
 
 /** 只有 toolCall、没有 text 段的 assistant 消息（工具调用中间态）。 */
@@ -252,5 +252,19 @@ describe("JsonlSessionStore", () => {
     const reopened = await new JsonlSessionStore({ sessionsRoot: dir, cwd: dir }).open(h.id);
     expect((await reopened!.lanes()).map((l) => l.id)).toEqual(["main", fork]);
     expect((await reopened!.messages(fork)).map((m) => m.content)).toEqual(["q1"]);
+  });
+
+  it("delete：文件消失、list/open 不再有、不存在返回 false", async () => {
+    const { store, dir } = makeStore();
+    const h = await store.create({ title: "t", model: "m" });
+    await h.appendMessage(userMsg("q1"));
+    const files1 = (readdirSync(dir, { recursive: true }) as string[]).filter((f) => f.endsWith(".jsonl"));
+    expect(files1).toHaveLength(1);
+    expect(await store.delete(h.id)).toBe(true);
+    const files2 = (readdirSync(dir, { recursive: true }) as string[]).filter((f) => f.endsWith(".jsonl"));
+    expect(files2).toHaveLength(0);
+    expect(await store.open(h.id)).toBeNull();
+    expect((await store.list()).map((s) => s.id)).not.toContain(h.id);
+    expect(await store.delete(h.id)).toBe(false);
   });
 });

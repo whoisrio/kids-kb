@@ -48,6 +48,13 @@ function fakeStore(initial?: Record<string, { model: string; messages: StoredCha
       (marks[id] ??= []).push(modelId);
       data[id].model = modelId;
     },
+    lanes: async () => [],
+    latestLane: async () => "main",
+    forkAt: async () => {
+      throw new Error("未使用");
+    },
+    laneExists: async () => false,
+    entryExists: async () => false,
   });
   const store: SessionStore = {
     create: async (o) => {
@@ -58,6 +65,7 @@ function fakeStore(initial?: Record<string, { model: string; messages: StoredCha
     },
     open: async (id) => (data[id] ? makeHandle(id) : null),
     list: async () => [],
+    delete: async () => false,
   };
   return { store, createCalls, appended, marks };
 }
@@ -205,7 +213,13 @@ describe("/api/chat 会话持久化", () => {
 
   it("带 session_id → 用会话历史（服务端权威）而非客户端历史构造 agent", async () => {
     const { store } = fakeStore({
-      "s-x": { model: "qwen3:4b", messages: [{ role: "user", content: "之前的问题" }, { role: "assistant", content: "之前的回答" }] },
+      "s-x": {
+        model: "qwen3:4b",
+        messages: [
+          { role: "user", content: "之前的问题", entryId: "m1" },
+          { role: "assistant", content: "之前的回答", entryId: "m2" },
+        ],
+      },
     });
     let factoryMessages: { role: string; content: string }[] | null = null;
     const agent = fakeAgent([{ type: "agent_end", messages: [] }]);

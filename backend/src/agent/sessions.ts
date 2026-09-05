@@ -66,6 +66,8 @@ export interface SessionStore {
   create(opts: { title: string; model: string }): Promise<SessionHandle>;
   open(id: string): Promise<SessionHandle | null>;
   list(): Promise<SessionSummary[]>;
+  /** 删除会话（JSONL 文件 + 进程缓存）；不存在返回 false。 */
+  delete(id: string): Promise<boolean>;
 }
 
 /** src/ 与 dist/ 深度相同，同 db.ts 的 migrations 路径手法。 */
@@ -258,5 +260,13 @@ export class JsonlSessionStore implements SessionStore {
       createdAt: m.createdAt,
       modifiedAt: m.modifiedAt,
     }));
+  }
+
+  async delete(id: string): Promise<boolean> {
+    const meta = (await this.repo.list()).find((m) => m.id === id);
+    if (!meta) return false;
+    await this.repo.delete(meta);
+    this.cache.delete(id);
+    return true;
   }
 }
