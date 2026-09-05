@@ -12,7 +12,7 @@
    `uv run python -m kb.cli ingest <文件> --title <书名> --subject <科目> --type <类型>`
    pdf / docx / md 同一条命令，按扩展名自动分流。
    docx/md 入库即完成**章节向量化**——不拆条也能被聊天检索到。
-4. PDF（docx/md 可选）跑 `structure <doc_id>` 拆条成题目级条目。
+4. PDF（docx/md 可选）跑 `structure <doc_id>` 拆条成题目级条目；无目录页的试卷集合自动回退「整卷按页」模式（不拆条，页级检索，`--flat` 显式强制）。
 5. 批量复核通过：`approve <doc_id>`（可 `--chapter N` 限章）。
    通过即自动向量化，之后聊天可检索到条目级内容；
    也可在复核页逐条 approve（同样即时向量化）。

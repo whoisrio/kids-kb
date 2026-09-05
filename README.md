@@ -68,6 +68,12 @@ uv run python -m kb.cli structure <doc_id> [--toc-pages 5]   # 目录页不给�
 - 按章节窗口（非单页）喂文本模型拆条，跨页题目天然合并；taxonomy/tags 从该章词表注入，模型不自由发挥；
 - `pair_items` 按 label 精确配对 answer ↔ exercise/example；题号连续性检查（`missing_item`，支持纯数字与 "3-1" 式分组题号）进复核队列（不自动关闭）。
 
+## 整卷按页模式（flat）：无目录文档回退
+
+`structure` 探测不到目录页时自动回退（`--flat` 可显式强制，`--toc-pages` 仍可指定走目录路径）：
+建 1 条「全卷」合成章、不拆条，`approve` 后按页向量化——chunk meta 带 `page_no`，检索可定位到页。
+适合无目录页的试卷集合（如《学霸提优大试卷》）；`documents.struct_mode` 记录模式（toc|flat）。
+
 ## 检索期：向量化与语义查询
 
 ```bash
