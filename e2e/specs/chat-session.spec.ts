@@ -16,9 +16,9 @@ const SESSIONS_ROOT =
   process.env.KB_SESSIONS_ROOT ??
   path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../backend/storage/sessions");
 
-const MSG_A1 = `E2E-${RUN}-不使用工具，请只用一句话回答：小宝这周数学口算练习做得怎么样？`;
-const MSG_A2 = `E2E-${RUN}-不使用工具，请只用一句话给英语学习建议。`;
-const MSG_B1 = `E2E-${RUN}-请只列出五道两位数乘法题目。`;
+const MSG_A1 = `E2E-${RUN}-小宝这周数学口算练习做得怎么样？不使用工具，请只用一句话回答。`;
+const MSG_A2 = `E2E-${RUN}-英语学习上有什么建议？不使用工具，请只用一句话回答。`;
+const MSG_B1 = `E2E-${RUN}-五道两位数乘法题目是什么？不使用工具，请只列出题目。`;
 
 test.describe.configure({ mode: "serial" });
 
@@ -168,6 +168,8 @@ test("t2 刷新回看：侧栏入口 + 完整消息流 + 下拉同步 currentMod
   };
   // 等回看消息渲染完成（fetchSessionDetail 异步）
   await expect(page.locator(".msg")).toHaveCount(detail.messages.length);
+  await expect(page.locator(".msg").nth(detail.messages.length - 1).locator(".bubble"))
+    .toContainText(detail.messages.at(-1)!.content.slice(0, 30));
   await expect(page.locator(".chat-wrap")).toHaveAttribute("data-streaming", "false");
   const bubbles = await bubbleTexts(page);
   expect(bubbles).toEqual(detail.messages.map((m) => m.content));
