@@ -289,8 +289,9 @@ export function reviewRoutes(pool: pg.Pool, deps: ReviewDeps): Hono {
         body: body !== undefined ? JSON.stringify(body) : undefined,
       });
       const text = await resp.text();
-      return c.newResponse(text.length ? text : null, resp.status, {
-        "Content-Type": resp.headers.get("content-type") ?? "application/json",
+      return new Response(text.length ? text : null, {
+        status: resp.status,
+        headers: { "Content-Type": resp.headers.get("content-type") ?? "application/json" },
       });
     } catch (err) {
       console.error("pipeline internal 调用失败", path, err);

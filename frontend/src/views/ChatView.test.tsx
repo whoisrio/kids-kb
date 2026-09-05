@@ -47,7 +47,6 @@ describe("ChatView", () => {
 
   it("无分叉的消息无切换器；复制走 onCopy 消息原文", () => {
     const onToast = vi.fn();
-    const onCopy = vi.fn();
     render(<ChatView
       messages={[{ role: "user", content: "单分支", entryId: "e0" }]}
       streaming={false}

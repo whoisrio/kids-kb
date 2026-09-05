@@ -6,6 +6,7 @@ it("createApp 挂载试卷路由(未挂载时是 404 not found,挂载后是业�
   const app = createApp({
     databaseUrl: "postgresql://rio@localhost/kb",
     chatBaseUrl: "http://x", chatApiKey: "k", chatModel: "m", chatModels: ["m"],
+    chatThinking: "medium",
     embedBaseUrl: "http://x", embedModel: "e", pipelineUrl: "http://x",
     rerankProvider: "none", port: 8787,
     storageRoot: "/tmp", matchThreshold: 0.88,
