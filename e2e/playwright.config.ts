@@ -31,7 +31,12 @@ export default defineConfig({
       url: "http://127.0.0.1:8787/api/health",
       reuseExistingServer: true,
       timeout: 60_000,
-      env: { CHAT_MODELS: process.env.CHAT_MODELS ?? "qwen3.5:4b,qwen3.5:2b" },
+      env: {
+        CHAT_BASE_URL: process.env.CHAT_BASE_URL ?? "http://localhost:11434/v1",
+        CHAT_API_KEY: process.env.CHAT_API_KEY ?? "ollama",
+        CHAT_MODEL: process.env.CHAT_MODEL ?? "qwen3.5:4b-32k",
+        CHAT_MODELS: process.env.CHAT_MODELS ?? "qwen3.5:4b-32k,qwen3.5:2b",
+      },
     },
     {
       command: "npm run dev",
