@@ -275,3 +275,21 @@ def test_embed_flat_pages_guards(conn, flat_doc):
         cur.execute("UPDATE documents SET struct_mode='toc' WHERE id=%s", (doc_id,))
     with pytest.raises(ValueError, match="非 flat"):
         embed_flat_pages(conn, cfg, doc_id, client=_FakeEmbed())
+
+
+def test_resolve_mode(conn, flat_doc):
+    """优先级：--flat 显式 > --toc-pages 显式 > 自动探测（前 15 页块文本含「目录」= toc）。"""
+    from kb.flat import resolve_mode
+
+    doc_id, _cfg = flat_doc
+    with conn.cursor() as cur:
+        assert resolve_mode(cur, doc_id, flat=True, toc_pages=None) == "flat"
+        assert resolve_mode(cur, doc_id, flat=False, toc_pages=[4]) == "toc"
+        assert resolve_mode(cur, doc_id, flat=False, toc_pages=None) == "flat"  # 无目录块
+        cur.execute(
+            """INSERT INTO blocks (id, page_id, block_type, crop_path, content_md)
+               SELECT %s, id, 'text', '/tmp/c.png', '目录 第 1 套' FROM pages
+               WHERE document_id=%s AND page_no=1""",
+            (str(uuid.uuid4()), doc_id),
+        )
+        assert resolve_mode(cur, doc_id, flat=False, toc_pages=None) == "toc"

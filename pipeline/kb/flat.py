@@ -136,3 +136,13 @@ def embed_flat_pages(conn, cfg: Config, doc_id: str, page_no: int | None = None,
                     (chapter_id, doc_id, pno * 1000 + i, content, Jsonb(meta), vec),
                 )
     return len(payloads)
+
+
+def resolve_mode(cur, doc_id: str, flat: bool, toc_pages: list[int] | None) -> str:
+    """structure 模式判定：显式 --flat > 显式 --toc-pages > 自动探测目录页。"""
+    if flat:
+        return "flat"
+    if toc_pages:
+        return "toc"
+    from kb.toc import detect_toc_pages
+    return "toc" if detect_toc_pages(cur, doc_id) else "flat"
