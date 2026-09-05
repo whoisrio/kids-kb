@@ -11,10 +11,17 @@ export function sessionsRoutes(store: SessionStore) {
   app.get("/:id", async (c) => {
     const handle = await store.open(c.req.param("id"));
     if (!handle) return c.json({ error: "会话不存在" }, 404);
+    const lane = c.req.query("lane");
+    if (lane !== undefined && !(await handle.laneExists(lane))) {
+      return c.json({ error: "分支不存在" }, 404);
+    }
+    const currentLane = lane ?? (await handle.latestLane());
     return c.json({
       title: handle.title,
-      currentModel: await handle.currentModel(),
-      messages: await handle.messages(),
+      currentModel: await handle.currentModel(currentLane),
+      currentLane,
+      lanes: await handle.lanes(),
+      messages: await handle.messages(currentLane),
     });
   });
   return app;
