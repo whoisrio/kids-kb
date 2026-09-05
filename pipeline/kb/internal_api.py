@@ -1,6 +1,8 @@
 """内部服务：只对 TS 后端暴露，不对前端。rerank 是唯一需要本地模型权重的环节。"""
 from __future__ import annotations
 
+from contextlib import contextmanager
+
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from pydantic import BaseModel
 
@@ -15,8 +17,13 @@ class RecognizePageRequest(BaseModel):
     page_no: int
 
 
+class EmbedFlatPageRequest(BaseModel):
+    doc_id: str
+    page_no: int
+
+
 def create_internal_app(reranker_factory=None, get_conn=None, cfg=None,
-                        vlm_client=None) -> FastAPI:
+                        vlm_client=None, embed_client=None) -> FastAPI:
     """reranker_factory / get_conn / cfg / vlm_client 均可注入假实现；默认懒加载真实依赖。"""
     if reranker_factory is None:
         def reranker_factory():
@@ -31,6 +38,18 @@ def create_internal_app(reranker_factory=None, get_conn=None, cfg=None,
             return get_conn()
         from kb.db import connect
         return connect(cfg.database_url)
+
+    def _cfg():
+        return cfg
+
+    @contextmanager
+    def conn_ctx():
+        conn = _conn()
+        try:
+            yield conn
+        finally:
+            if get_conn is None:
+                conn.close()
 
     app = FastAPI(title="kb-internal", docs_url=None, redoc_url=None)
 
@@ -76,5 +95,19 @@ def create_internal_app(reranker_factory=None, get_conn=None, cfg=None,
             raise HTTPException(status_code=500, detail=str(e)) from e
         finally:
             conn.close()
+
+    @app.post("/internal/embed-flat-page")
+    def embed_flat_page_ep(body: EmbedFlatPageRequest):
+        """复核页全量通过后 flat 单页向量化；重建式幂等。"""
+        from kb.flat import embed_flat_pages
+
+        with conn_ctx() as conn:
+            try:
+                chunks = embed_flat_pages(
+                    conn, _cfg(), body.doc_id, page_no=body.page_no,
+                    client=embed_client)
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=str(e)) from e
+        return {"chunks": chunks}
 
     return app

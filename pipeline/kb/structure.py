@@ -159,3 +159,71 @@ def pair_items(conn, doc_id: str) -> int:
             (doc_id, doc_id),
         )
         return n1  # 配对数按 answer 侧计（双向回写是同一对的两侧）
+
+
+def run_structure(conn, cfg: Config, doc_id: str, toc_pages: list[int] | None = None,
+                  flat: bool = False, client=None) -> dict:
+    """structure 编排（CLI 同款流程，可直接测试）。
+    模式判定：--flat 显式 / --toc-pages 显式 / 自动探测目录页，探测不到回退 flat。"""
+    from kb.export_md import export_chapter_mds, export_page_mds
+    from kb.flat import build_flat_chapter, resolve_mode
+    from kb.grounding import run_grounding
+    from kb.qc import check_label_continuity
+    from kb.toc import calibrate_pages, extract_toc
+
+    with conn.cursor() as cur:
+        mode = resolve_mode(cur, doc_id, flat=flat, toc_pages=toc_pages)
+    if mode == "flat":
+        if not flat:
+            print("未找到目录页，回退整卷按页模式（--toc-pages 可显式指定目录页）")
+        build_flat_chapter(conn, doc_id)
+        print(f"整卷按页模式: 合成 1 章（不拆条,页级通过后按页向量化）; "
+              f"落盘 {export_page_mds(conn, cfg, doc_id)} 页 md, "
+              f"{export_chapter_mds(conn, cfg, doc_id)} 章 md")
+        return {"mode": "flat", "chapters": 1, "items": 0}
+
+    with conn.transaction(), conn.cursor() as cur:
+        cur.execute(
+            """SELECT d.struct_mode, count(ch.id),
+                      NOT EXISTS (SELECT 1 FROM items WHERE document_id=d.id),
+                      NOT EXISTS (SELECT 1 FROM chunks WHERE document_id=d.id)
+               FROM documents d LEFT JOIN chapters ch ON ch.document_id=d.id
+               WHERE d.id=%s GROUP BY d.id, d.struct_mode""",
+            (doc_id,),
+        )
+        row = cur.fetchone()
+        if row and row[0] == "flat":
+            if row[1]:
+                if row[1] != 1 or not row[2] or not row[3]:
+                    raise ValueError(
+                        "文档已有生成的 flat 内容，无法自动切换为目录模式；"
+                        "请先清理该文档或重新入库"
+                    )
+                cur.execute(
+                    "DELETE FROM chapters WHERE document_id=%s AND chapter_no=1",
+                    (doc_id,),
+                )
+
+    n_toc = extract_toc(conn, cfg, doc_id, client=client, toc_pages=toc_pages)
+    n_cal = calibrate_pages(conn, doc_id)
+    print(f"目录: {n_toc} 章入库, {n_cal} 章完成页码校准")
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT chapter_no FROM chapters WHERE document_id=%s ORDER BY chapter_no",
+            (doc_id,),
+        )
+        chapters = [r[0] for r in cur.fetchall()]
+    total = 0
+    for no in chapters:
+        try:
+            total += structure_chapter(conn, cfg, doc_id, no, client=client)
+        except SystemExit as e:
+            print(f"第 {no} 章跳过: {e}")
+    print(f"条目: {total} 条入库; 配对 {pair_items(conn, doc_id)} 处; "
+          f"题号质检新增 {check_label_continuity(conn, doc_id)} 条; "
+          f"接地检查新增 {run_grounding(conn, doc_id)} 条")
+    with conn.cursor() as cur:
+        cur.execute("UPDATE documents SET struct_mode='toc' WHERE id=%s", (doc_id,))
+    print(f"落盘: {export_page_mds(conn, cfg, doc_id)} 页 md, "
+          f"{export_chapter_mds(conn, cfg, doc_id)} 章 md")
+    return {"mode": "toc", "chapters": len(chapters), "items": total}

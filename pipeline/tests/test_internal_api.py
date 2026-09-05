@@ -4,6 +4,7 @@ from fastapi.testclient import TestClient
 
 from kb.db import connect
 from kb.internal_api import create_internal_app
+from tests.test_flat import _FakeEmbed, flat_doc
 
 
 class _FakeReranker:
@@ -132,6 +133,35 @@ class TestPaperEndpoints:
         md = conn.execute(
             "SELECT content_md FROM paper_questions WHERE paper_id=%s", (pid,)).fetchone()[0]
         assert md == "新"
+
+
+class TestEmbedFlatPage:
+    def test_rebuild_one_specified_page(self, conn, flat_doc):
+        from kb.flat import build_flat_chapter
+
+        doc_id, cfg = flat_doc
+        build_flat_chapter(conn, doc_id)
+        client = TestClient(create_internal_app(
+            get_conn=lambda: conn, cfg=cfg, embed_client=_FakeEmbed()))
+        resp = client.post("/internal/embed-flat-page",
+                           json={"doc_id": doc_id, "page_no": 1})
+        assert resp.status_code == 200
+        assert resp.json() == {"chunks": 1}
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT meta->>'page_no' FROM chunks WHERE chapter_id IS NOT NULL"
+            )
+            rows = cur.fetchall()
+        assert [row[0] for row in rows] == ["1"]
+
+    def test_missing_flat_chapter_returns_500(self, conn, flat_doc):
+        doc_id, cfg = flat_doc
+        client = TestClient(create_internal_app(
+            get_conn=lambda: conn, cfg=cfg), raise_server_exceptions=False)
+        resp = client.post("/internal/embed-flat-page",
+                           json={"doc_id": doc_id, "page_no": 1})
+        assert resp.status_code == 500
+        assert "flat" in resp.json()["detail"]
 
 
 class _ConnSpy:

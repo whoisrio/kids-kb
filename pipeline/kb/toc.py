@@ -75,7 +75,8 @@ def _parse_json_array(text: str) -> list[dict]:
         return json.loads(fixed)
 
 
-def _detect_toc_pages(cur, doc_id: str) -> list[int]:
+def detect_toc_pages(cur, doc_id: str) -> list[int]:
+    """自动探测目录页：前 15 页里块文本含「目录」的页。"""
     cur.execute(
         """SELECT DISTINCT p.page_no FROM pages p
            JOIN blocks b ON b.page_id = p.id
@@ -95,7 +96,7 @@ def extract_toc(conn, cfg: Config, doc_id: str, client=None,
         cur.execute("SELECT 1 FROM chapters WHERE document_id=%s LIMIT 1", (doc_id,))
         if cur.fetchone():
             return 0
-        pages = toc_pages if toc_pages is not None else _detect_toc_pages(cur, doc_id)
+        pages = toc_pages if toc_pages is not None else detect_toc_pages(cur, doc_id)
         if not pages:
             raise SystemExit("未找到目录页，请用 --toc-pages 显式指定")
         n = 0

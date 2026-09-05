@@ -1587,6 +1587,10 @@ git commit -m "feat(e2e): md 入库→章节向量化→聊天检索全链路用
 > （显式 `--toc-pages` 时本地 qwen3.5:4b 的 TOC JSON 输出也不稳）。
 > 需 Phase 3-C 复核页迁移或新增"按 page 落章节 chunks"的简版路径来收尾，详见 .workbuddy/memory/2026-09-04.md。
 
+> **口径修订（2026-09-05，`2026-09-05-phase3-c-design.md` D4）：**
+> 无目录试卷集合走 flat 路径后，Step 2 验收从「命中试卷条目（题目级）」修订为
+> 「命中页级章节 chunk（meta 带 page_no，可定位到页）」。
+
 
 **背景：** `kb` 库为空是"查询不到资料"的现状起点。
 本任务把 `resources/` 的真实资料重新入库并验收可检索。
