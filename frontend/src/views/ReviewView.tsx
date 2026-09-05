@@ -8,11 +8,13 @@ import { MatchPicker } from "../components/MatchPicker";
 import { PaperQueue } from "../components/PaperQueue";
 import { QuestionCard } from "../components/QuestionCard";
 import { UploadDialog } from "../components/UploadDialog";
+import { MaterialsView } from "./MaterialsView";
 
 const CAUSES = ["粗心", "概念不清", "方法不会", "计算错"];
 
 /** 复核视图:左列试卷队列 + 右侧当前题确认流(键盘 1/2/3 + Enter)。 */
 export function ReviewView() {
+  const [tab, setTab] = useState<"papers" | "materials">("papers");
   const [papers, setPapers] = useState<PaperSummary[]>([]);
   const [kids, setKids] = useState<{ id: string; name: string }[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -120,8 +122,24 @@ export function ReviewView() {
     return () => window.removeEventListener("keydown", onKey);
   }, [current, busy, doConfirm, matchOpen, uploadOpen]);
 
+  if (tab === "materials") {
+    return (
+      <div className="review-wrap materials">
+        <div className="mat-tabs">
+          <button onClick={() => setTab("papers")}>试卷</button>
+          <button className="active">资料</button>
+        </div>
+        <MaterialsView />
+      </div>
+    );
+  }
+
   return (
     <div className="review-wrap">
+      <div className="mat-tabs">
+        <button className="active">试卷</button>
+        <button onClick={() => setTab("materials")}>资料</button>
+      </div>
       <PaperQueue
         papers={papers}
         selectedId={selectedId}

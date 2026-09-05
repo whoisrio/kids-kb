@@ -390,3 +390,42 @@ button.ghost:hover { color: var(--redpen); border-color: var(--redpen); }
 .edit-box .primary, .dialog-actions .danger { font-weight: 500; }
 .edit-box .ghost { border: 1px solid var(--line); background: none; border-radius: 8px;
   padding: 6px 16px; cursor: pointer; }
+/* ---- 3-C2 资料 tab ---- */
+.mat-tabs { display: flex; gap: 6px; padding: 0 0 10px; border-bottom: 1px solid var(--line); margin-bottom: 10px; }
+.mat-tabs button { border: none; background: none; padding: 6px 14px; border-radius: 8px;
+  cursor: pointer; font-size: 14px; color: var(--pencil); }
+.mat-tabs button.active { background: var(--ink); color: #fff; }
+.materials { display: flex; flex-direction: column; gap: 12px; min-height: 0; }
+.mat-toolbar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.mat-toolbar select { border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; background: var(--card); }
+.mat-blocks { display: flex; gap: 4px; }
+.mat-blocks button { border: 1px solid var(--line); background: var(--card); border-radius: 8px;
+  padding: 5px 12px; font-size: 12.5px; cursor: pointer; }
+.mat-blocks button.active { border-color: var(--redpen); color: var(--redpen); background: var(--redpen-soft); font-weight: 500; }
+.page-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; overflow-y: auto; }
+.page-card { border: 1px solid var(--line); border-radius: 10px; background: var(--card);
+  padding: 8px; text-align: left; cursor: pointer; }
+.page-card:hover { border-color: var(--redpen); }
+.page-card img { width: 100%; border-radius: 6px; background: #f3f1ec; min-height: 60px; }
+.page-card .meta { margin-top: 6px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.page-card .doc { font-size: 12.5px; }
+.badge { font-size: 11px; color: var(--redpen); border: 1px solid var(--redpen);
+  border-radius: 999px; padding: 1px 8px; background: var(--redpen-soft); }
+.item-rows { display: flex; flex-direction: column; gap: 8px; overflow-y: auto; }
+.item-row { border: 1px solid var(--line); border-radius: 10px; background: var(--card);
+  padding: 10px 12px; text-align: left; cursor: pointer; display: grid;
+  grid-template-columns: auto 1fr; gap: 2px 10px; }
+.item-row:hover { border-color: var(--redpen); }
+.item-row .label { font-weight: 500; }
+.item-row .chap { color: var(--pencil); font-size: 12px; }
+.item-row .content { color: var(--pencil); font-size: 12.5px; grid-column: 1 / -1; }
+.mat-search { display: flex; flex-direction: column; gap: 8px; }
+.mat-search input, .mat-search select { border: 1px solid var(--line); border-radius: 8px;
+  padding: 7px 10px; background: var(--card); }
+.mat-search .hits { list-style: none; margin: 0; padding: 0; display: flex;
+  flex-direction: column; gap: 8px; overflow-y: auto; }
+.mat-search .hits li { border: 1px solid var(--line); border-radius: 10px; background: var(--card); padding: 8px 12px; }
+.mat-search .hits .src { font-size: 12px; color: var(--pencil); }
+.mat-search .hits p { margin: 4px 0 0; font-size: 13px; }
+.primary { background: var(--ink); color: #fff; border: none; border-radius: 8px;
+  padding: 6px 16px; cursor: pointer; align-self: flex-start; }
