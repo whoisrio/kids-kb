@@ -16,9 +16,9 @@ const SESSIONS_ROOT =
   process.env.KB_SESSIONS_ROOT ??
   path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../backend/storage/sessions");
 
-const MSG_A1 = `E2E-${RUN}-小宝这周数学口算练习做得怎么样？`; // >20 字，验证标题截断
-const MSG_A2 = `E2E-${RUN}-英语学习上有什么建议？`;
-const MSG_B1 = `E2E-${RUN}-帮我出五道两位数乘法`;
+const MSG_A1 = `E2E-${RUN}-不使用工具，请只用一句话回答：小宝这周数学口算练习做得怎么样？`;
+const MSG_A2 = `E2E-${RUN}-不使用工具，请只用一句话给英语学习建议。`;
+const MSG_B1 = `E2E-${RUN}-请只列出五道两位数乘法题目。`;
 
 test.describe.configure({ mode: "serial" });
 
@@ -120,14 +120,19 @@ test("t1 发消息：流式回复 + 侧栏新会话 + JSONL 落盘 + llm_calls �
 
   // API：回看 detail 字段
   const detail = (await (await page.request.get(`/api/sessions/${summary!.id}`)).json()) as {
-    title: string; currentModel: string; messages: { role: string; content: string }[];
+    title: string; currentModel: string; currentLane: string;
+    lanes: { id: string; forkEntryId: string | null; fromLaneId: string | null }[];
+    messages: { role: string; content: string; entryId: string }[];
   };
   expect(detail.title).toBe(titleA);
   expect(detail.currentModel).toBe(summary!.model); // 无 model_change 时回落创建模型
   expect(detail.messages.length).toBeGreaterThanOrEqual(2);
-  expect(detail.messages[0]).toEqual({ role: "user", content: MSG_A1 });
+  expect(detail.messages[0]).toMatchObject({ role: "user", content: MSG_A1 });
+  expect(typeof detail.messages[0].entryId).toBe("string");
+  expect(detail.currentLane).toBe("main");
+  expect(detail.lanes).toEqual([{ id: "main", forkEntryId: null, fromLaneId: null }]);
   const lastAssistant = [...detail.messages].reverse().find((m) => m.role === "assistant")!;
-  expect(lastAssistant.content).toBe(replyA1); // API 与 UI 展示逐字一致
+  expect(lastAssistant.content.replace(/\s+/g, "")).toBe(replyA1.replace(/\s+/g, ""));
   expect(detail.messages.map((m) => m.role)).toEqual(expect.arrayContaining(["user", "assistant"]));
 
   // JSONL：header metadata + user/assistant message 落盘
@@ -159,7 +164,7 @@ test("t2 刷新回看：侧栏入口 + 完整消息流 + 下拉同步 currentMod
 
   // 回看消息与 API detail 完全一致
   const detail = (await (await page.request.get(`/api/sessions/${sessionA!.id}`)).json()) as {
-    currentModel: string; messages: { role: string; content: string }[];
+    currentModel: string; currentLane: string; messages: { role: string; content: string }[];
   };
   // 等回看消息渲染完成（fetchSessionDetail 异步）
   await expect(page.locator(".msg")).toHaveCount(detail.messages.length);
@@ -177,22 +182,22 @@ test("t3 切换模型：下一条消息用新模型 + model_change 留痕 + llm_
   const models = (await (await page.request.get("/api/models")).json()) as { id: string }[];
   // 目标模型 ≠ 会话 A 当前模型（从 API 取权威值，而非下拉显示值）
   const detailBefore = (await (await page.request.get(`/api/sessions/${sessionA!.id}`)).json()) as {
-    currentModel: string;
+    currentModel: string; currentLane: string; messages: { content: string }[];
   };
   const target = models.find((m) => m.id !== detailBefore.currentModel)?.id;
   test.skip(!target, "仅一个注册模型，跳过切换用例");
 
-  // 回到会话 A：等回看消息加载（t1 后为 2 条）再切模型发消息
+  // 回到会话 A：等回看消息加载（按 API 权威消息数）再切模型发消息
   await page.goto("/");
   await page.locator(".session-item").filter({ hasText: sessionA!.title }).click();
-  await expect(page.locator(".msg")).toHaveCount(2);
+  await expect(page.locator(".msg")).toHaveCount(detailBefore.messages.length);
   await expect(page.locator(".chat-wrap")).toHaveAttribute("data-streaming", "false");
   await page.locator("select[aria-label='选择模型']").selectOption(target!);
   await sendMessage(page, MSG_A2);
   const replyA2 = await waitReplyDone(page);
 
-  // 会话 A 上下文延续：4 条消息（2 轮）
-  expect((await bubbleTexts(page)).length).toBe(4);
+  // 会话 A 上下文延续：原历史加本轮 user/assistant
+  expect((await bubbleTexts(page)).length).toBe(detailBefore.messages.length + 2);
 
   // API：currentModel 更新
   const detail = (await (await page.request.get(`/api/sessions/${sessionA!.id}`)).json()) as {

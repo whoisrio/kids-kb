@@ -24,6 +24,7 @@ export function useChat(fetchImpl: typeof fetch = fetch) {
   const abortRef = useRef<AbortController | null>(null);
   const cursorRef = useRef<{ id: string | null; lane: string }>({ id: null, lane: "main" });
   const activeSessionIdRef = useRef<string | null>(null);
+  const detailRequestRef = useRef(0);
   activeSessionIdRef.current = activeSessionId;
 
   const refreshSessions = useCallback(async () => {
@@ -35,8 +36,10 @@ export function useChat(fetchImpl: typeof fetch = fetch) {
   }, [fetchImpl]);
 
   const loadDetail = useCallback(async (id: string, lane?: string) => {
+    const requestId = ++detailRequestRef.current;
     try {
       const detail = await fetchSessionDetail(id, fetchImpl, lane);
+      if (requestId !== detailRequestRef.current) return;
       setMessages(detail.messages);
       setActiveSessionId(id);
       setCurrentLane(detail.currentLane);
