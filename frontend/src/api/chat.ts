@@ -1,6 +1,8 @@
 export interface ChatMessage {
   role: "user" | "assistant";
   content: string;
+  entryId?: string;
+  thinking?: string;
 }
 
 export interface SessionSummary {
@@ -14,7 +16,15 @@ export interface SessionSummary {
 export interface SessionDetail {
   title: string;
   currentModel: string;
+  currentLane: string;
+  lanes: LaneInfo[];
   messages: ChatMessage[];
+}
+
+export interface LaneInfo {
+  id: string;
+  forkEntryId: string | null;
+  fromLaneId: string | null;
 }
 
 export interface ModelInfo {
@@ -25,10 +35,10 @@ export interface ModelInfo {
 
 export interface ChatHandlers {
   onDelta: (text: string) => void;
+  onThinking?: (text: string) => void;
   onDone: () => void;
   onError?: (message: string) => void;
-  /** 首帧 session 事件：后端回传会话 id（新会话/既有会话均会发）。 */
-  onSession?: (id: string) => void;
+  onSession?: (id: string, lane: string) => void;
 }
 
 export interface ChatStreamOptions {
@@ -36,6 +46,8 @@ export interface ChatStreamOptions {
   sessionId?: string;
   /** 本轮使用的模型 id；缺省沿用会话当前模型/后端默认。 */
   model?: string;
+  laneId?: string;
+  branchAt?: string | null;
 }
 
 type FetchLike = typeof fetch;
@@ -61,9 +73,14 @@ export async function streamChat(
   };
 
   try {
-    const body: { messages: ChatMessage[]; session_id?: string; model?: string } = { messages };
+    const body: {
+      messages: ChatMessage[]; session_id?: string; model?: string;
+      lane_id?: string; branch_at?: string | null;
+    } = { messages };
     if (options.sessionId) body.session_id = options.sessionId;
     if (options.model) body.model = options.model;
+    if (options.laneId) body.lane_id = options.laneId;
+    if (options.branchAt !== undefined) body.branch_at = options.branchAt;
     const resp = await fetchImpl("/api/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -90,14 +107,24 @@ export async function streamChat(
         const event = frame.match(/^event: (.+)$/m)?.[1];
         const data = frame.match(/^data: (.*)$/m)?.[1] ?? "";
         if (event === "session") {
-          let id: string;
+          let payload: { session_id: string; lane_id: string };
           try {
-            id = JSON.parse(data);
+            payload = JSON.parse(data);
           } catch {
             finishError("响应解析失败");
             return;
           }
-          handlers.onSession?.(id);
+          handlers.onSession?.(payload.session_id, payload.lane_id);
+        }
+        if (event === "thinking") {
+          let text: string;
+          try {
+            text = JSON.parse(data);
+          } catch {
+            finishError("响应解析失败");
+            return;
+          }
+          handlers.onThinking?.(text);
         }
         if (event === "delta") {
           let text: string;
@@ -140,11 +167,23 @@ export function fetchSessions(fetchImpl: FetchLike = fetch): Promise<SessionSumm
 }
 
 /** GET /api/sessions/:id：会话回看（title + 当前模型 + 按序消息）。 */
-export function fetchSessionDetail(id: string, fetchImpl: FetchLike = fetch): Promise<SessionDetail> {
-  return getJson(`/api/sessions/${encodeURIComponent(id)}`, fetchImpl);
+export function fetchSessionDetail(
+  id: string,
+  fetchImpl: FetchLike = fetch,
+  lane?: string,
+): Promise<SessionDetail> {
+  const url = `/api/sessions/${encodeURIComponent(id)}${lane ? `?lane=${encodeURIComponent(lane)}` : ""}`;
+  return getJson(url, fetchImpl);
 }
 
 /** GET /api/models：可切换模型列表（首个为后端默认模型）。 */
 export function fetchModels(fetchImpl: FetchLike = fetch): Promise<ModelInfo[]> {
   return getJson("/api/models", fetchImpl);
+}
+
+export async function deleteSession(id: string, fetchImpl: FetchLike = fetch): Promise<boolean> {
+  const resp = await fetchImpl(`/api/sessions/${encodeURIComponent(id)}`, { method: "DELETE" });
+  if (resp.status === 404) return false;
+  if (!resp.ok) throw new Error(`请求失败: ${resp.status}`);
+  return true;
 }
