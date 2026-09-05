@@ -88,6 +88,12 @@ uv run python -m kb.cli search "..." --mode vector --rerank        # 单向量 /
 - 复核页「检索」tab 可直接查询，命中卡片点进条目详情（含溯源裁图）
 - `assemble_chapter` 把采用版本的页内容拼成章节 markdown（完整文档产物，adopted=page_md 用整页稿）
 
+## 聊天：会话分支与 thinking
+
+- 编辑/回退/重新生成统一为「fork at entry」：在对应消息处开新分支，旧分支经消息旁 ‹i/n› 切换器随时切回。
+- thinking 档位由 `KB_CHAT_THINKING`（`off|minimal|low|medium|high|xhigh|max`，缺省 `medium`）控制。
+- 不支持 reasoning 的端点自动不传参，模型无 thinking 输出则无面板（不算错误）。
+
 ## 版面质量返工：PaddleOCR-VL 整管线重处理
 
 PP-DocLayoutV2 对密集数学页切块过碎（20-30 块/页、阅读顺序断）时，整管线（PP-DocLayoutV3 + PaddleOCR-VL-1.5）重处理指定页：
