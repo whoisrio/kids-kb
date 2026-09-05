@@ -67,3 +67,72 @@ def build_flat_chapter(conn, doc_id: str) -> str:
         chapter_id = str(cur.fetchone()[0])
         cur.execute("UPDATE documents SET struct_mode='flat' WHERE id=%s", (doc_id,))
     return chapter_id
+
+
+def embed_flat_pages(conn, cfg: Config, doc_id: str, page_no: int | None = None,
+                     client=None) -> int:
+    """flat 文档按页对齐向量化（重建式幂等）。
+    每页切段（超长页用 segment_chapter 再细分），seg_no = page_no*1000 + 段序
+    （确定性编号，单页重建不与其他页冲突）；page_no 给定时只重建该页。
+    返回新增 chunk 数。"""
+    from kb.embed import embed_texts, segment_chapter
+
+    with conn.cursor() as cur:
+        cur.execute("SELECT struct_mode FROM documents WHERE id=%s", (doc_id,))
+        row = cur.fetchone()
+        if not row:
+            raise ValueError(f"文档不存在: {doc_id}")
+        cur.execute(
+            """SELECT ch.id, d.title, d.subject, d.grade
+               FROM chapters ch JOIN documents d ON d.id = ch.document_id
+               WHERE ch.document_id=%s AND ch.chapter_no=1""",
+            (doc_id,),
+        )
+        ch = cur.fetchone()
+        if not ch:
+            raise ValueError("flat 章不存在，请先跑 structure")
+        if row[0] != "flat":
+            raise ValueError("非 flat 文档（struct_mode 不是 flat）")
+        chapter_id, doc_title, subject, grade = str(ch[0]), ch[1], ch[2], ch[3]
+        cur.execute("SELECT page_no FROM pages WHERE document_id=%s ORDER BY page_no", (doc_id,))
+        page_nos = {r[0] for r in cur.fetchall()}
+        contents = [pc for pc in page_contents(cur, doc_id)
+                    if page_no is None or pc[0] == page_no]
+    label = "全卷"
+    payloads: list[tuple[int, int, str]] = []  # (page_no, seg_idx, content)
+    for pno, text in contents:
+        for i, seg in enumerate(segment_chapter(text), start=1):
+            payloads.append((pno, i, f"{label} · 第 {pno} 页\n\n{seg}"))
+    if not payloads:
+        with conn.transaction(), conn.cursor() as cur:
+            if page_no is None:
+                cur.execute("DELETE FROM chunks WHERE chapter_id=%s", (chapter_id,))
+            else:
+                cur.execute(
+                    "DELETE FROM chunks WHERE chapter_id=%s AND meta->>'page_no'=%s",
+                    (chapter_id, str(page_no)),
+                )
+        return 0
+    vectors = embed_texts(cfg, [content for _p, _i, content in payloads], client=client)
+    by_page: dict[int, list[tuple[tuple[int, int, str], list[float]]]] = {}
+    for payload, vec in zip(payloads, vectors, strict=True):
+        by_page.setdefault(payload[0], []).append((payload, vec))
+    with conn.transaction(), conn.cursor() as cur:
+        if page_no is None:
+            cur.execute("DELETE FROM chunks WHERE chapter_id=%s", (chapter_id,))
+        for pno, items in by_page.items():
+            cur.execute(
+                "DELETE FROM chunks WHERE chapter_id=%s AND meta->>'page_no'=%s",
+                (chapter_id, str(pno)),
+            )
+            for (p, i, content), vec in items:
+                meta = {
+                    "kind": "chapter", "chapter": label, "page_no": pno,
+                    "doc_title": doc_title, "subject": subject, "grade": grade, "seg": i,
+                }
+                cur.execute(
+                    """INSERT INTO chunks (chapter_id, document_id, seg_no, content_md, meta, embedding)
+                       VALUES (%s,%s,%s,%s,%s,%s)""",
+                    (chapter_id, doc_id, pno * 1000 + i, content, Jsonb(meta), vec),
+                )
+    return len(payloads)

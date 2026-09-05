@@ -142,3 +142,136 @@ def test_build_flat_chapter_refuses_multi_chapter_doc(conn, flat_doc):
         )
     with pytest.raises(ValueError, match="已有章节"):
         build_flat_chapter(conn, doc_id)
+
+
+class _FakeEmbed:
+    """确定性假 embedding：全 1 向量（1024 维，同 tests/test_embed.py 手法）。"""
+
+    class embeddings:
+        @staticmethod
+        def create(model, input):
+            class D:
+                embedding = [1.0] * 1024
+
+            class R:
+                data = [D()]
+
+            return R()
+
+
+def test_embed_flat_pages_per_page_segments(conn, flat_doc):
+    from kb.flat import build_flat_chapter, embed_flat_pages
+
+    doc_id, cfg = flat_doc
+    build_flat_chapter(conn, doc_id)
+    n = embed_flat_pages(conn, cfg, doc_id, client=_FakeEmbed())
+    assert n == 2  # 页 1、页 2 各一段（页 3 无内容）
+    with conn.cursor() as cur:
+        cur.execute(
+            """SELECT seg_no, meta->>'page_no', meta->>'kind', meta->>'chapter',
+                      content_md, vector_dims(embedding)
+               FROM chunks WHERE chapter_id IS NOT NULL ORDER BY seg_no"""
+        )
+        rows = cur.fetchall()
+    assert [(r[0], r[1], r[2], r[3]) for r in rows] == [
+        (1001, "1", "chapter", "全卷"),
+        (2001, "2", "chapter", "全卷"),
+    ]
+    assert "一、口算" in rows[0][4] and "第二套" in rows[1][4]
+    assert "第 1 页" in rows[0][4] and "第 2 页" in rows[1][4]  # content 带页定位前缀
+    assert rows[0][5] == 1024
+
+
+def test_embed_flat_pages_rebuild_single_page(conn, flat_doc):
+    """页级重建：只重嵌目标页（删旧插新），其他页 chunk 不动——复核编辑后重发的依据。"""
+    from kb.flat import build_flat_chapter, embed_flat_pages
+
+    doc_id, cfg = flat_doc
+    build_flat_chapter(conn, doc_id)
+    embed_flat_pages(conn, cfg, doc_id, client=_FakeEmbed())
+    with conn.cursor() as cur:  # 复核编辑：页 2 整页稿改内容
+        cur.execute(
+            "UPDATE pages SET page_md='第二套 改后内容 退位减法' WHERE document_id=%s AND page_no=2",
+            (doc_id,),
+        )
+    n = embed_flat_pages(conn, cfg, doc_id, page_no=2, client=_FakeEmbed())
+    assert n == 1
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT meta->>'page_no', content_md FROM chunks "
+            "WHERE chapter_id IS NOT NULL ORDER BY seg_no"
+        )
+        rows = cur.fetchall()
+    assert len(rows) == 2  # 页 1 未动 + 页 2 重建
+    assert rows[1] == ("2", "全卷 · 第 2 页\n\n第二套 改后内容 退位减法")
+
+
+def test_embed_flat_pages_segments_long_page(conn, flat_doc):
+    from kb.flat import build_flat_chapter, embed_flat_pages
+
+    doc_id, cfg = flat_doc
+    build_flat_chapter(conn, doc_id)
+    with conn.cursor() as cur:
+        cur.execute(
+            "UPDATE pages SET page_md=%s WHERE document_id=%s AND page_no=2",
+            ("退位减法 " * 400, doc_id),
+        )
+    n = embed_flat_pages(conn, cfg, doc_id, page_no=2, client=_FakeEmbed())
+    assert n == 2
+    with conn.cursor() as cur:
+        cur.execute(
+            """SELECT seg_no FROM chunks
+               WHERE chapter_id IS NOT NULL AND meta->>'page_no'='2'
+               ORDER BY seg_no""",
+        )
+        assert [row[0] for row in cur.fetchall()] == [2001, 2002]
+
+
+def test_embed_flat_pages_removes_emptied_page(conn, flat_doc):
+    """页级重建/全量重建都清理已变空页的旧向量，避免检索到过期内容。"""
+    from kb.flat import build_flat_chapter, embed_flat_pages
+
+    doc_id, cfg = flat_doc
+    build_flat_chapter(conn, doc_id)
+    embed_flat_pages(conn, cfg, doc_id, client=_FakeEmbed())
+    with conn.cursor() as cur:
+        cur.execute(
+            "UPDATE pages SET page_md=NULL WHERE document_id=%s AND page_no=2",
+            (doc_id,),
+        )
+    assert embed_flat_pages(conn, cfg, doc_id, page_no=2, client=_FakeEmbed()) == 0
+    with conn.cursor() as cur:
+        cur.execute("SELECT meta->>'page_no' FROM chunks WHERE chapter_id IS NOT NULL")
+        assert [row[0] for row in cur.fetchall()] == ["1"]
+
+
+def test_embed_flat_pages_full_rebuild_removes_emptied_page(conn, flat_doc):
+    from kb.flat import build_flat_chapter, embed_flat_pages
+
+    doc_id, cfg = flat_doc
+    build_flat_chapter(conn, doc_id)
+    embed_flat_pages(conn, cfg, doc_id, client=_FakeEmbed())
+    with conn.cursor() as cur:
+        cur.execute(
+            "UPDATE pages SET page_md=NULL WHERE document_id=%s AND page_no=2",
+            (doc_id,),
+        )
+    assert embed_flat_pages(conn, cfg, doc_id, client=_FakeEmbed()) == 1
+    with conn.cursor() as cur:
+        cur.execute("SELECT meta->>'page_no' FROM chunks WHERE chapter_id IS NOT NULL")
+        assert [row[0] for row in cur.fetchall()] == ["1"]
+
+
+def test_embed_flat_pages_guards(conn, flat_doc):
+    """没建合成章 / 非 flat 文档 -> ValueError（internal 端点转 500）。"""
+    from kb.flat import embed_flat_pages
+
+    doc_id, cfg = flat_doc
+    with pytest.raises(ValueError, match="先跑 structure"):
+        embed_flat_pages(conn, cfg, doc_id, client=_FakeEmbed())
+    from kb.flat import build_flat_chapter
+    build_flat_chapter(conn, doc_id)
+    with conn.cursor() as cur:
+        cur.execute("UPDATE documents SET struct_mode='toc' WHERE id=%s", (doc_id,))
+    with pytest.raises(ValueError, match="非 flat"):
+        embed_flat_pages(conn, cfg, doc_id, client=_FakeEmbed())
