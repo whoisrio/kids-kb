@@ -91,7 +91,7 @@ uv run python -m kb.cli search "..." --mode vector --rerank        # 单向量 /
 - meta 带 subject/grade/chapter/taxonomy/tags/label/页码，`search()` 支持 filters 精确过滤 + 语义混排
 - embedding 默认本地 ollama bge-m3（1024 维），`KB_EMBED_BASE_URL`/`KB_EMBED_MODEL` 可配置；
   pgvector HNSW 索引，余弦距离
-- 复核页「检索」tab 可直接查询，命中卡片点进条目详情（含溯源裁图）
+- 复核页「资料」tab 的试搜可直接查询，命中卡片点进条目详情（含溯源裁图）
 - `assemble_chapter` 把采用版本的页内容拼成章节 markdown（完整文档产物，adopted=page_md 用整页稿）
 
 ## 聊天：会话分支与 thinking
