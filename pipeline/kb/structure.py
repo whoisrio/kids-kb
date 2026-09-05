@@ -195,7 +195,7 @@ def run_structure(conn, cfg: Config, doc_id: str, toc_pages: list[int] | None = 
         if row and row[0] == "flat":
             if row[1]:
                 if row[1] != 1 or not row[2] or not row[3]:
-                    raise ValueError(
+                    raise SystemExit(
                         "文档已有生成的 flat 内容，无法自动切换为目录模式；"
                         "请先清理该文档或重新入库"
                     )

@@ -94,8 +94,6 @@ def embed_flat_pages(conn, cfg: Config, doc_id: str, page_no: int | None = None,
         if row[0] != "flat":
             raise ValueError("非 flat 文档（struct_mode 不是 flat）")
         chapter_id, doc_title, subject, grade = str(ch[0]), ch[1], ch[2], ch[3]
-        cur.execute("SELECT page_no FROM pages WHERE document_id=%s ORDER BY page_no", (doc_id,))
-        page_nos = {r[0] for r in cur.fetchall()}
         contents = [pc for pc in page_contents(cur, doc_id)
                     if page_no is None or pc[0] == page_no]
     label = "全卷"

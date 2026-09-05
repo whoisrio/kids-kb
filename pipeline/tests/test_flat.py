@@ -407,6 +407,25 @@ def test_run_structure_recovers_from_flat_to_toc(conn, flat_doc):
         assert cur.fetchone() == ("toc", "口算", 0, 0)
 
 
+def test_run_structure_toc_refuses_flat_with_content(conn, flat_doc):
+    """flat 已向量化的文档拒绝切回目录模式（防误删已入库内容）；CLI 语义用 SystemExit。"""
+    from kb.flat import approve_flat_pages
+    from kb.structure import run_structure
+
+    doc_id, cfg = flat_doc
+    assert run_structure(conn, cfg, doc_id)["mode"] == "flat"
+    approve_flat_pages(conn, cfg, doc_id, client=_FakeEmbed())  # 产生 chunks
+    with conn.cursor() as cur:
+        cur.execute(
+            """INSERT INTO blocks (id, page_id, block_type, crop_path, content_md)
+               SELECT %s, id, 'text', '/tmp/c.png', '目录 第 1 讲 口算' FROM pages
+               WHERE document_id=%s AND page_no=1""",
+            (str(uuid.uuid4()), doc_id),
+        )
+    with pytest.raises(SystemExit, match="flat"):
+        run_structure(conn, cfg, doc_id)  # 守卫先于任何 LLM 调用
+
+
 def test_approve_flat_pages_closes_rows_and_embeds(conn, flat_doc):
     from kb.flat import approve_flat_pages, build_flat_chapter
 
