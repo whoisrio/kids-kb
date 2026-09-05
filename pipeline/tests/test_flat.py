@@ -293,3 +293,115 @@ def test_resolve_mode(conn, flat_doc):
             (str(uuid.uuid4()), doc_id),
         )
         assert resolve_mode(cur, doc_id, flat=False, toc_pages=None) == "toc"
+
+
+_FENCE = "`" * 3
+TOC_JSON = _FENCE + "json\n" + (
+    '[{"chapter_no": 1, "title": "口算", "print_page": 1, "taxonomy": "计算类", "tags": []}]'
+) + "\n" + _FENCE
+
+
+def _client(*texts):
+    """按调用顺序弹回预设响应（同 tests/test_toc.py 手法）。"""
+    seq = list(texts)
+
+    class Chat:
+        class completions:
+            @staticmethod
+            def create(model, messages, max_tokens):
+                class M:
+                    content = seq.pop(0)
+
+                class C:
+                    message = M()
+
+                class R:
+                    choices = [C()]
+
+                return R()
+
+    class Client:
+        chat = Chat()
+
+    return Client()
+
+
+def test_run_structure_flat_fallback(conn, flat_doc, capsys):
+    """自动探测无目录 -> flat：合成 1 章、零 LLM 调用、struct_mode=flat。"""
+    from kb.structure import run_structure
+
+    doc_id, cfg = flat_doc
+    out = run_structure(conn, cfg, doc_id)
+    assert out == {"mode": "flat", "chapters": 1, "items": 0}
+    assert "回退整卷按页模式" in capsys.readouterr().out
+    with conn.cursor() as cur:
+        cur.execute(
+            """SELECT struct_mode, (SELECT count(*) FROM items WHERE document_id=d.id)
+               FROM documents d WHERE id=%s""",
+            (doc_id,),
+        )
+        assert cur.fetchone() == ("flat", 0)
+        cur.execute("SELECT count(*) FROM llm_calls WHERE document_id=%s", (doc_id,))
+        assert cur.fetchone()[0] == 0
+
+
+def test_run_structure_flat_flag_overrides_toc(conn, flat_doc):
+    """页 1 有「目录」块本会走 toc；--flat 强制 flat。"""
+    from kb.structure import run_structure
+
+    doc_id, cfg = flat_doc
+    with conn.cursor() as cur:
+        cur.execute(
+            """INSERT INTO blocks (id, page_id, block_type, crop_path, content_md)
+               SELECT %s, id, 'text', '/tmp/c.png', '目录' FROM pages
+               WHERE document_id=%s AND page_no=1""",
+            (str(uuid.uuid4()), doc_id),
+        )
+    assert run_structure(conn, cfg, doc_id, flat=True)["mode"] == "flat"
+
+
+def test_run_structure_toc_marks_mode(conn, flat_doc):
+    """TOC 路径成功后置 struct_mode='toc'（approve 分流依据）。
+    章标题在非目录页找不到 -> 校准 0、拆条跳过，恰好只消耗 1 次 VLM（TOC 抽取）。"""
+    from kb.structure import run_structure
+
+    doc_id, cfg = flat_doc
+    with conn.cursor() as cur:
+        cur.execute(
+            """INSERT INTO blocks (id, page_id, block_type, crop_path, content_md)
+               SELECT %s, id, 'text', '/tmp/c.png', '目录 第 1 讲 口算' FROM pages
+               WHERE document_id=%s AND page_no=1""",
+            (str(uuid.uuid4()), doc_id),
+        )
+    out = run_structure(conn, cfg, doc_id, client=_client(TOC_JSON))
+    assert out == {"mode": "toc", "chapters": 1, "items": 0}
+    with conn.cursor() as cur:
+        cur.execute("SELECT struct_mode FROM documents WHERE id=%s", (doc_id,))
+        assert cur.fetchone()[0] == "toc"
+
+
+def test_run_structure_recovers_from_flat_to_toc(conn, flat_doc):
+    """自动回退 flat 后可用目录模式恢复；未向量化的合成章可安全替换。"""
+    from kb.structure import run_structure
+
+    doc_id, cfg = flat_doc
+    assert run_structure(conn, cfg, doc_id)["mode"] == "flat"
+    with conn.cursor() as cur:
+        cur.execute(
+            """INSERT INTO blocks (id, page_id, block_type, crop_path, content_md)
+               SELECT %s, id, 'text', '/tmp/c.png', '目录 第 1 讲 口算' FROM pages
+               WHERE document_id=%s AND page_no=1""",
+            (str(uuid.uuid4()), doc_id),
+        )
+    out = run_structure(conn, cfg, doc_id, client=_client(TOC_JSON))
+    assert out == {"mode": "toc", "chapters": 1, "items": 0}
+    with conn.cursor() as cur:
+        cur.execute(
+            """SELECT struct_mode,
+                      (SELECT title FROM chapters WHERE document_id=d.id),
+                      (SELECT count(*) FROM chunks WHERE document_id=d.id),
+                      (SELECT count(*) FROM items WHERE document_id=d.id)
+               FROM documents d WHERE id=%s""",
+            (doc_id,),
+        )
+        assert cur.fetchone() == ("toc", "口算", 0, 0)

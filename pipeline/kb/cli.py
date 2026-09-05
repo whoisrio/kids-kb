@@ -62,6 +62,8 @@ def main() -> None:
     p_struct.add_argument("doc_id")
     p_struct.add_argument("--toc-pages", default=None,
                           help="目录物理页码，逗号分隔，如 5,6；不给则自动探测")
+    p_struct.add_argument("--flat", action="store_true",
+                          help="整卷按页模式：不抽目录不拆条，页级通过后按页向量化（无目录页的试卷集合）")
     p_repro = sub.add_parser("reprocess",
                              help="PaddleOCR-VL 整管线重处理指定页（破坏性：删旧块+相交章节 items）")
     p_repro.add_argument("doc_id")
@@ -131,33 +133,10 @@ def main() -> None:
         out = annotate(conn, args.doc_id, Path(args.dir))
         print(f"导出 {len(out)} 页区块标注底稿，请人工校对: {args.dir}/{args.doc_id}/")
     elif args.cmd == "structure":
-        from kb.grounding import run_grounding
-        from kb.qc import check_label_continuity
-        from kb.structure import pair_items, structure_chapter
-        from kb.toc import calibrate_pages, extract_toc
+        from kb.structure import run_structure
 
         toc_pages = [int(x) for x in args.toc_pages.split(",")] if args.toc_pages else None
-        n_toc = extract_toc(conn, cfg, args.doc_id, toc_pages=toc_pages)
-        n_cal = calibrate_pages(conn, args.doc_id)
-        print(f"目录: {n_toc} 章入库, {n_cal} 章完成页码校准")
-        with conn.cursor() as cur:
-            cur.execute(
-                "SELECT chapter_no FROM chapters WHERE document_id=%s ORDER BY chapter_no",
-                (args.doc_id,),
-            )
-            chapters = [r[0] for r in cur.fetchall()]
-        total = 0
-        for no in chapters:
-            try:
-                total += structure_chapter(conn, cfg, args.doc_id, no)
-            except SystemExit as e:
-                print(f"第 {no} 章跳过: {e}")
-        print(f"条目: {total} 条入库; 配对 {pair_items(conn, args.doc_id)} 处; "
-              f"题号质检新增 {check_label_continuity(conn, args.doc_id)} 条; "
-              f"接地检查新增 {run_grounding(conn, args.doc_id)} 条")
-        from kb.export_md import export_chapter_mds, export_page_mds
-        print(f"落盘: {export_page_mds(conn, cfg, args.doc_id)} 页 md, "
-              f"{export_chapter_mds(conn, cfg, args.doc_id)} 章 md")
+        run_structure(conn, cfg, args.doc_id, toc_pages=toc_pages, flat=args.flat)
     elif args.cmd == "reprocess":
         from kb.reprocess import reprocess_pages_paddleocr
 
