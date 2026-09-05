@@ -203,8 +203,54 @@ describe("JsonlSessionStore", () => {
     expect((await h.messages()).map((m) => m.content)).toEqual(["q1", "q2'", "a2'"]);
     // 显式 main 只读原路径
     expect((await h.messages("main")).map((m) => m.content)).toEqual(["q1", "a1"]);
-    // currentModel 同口径：main 上有 model_change，fork 路径也含它（fork 在其后）
+    // currentModel 同口径：fork 在 q1 处，model_change 在 fork 点之后，不属于分支祖先路径
     expect(await h.currentModel("main")).toBe("m1");
-    expect(await h.currentModel(fork)).toBe("m1");
+    expect(await h.currentModel(fork)).toBe("m0");
+  });
+
+  it("forkAt 在消息处开叉：新分支只含前缀+新消息；lanes() 带元数据；分支隔离写", async () => {
+    const { store } = makeStore();
+    const h = await store.create({ title: "t", model: "m0" });
+    await h.appendMessage(userMsg("q1"));
+    await h.appendMessage(assistantMsg("a1"));
+    const msgs = await h.messages();
+    const fork = await h.forkAt(msgs[1].entryId, "main");
+    expect(fork).toMatch(/^br-/);
+    await h.appendMessage(userMsg("q2"), fork);
+    await h.markModelChange("mX", fork);
+
+    expect((await h.messages(fork)).map((m) => m.content)).toEqual(["q1", "a1", "q2"]);
+    expect((await h.messages("main")).map((m) => m.content)).toEqual(["q1", "a1"]);
+    expect(await h.currentModel(fork)).toBe("mX");
+    expect(await h.currentModel("main")).toBe("m0");
+
+    const lanes = await h.lanes();
+    expect(lanes.map((l) => l.id)).toEqual(["main", fork]);
+    expect(lanes[1]).toEqual({ id: fork, forkEntryId: msgs[1].entryId, fromLaneId: "main" });
+  });
+
+  it("forkAt(null) 根部分叉（编辑首条消息）；entryExists/laneExists", async () => {
+    const { store } = makeStore();
+    const h = await store.create({ title: "t", model: "m" });
+    await h.appendMessage(userMsg("q1"));
+    await h.appendMessage(assistantMsg("a1"));
+    const rootFork = await h.forkAt(null, "main");
+    await h.appendMessage(userMsg("q1-改"), rootFork);
+    expect((await h.messages(rootFork)).map((m) => m.content)).toEqual(["q1-改"]);
+
+    expect(await h.entryExists((await h.messages())[0].entryId)).toBe(true);
+    expect(await h.entryExists("no-such-entry")).toBe(false);
+    expect(await h.laneExists(rootFork)).toBe(true);
+    expect(await h.laneExists("br-nope")).toBe(false);
+  });
+
+  it("重开会话后 lanes() 仍可恢复（branch_meta 落盘）", async () => {
+    const { store, dir } = makeStore();
+    const h = await store.create({ title: "t", model: "m" });
+    await h.appendMessage(userMsg("q1"));
+    const fork = await h.forkAt((await h.messages())[0].entryId, "main");
+    const reopened = await new JsonlSessionStore({ sessionsRoot: dir, cwd: dir }).open(h.id);
+    expect((await reopened!.lanes()).map((l) => l.id)).toEqual(["main", fork]);
+    expect((await reopened!.messages(fork)).map((m) => m.content)).toEqual(["q1"]);
   });
 });

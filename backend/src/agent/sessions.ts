@@ -8,6 +8,7 @@ import {
   JsonlSessionRepo,
   uuidv7,
   type AgentMessage,
+  type CustomEntry,
   type JsonlSessionMetadata,
   type MessageEntry,
   type ModelChangeEntry,
@@ -97,7 +98,8 @@ class JsonlSessionHandle implements SessionHandle {
     private readonly createdModel: string,
   ) {}
 
-  private async ensureLane() {
+  private async ensureLane(lane = "main") {
+    if (lane !== "main") return;
     const lanes = await this.session.getLanes();
     if (!lanes.some((l) => l.lane === "main")) await this.session.createLane("main", null);
   }
@@ -128,36 +130,68 @@ class JsonlSessionHandle implements SessionHandle {
   }
 
   async appendMessage(message: AgentMessage, lane?: string): Promise<void> {
-    await this.ensureLane();
-    await this.session.appendMessage(message, lane ?? "main");
+    const target = lane ?? (await this.latestLane());
+    await this.ensureLane(target);
+    await this.session.view(target).appendMessage(message);
   }
 
   async markModelChange(modelId: string, lane?: string): Promise<void> {
-    await this.ensureLane();
+    const target = lane ?? (await this.latestLane());
+    await this.ensureLane(target);
     await this.session.appendEntry(
       { type: "model_change", id: uuidv7(), provider: "chat", modelId },
-      lane ?? "main",
+      target,
     );
   }
 
   async lanes(): Promise<LaneInfo[]> {
-    return [{ id: "main", forkEntryId: null, fromLaneId: null }];
+    await this.ensureLane();
+    const metas = (await this.session.findEntries({ customType: "branch_meta" })) as CustomEntry[];
+    const byLane = new Map<string, CustomEntry>();
+    for (const entry of metas) {
+      const data = entry.data as BranchMeta | undefined;
+      if (data?.lane && !byLane.has(data.lane)) byLane.set(data.lane, entry);
+    }
+    const forks = [...byLane.values()]
+      .sort((a, b) => a.seq - b.seq)
+      .map((entry) => {
+        const data = entry.data as BranchMeta;
+        return { id: data.lane, forkEntryId: data.forkEntryId ?? null, fromLaneId: data.fromLane ?? null };
+      });
+    return [{ id: "main", forkEntryId: null, fromLaneId: null }, ...forks];
   }
 
   async latestLane(): Promise<string> {
-    return "main";
+    await this.ensureLane();
+    const pointers = await this.session.getLanes();
+    let best = "main";
+    let bestSeq = -1;
+    for (const { lane, leafId } of pointers) {
+      const seq = leafId ? (await this.session.getEntry(leafId))?.seq ?? -1 : -1;
+      if (seq > bestSeq) {
+        bestSeq = seq;
+        best = lane;
+      }
+    }
+    return best;
   }
 
-  async forkAt(_entryId: string | null, _fromLane: string): Promise<string> {
-    throw new Error("Task 2");
+  async forkAt(entryId: string | null, fromLane: string): Promise<string> {
+    const lane = `br-${uuidv7()}`;
+    await this.session.createLane(lane, entryId);
+    await this.session.view(lane).appendCustomEntry(
+      "branch_meta", { lane, fromLane, forkEntryId: entryId } satisfies BranchMeta,
+    );
+    return lane;
   }
 
   async laneExists(lane: string): Promise<boolean> {
-    return lane === "main";
+    await this.ensureLane();
+    return (await this.session.getLanes()).some((l) => l.lane === lane);
   }
 
-  async entryExists(_entryId: string): Promise<boolean> {
-    return false;
+  async entryExists(entryId: string): Promise<boolean> {
+    return (await this.session.getEntry(entryId)) !== undefined;
   }
 }
 
