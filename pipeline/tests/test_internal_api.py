@@ -201,3 +201,97 @@ def test_endpoints_close_connection(conn, cfg):
     resp = c.post("/internal/ingest-paper?paper_id=00000000-0000-0000-0000-000000000000")
     assert resp.status_code >= 400
     assert spy_holder[-1].closed == 1
+
+
+class TestApproveItem:
+    @pytest.fixture()
+    def doc_item(self, conn):
+        """1 文档 1 页 1 块 1 条 pending 条目（带 pending 复核行）。返回 (doc_id, item_id, block_id)。"""
+        import uuid
+        with conn.cursor() as cur:
+            doc_id = str(uuid.uuid4())
+            cur.execute(
+                "INSERT INTO documents (id, title, source_path) VALUES (%s,'测试书',%s)",
+                (doc_id, f"/tmp/{doc_id}.pdf"),
+            )
+            page_id = str(uuid.uuid4())
+            cur.execute(
+                "INSERT INTO pages (id, document_id, page_no, image_path, status) VALUES (%s,%s,1,'/tmp/x.png','parsed')",
+                (page_id, doc_id),
+            )
+            block_id = str(uuid.uuid4())
+            cur.execute(
+                "INSERT INTO blocks (id, page_id, block_type, crop_path, content_md) VALUES (%s,%s,'text','/tmp/c.png','例题内容')",
+                (block_id, page_id),
+            )
+            item_id = str(uuid.uuid4())
+            cur.execute(
+                "INSERT INTO items (id, document_id, content_type, label, content_md, qc_status) VALUES (%s,%s,'example','例1','例题内容','pending')",
+                (item_id, doc_id),
+            )
+            cur.execute(
+                "INSERT INTO review_queue (id, item_id, reason) VALUES (%s,%s,'ungrounded:例1 摘录')",
+                (str(uuid.uuid4()), item_id),
+            )
+        return doc_id, item_id, block_id
+
+    def test_approve_item_通过并即时向量化(self, conn, cfg, doc_item):
+        """逻辑自 review_api.approve_item 迁入：qc_status=approved + 关 pending 行 + 即时向量化。"""
+        from fastapi.testclient import TestClient
+        from kb.db import connect
+
+        _doc_id, item_id, _block_id = doc_item
+        app = create_internal_app(get_conn=lambda: connect(cfg.database_url), cfg=cfg,
+                                  embed_client=_FakeEmbedLike())
+        r = TestClient(app).post("/internal/approve-item", params={"item_id": item_id})
+        assert r.status_code == 200
+        assert r.json() == {"id": item_id, "qc_status": "approved", "embedded": 1}
+        row = conn.execute(
+            """SELECT i.qc_status,
+                      (SELECT status FROM review_queue WHERE item_id = i.id),
+                      (SELECT count(*) FROM chunks WHERE item_id = i.id)
+               FROM items i WHERE i.id = %s""", (item_id,)).fetchone()
+        assert row == ("approved", "approved", 1)
+
+    def test_approve_item_向量化失败不阻断(self, conn, cfg, doc_item):
+        """embedding 抛错：approve 与关行已落库，embedded=None（可 kb.cli embed 补跑）。"""
+        from fastapi.testclient import TestClient
+        from kb.db import connect
+
+        class _Boom:
+            class embeddings:
+                @staticmethod
+                def create(model, input):
+                    raise RuntimeError("ollama down")
+
+        _doc_id, item_id, _block_id = doc_item
+        app = create_internal_app(get_conn=lambda: connect(cfg.database_url), cfg=cfg,
+                                  embed_client=_Boom())
+        r = TestClient(app).post("/internal/approve-item", params={"item_id": item_id})
+        assert r.status_code == 200
+        assert r.json()["embedded"] is None
+        row = conn.execute("SELECT qc_status FROM items WHERE id=%s", (item_id,)).fetchone()
+        assert row[0] == "approved"
+
+    def test_approve_item_不存在_404(self, conn, cfg):
+        from fastapi.testclient import TestClient
+        from kb.db import connect
+        app = create_internal_app(get_conn=lambda: connect(cfg.database_url), cfg=cfg)
+        r = TestClient(app).post("/internal/approve-item",
+                                 params={"item_id": "00000000-0000-0000-0000-000000000000"})
+        assert r.status_code == 404
+
+
+class _FakeEmbedLike:
+    """确定性假 embedding 客户端（同 tests/test_embed.py 手法，1024 维全 1）。"""
+
+    class embeddings:
+        @staticmethod
+        def create(model, input):
+            class D:
+                embedding = [1.0] * 1024
+
+            class R:
+                data = [D()]
+
+            return R()
