@@ -47,7 +47,9 @@ test("md 入库即向量化,聊天能检索到章节内容", async ({ page }) =>
   await expect(page.locator(".chat-wrap")).toHaveAttribute("data-streaming", "false", {
     timeout: 240_000,
   });
-  const reply = (await page.locator(".msg:last-child .bubble").textContent()) ?? "";
+  const replyElement = page.locator(".msg.agent .bubble").last();
+  await expect(replyElement).not.toHaveText("");
+  const reply = (await replyElement.textContent()) ?? "";
   expect(reply).not.toContain("出错了");
   expect(reply).toContain("燕子");
 });
