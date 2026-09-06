@@ -79,11 +79,12 @@ export function reviewRoutes(pool: pg.Pool, deps: ReviewDeps): Hono {
          FROM blocks WHERE page_id = $1 ORDER BY created_at, id`, [page.id]);
       const blockIds = blocks.map((b) => b.id);
       const { rows: itemMappings } = await pool.query(
-        `SELECT ib.block_id::text, i.id::text, i.label, i.content_type, ib.role
+        `SELECT ib.block_id::text, i.id::text, i.label, i.content_type, ib.role,
+                i.content_md, i.qc_status
          FROM item_blocks ib
          JOIN items i ON i.id = ib.item_id
          WHERE ib.block_id = ANY($1::uuid[])`, [blockIds]);
-      const itemsByBlock = new Map<string, { id: string; label: string | null; content_type: string; role: string }[]>();
+      const itemsByBlock = new Map<string, { id: string; label: string | null; content_type: string; role: string; content_md: string | null; qc_status: string }[]>();
       for (const m of itemMappings) {
         if (!itemsByBlock.has(m.block_id)) itemsByBlock.set(m.block_id, []);
         itemsByBlock.get(m.block_id)!.push({ id: m.id, label: m.label, content_type: m.content_type, role: m.role });
@@ -108,6 +109,7 @@ export function reviewRoutes(pool: pg.Pool, deps: ReviewDeps): Hono {
         review_status: page.review_status,
         index_status: page.index_status,
         page_pending: pagePending,
+        items: [...new Map(itemMappings.map((m) => [m.id, { id: m.id, label: m.label, content_type: m.content_type, content_md: m.content_md, qc_status: m.qc_status, block_ids: itemMappings.filter((x) => x.id === m.id).map((x) => x.block_id) }])).values()],
       });
     } catch (err) {
       return invalidId(c, err) ?? (() => { throw err; })();

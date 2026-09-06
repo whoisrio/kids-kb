@@ -21,8 +21,14 @@ export interface ReviewPageDetail {
   adopted_source: "blocks" | "page_md";
   blocks: ReviewBlock[];
   page_pending: { id: string; reason: string }[];
+  items?: ReviewPageItem[];
   review_status: string;
   index_status: string;
+}
+
+export interface ReviewPageItem {
+  id: string; label: string | null; content_type: string;
+  content_md: string | null; qc_status: string; block_ids: string[];
 }
 
 export interface ReviewItemSummary {

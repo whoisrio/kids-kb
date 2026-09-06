@@ -23,6 +23,7 @@ export function PageDetail({ pageId, fetchImpl = fetch, onExit, onError }: {
   const [busy, setBusy] = useState(false);
   const imgRef = useRef<HTMLImageElement>(null);
   const [blockView, setBlockView] = useState<"rendered" | "raw">("rendered");
+  const [rightView, setRightView] = useState<"blocks" | "items">("blocks");
 
   const reload = async () => {
     try { setData(await fetchReviewPage(pageId, fetchImpl)); }
@@ -62,6 +63,9 @@ export function PageDetail({ pageId, fetchImpl = fetch, onExit, onError }: {
       <div className="pd-toolbar">
         <button className={blockView === "rendered" ? "primary" : "ghost"} onClick={() => setBlockView("rendered")}>Markdown</button>
         <button className={blockView === "raw" ? "primary" : "ghost"} onClick={() => setBlockView("raw")}>原始文本</button>
+        <span className="sep-v"></span>
+        <button className={rightView === "blocks" ? "primary" : "ghost"} onClick={() => setRightView("blocks")}>块视图</button>
+        <button className={rightView === "items" ? "primary" : "ghost"} onClick={() => setRightView("items")}>条目视图</button>
       </div>
       {rejecting && (
         <div className="pd-reject">
@@ -125,7 +129,7 @@ export function PageDetail({ pageId, fetchImpl = fetch, onExit, onError }: {
                 </button><span className="hint">当前采用：整页转录</span></>)}
           </div>
           <div className="pd-blocks">
-            {data.blocks.map((b) => (
+            {rightView === "blocks" && data.blocks.map((b) => (
               <div key={b.id}
                    className={`blockitem${pendingBlockIds.has(b.id) ? " has-issue" : ""}${selected === b.id ? " selected" : ""}`}
                    onClick={() => setSelected(b.id)}>
@@ -163,6 +167,32 @@ export function PageDetail({ pageId, fetchImpl = fetch, onExit, onError }: {
                 )}
               </div>
             ))}
+            {rightView === "items" && data.items?.map((item) => (
+              <div key={item.id} className={`itemcard${item.qc_status === "approved" ? " approved" : item.qc_status === "rejected" ? " rejected" : ""}`}>
+                <div className="bt">{item.content_type}{item.label ? ` · ${item.label}` : ""} <span className={`badge qc-${item.qc_status}`}>{item.qc_status}</span></div>
+                <div className="bc">
+                  <div className="md">
+                    <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
+                      {item.content_md ?? "（无内容）"}
+                    </ReactMarkdown>
+                  </div>
+                </div>
+                <div className="blocks-in-item">
+                  {item.block_ids.map((bid) => {
+                    const block = data.blocks.find((b) => b.id === bid);
+                    return block && (
+                      <span key={bid} className={`mini-block${selected === bid ? " selected" : ""}`}
+                            onClick={() => setSelected(bid)}>
+                        {block.block_type}
+                      </span>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+            {rightView === "items" && !data.items?.length && (
+              <div className="hint">本页没有关联条目。</div>
+            )}
           </div>
         </div>
       </div>

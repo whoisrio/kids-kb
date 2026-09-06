@@ -555,3 +555,19 @@ button.ghost:hover { color: var(--redpen); border-color: var(--redpen); }
   background: var(--card); overflow-y: auto; font-size: 14px; line-height: 1.7; }
 .cd-toolbar { display: flex; gap: 8px; }
 .pd-toolbar { display: flex; gap: 8px; margin: 4px 0; }
+.pd-toolbar .sep-v { width: 1px; background: var(--line); align-self: stretch; }
+.itemcard { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px;
+  background: var(--card); cursor: default; }
+.itemcard.approved { border-color: #2e7d32; }
+.itemcard.rejected { border-color: #c62828; }
+.itemcard .bt { font-size: 12.5px; color: var(--pencil); display: flex; gap: 6px; align-items: center; }
+.itemcard .bc { font-size: 13.5px; margin: 6px 0; }
+.itemcard .blocks-in-item { display: flex; gap: 4px; flex-wrap: wrap; }
+.mini-block { font-size: 11px; border: 1px solid var(--line); border-radius: 4px;
+  padding: 1px 6px; cursor: pointer; color: var(--pencil); }
+.mini-block:hover { border-color: #2563eb; color: #2563eb; }
+.mini-block.selected { border-color: #2563eb; color: #2563eb; background: rgba(37, 99, 235, .06); }
+.badge.qc-approved { color: #2e7d32; border-color: #2e7d32; }
+.badge.qc-pending { color: var(--redpen); border-color: var(--redpen); }
+.badge.qc-rejected { color: #c62828; border-color: #c62828; }
+.badge.qc-auto_passed { color: #1565c0; border-color: #1565c0; }
