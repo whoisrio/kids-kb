@@ -178,7 +178,13 @@
 - `review_status` TEXT CHECK IN (`pending`, `auto_passed`, `approved`, `rejected`)，默认 `pending`。
 - `index_status` TEXT CHECK IN (`not_indexed`, `indexed`, `stale`)，默认 `not_indexed`。
 
-现有 `pages.status` 和 `documents.status` 保持不变，继续作为 pipeline 解析状态。审核状态使用独立的 `review_status` 列，避免与 pipeline 状态混淆。
+现有 `pages.status` 改名为 `pages.parse_status`，`documents.status` 改名为 `documents.parse_status`，统一使用 `parse_status` 表示 pipeline 解析状态。三个状态维度语义如下：
+
+| 列名 | 语义 |
+|---|---|
+| `parse_status` | pipeline 解析状态：`pending / rendered / parsed / failed` |
+| `review_status` | 审核状态：`pending / auto_passed / approved / rejected` |
+| `index_status` | 索引状态：`not_indexed / indexed / stale` |
 
 ### API 变更
 
