@@ -1,4 +1,8 @@
 import { useState } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
+import rehypeKatex from "rehype-katex";
 
 export interface ChapterSummary {
   id: string; chapter_no: number; title: string; content_md: string;
@@ -9,10 +13,16 @@ export function ChapterDetail({ docId, chapters, onExit }: {
   docId: string; chapters: ChapterSummary[]; onExit: () => void;
 }) {
   const [selected, setSelected] = useState(chapters[0]?.id ?? "");
+  const [view, setView] = useState<"rendered" | "raw">("rendered");
   const current = chapters.find((c) => c.id === selected);
+  const currentDoc = chapters.find((c) => c.id === selected);
   return (
     <div className="chapter-detail">
       <button className="ghost" onClick={onExit}>← 返回列表</button>
+      <div className="cd-toolbar">
+        <button className={view === "rendered" ? "primary" : "ghost"} onClick={() => setView("rendered")}>Markdown 渲染</button>
+        <button className={view === "raw" ? "primary" : "ghost"} onClick={() => setView("raw")}>原始 Markdown</button>
+      </div>
       <div className="cd-body">
         <nav className="cd-toc">
           {chapters.map((c) => (
@@ -26,7 +36,14 @@ export function ChapterDetail({ docId, chapters, onExit }: {
           ))}
         </nav>
         <div className="cd-content">
-          {current && <pre>{current.content_md}</pre>}
+          {currentDoc && view === "rendered" && (
+            <div className="md">
+              <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
+                {currentDoc.content_md}
+              </ReactMarkdown>
+            </div>
+          )}
+          {currentDoc && view === "raw" && <pre>{currentDoc.content_md}</pre>}
         </div>
       </div>
     </div>

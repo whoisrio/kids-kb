@@ -547,3 +547,5 @@ button.ghost:hover { color: var(--redpen); border-color: var(--redpen); }
 .cd-toc button:hover { border-color: var(--redpen); }
 .cd-content { border: 1px solid var(--line); border-radius: 10px; padding: 14px;
   background: var(--card); overflow-y: auto; font-size: 14px; line-height: 1.7; }
+.cd-toolbar { display: flex; gap: 8px; }
+.pd-toolbar { display: flex; gap: 8px; margin: 4px 0; }

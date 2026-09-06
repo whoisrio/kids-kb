@@ -1,4 +1,8 @@
 import { useEffect, useRef, useState } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
+import rehypeKatex from "rehype-katex";
 import {
   adoptReviewPage, approveReviewPage, fetchReviewPage, pageVlm, rejectReviewPage,
   updateReviewBlock, type ReviewPageDetail,
@@ -18,6 +22,7 @@ export function PageDetail({ pageId, fetchImpl = fetch, onExit, onError }: {
   const [rejectReason, setRejectReason] = useState("");
   const [busy, setBusy] = useState(false);
   const imgRef = useRef<HTMLImageElement>(null);
+  const [blockView, setBlockView] = useState<"rendered" | "raw">("rendered");
 
   const reload = async () => {
     try { setData(await fetchReviewPage(pageId, fetchImpl)); }
@@ -54,6 +59,10 @@ export function PageDetail({ pageId, fetchImpl = fetch, onExit, onError }: {
       {data.page_pending.length > 0 && (
         <div className="pd-pending">页级待复核：{data.page_pending.map((r) => r.reason).join("、")}</div>
       )}
+      <div className="pd-toolbar">
+        <button className={blockView === "rendered" ? "primary" : "ghost"} onClick={() => setBlockView("rendered")}>Markdown</button>
+        <button className={blockView === "raw" ? "primary" : "ghost"} onClick={() => setBlockView("raw")}>原始文本</button>
+      </div>
       {rejecting && (
         <div className="pd-reject">
           <input aria-label="打回原因" placeholder="打回原因，如「缺题/版面歪斜」"
@@ -93,9 +102,14 @@ export function PageDetail({ pageId, fetchImpl = fetch, onExit, onError }: {
         <div className="pd-panel">
           <div className="pd-pagemd">
             <div className="meta">整页转录（{data.page_md_model ?? "-"}）</div>
-            {data.page_md
-              ? <pre>{data.page_md.slice(0, 500)}</pre>
-              : <div className="hint">本页还没有整页转录。</div>}
+            {data.page_md && (
+              <div className="md">
+                <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
+                  {data.page_md}
+                </ReactMarkdown>
+              </div>
+            )}
+            {!data.page_md && <div className="hint">本页还没有整页转录。</div>}
             <button className="ghost" disabled={busy}
                     onClick={() => void act(async () => { await pageVlm(pageId, fetchImpl); }, () => void reload())}>
               🔄 {data.page_md ? "重新" : ""}远端整页解析
@@ -125,7 +139,17 @@ export function PageDetail({ pageId, fetchImpl = fetch, onExit, onError }: {
                     </div>
                   </>
                 ) : (
-                  <div className="bc">{b.content_md ?? "（空）"}</div>
+                  <div className="bc">
+                    {blockView === "rendered" ? (
+                      <div className="md">
+                        <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
+                          {b.content_md ?? "（空）"}
+                        </ReactMarkdown>
+                      </div>
+                    ) : (
+                      <pre>{b.content_md ?? "（空）"}</pre>
+                    )}
+                  </div>
                 )}
                 {b.pending.length > 0 && <div className="badges">{b.pending.map((r) => <span key={r.id} className="badge">{r.reason}</span>)}</div>}
                 {editing !== b.id && (
