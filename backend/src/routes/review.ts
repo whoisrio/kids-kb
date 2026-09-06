@@ -236,6 +236,9 @@ export function reviewRoutes(pool: pg.Pool, deps: ReviewDeps): Hono {
         "UPDATE blocks SET content_md=$2 WHERE id=$1 RETURNING id::text, content_md",
         [c.req.param("id"), body.content_md]);
       if (!b) return c.json({ error: "block 不存在" }, 404);
+      await pool.query(
+        "UPDATE pages SET index_status='stale' WHERE id=(SELECT page_id FROM blocks WHERE id=$1)",
+        [c.req.param("id")]);
       return c.json(b);
     } catch (err) {
       return invalidId(c, err) ?? (() => { throw err; })();

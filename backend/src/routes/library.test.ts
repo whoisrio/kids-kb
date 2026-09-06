@@ -45,3 +45,19 @@ describe("DELETE /api/library/:id", () => {
     expect(res.status).toBe(204);
   });
 });
+
+describe("POST /api/library/:id/reindex", () => {
+  it("proxies to pipeline", async () => {
+    const app2 = new Hono().route("/api/library",
+      libraryRoutes({
+        query: async () => ({ rows: [] }),
+      } as never, {
+        pipelineUrl: "http://mock:8766",
+      } as never, { storageRoot: "/tmp" } as never));
+    const res = await app2.request(`/api/library/${DOC_ID}/reindex`, {
+      method: "POST", body: JSON.stringify({ type: "page", id: "p1" }),
+      headers: { "Content-Type": "application/json" },
+    });
+    expect(res.status).toBe(502);
+  });
+});

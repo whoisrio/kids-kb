@@ -43,12 +43,12 @@ maybe("review API（真库）", () => {
     }));
 
     const doc = await pool.query(
-      `INSERT INTO documents (title, subject, doc_type, source_path, status)
+      `INSERT INTO documents (title, subject, doc_type, source_path, parse_status)
        VALUES ('口算天天练','数学','workbook','/tmp/a.pdf','parsed') RETURNING id::text`);
     docId = doc.rows[0].id;
     const mkPage = async (pageNo: number) =>
       (await pool.query(
-        `INSERT INTO pages (document_id, page_no, image_path, status)
+        `INSERT INTO pages (document_id, page_no, image_path, parse_status)
          VALUES ($1,$2,$3,'parsed') RETURNING id::text`,
         [docId, pageNo, join("storage", docId, "pages", `p${String(pageNo).padStart(4, "0")}.png`)],
       )).rows[0].id;
@@ -75,11 +75,11 @@ maybe("review API（真库）", () => {
       "INSERT INTO review_queue (page_id, reason, status) VALUES ($1,'版面歪斜','approved')", [page2]);
 
     const flatDoc = await pool.query(
-      `INSERT INTO documents (title, subject, doc_type, source_path, status, struct_mode)
+      `INSERT INTO documents (title, subject, doc_type, source_path, parse_status, struct_mode)
        VALUES ('学霸提优大试卷','数学','exam','/tmp/b.pdf','parsed','flat') RETURNING id::text`);
     flatDocId = flatDoc.rows[0].id;
     const fp = await pool.query(
-      `INSERT INTO pages (document_id, page_no, image_path, status, adopted_source, page_md)
+      `INSERT INTO pages (document_id, page_no, image_path, parse_status, adopted_source, page_md)
        VALUES ($1,1,$2,'parsed','page_md','第二套 竖式计算') RETURNING id::text`,
       [flatDocId, join("storage", flatDocId, "pages", "p0001.png")]);
     const fDir = join(storageRoot, flatDocId, "pages");
@@ -101,7 +101,7 @@ maybe("review API（真库）", () => {
       "INSERT INTO review_queue (item_id, reason) VALUES ($1,'ungrounded:例 1 摘录')", [itemId]);
 
     const textDoc = await pool.query(
-      `INSERT INTO documents (title, subject, doc_type, source_path, page_count, status)
+      `INSERT INTO documents (title, subject, doc_type, source_path, page_count, parse_status)
        VALUES ('英语语法测试','英语','workbook','/tmp/c.docx',0,'parsed') RETURNING id::text`);
     textDocId = textDoc.rows[0].id;
     await pool.query(

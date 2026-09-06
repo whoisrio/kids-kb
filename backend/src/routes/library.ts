@@ -40,5 +40,19 @@ export function libraryRoutes(pool: pg.Pool, deps: LibraryDeps, cfg: BackendConf
     }
   });
 
+  app.post("/:id/reindex", async (c) => {
+    const body = await c.req.json().catch(() => null);
+    if (!body?.type || !body?.id) return c.json({ error: "type/id 必填" }, 422);
+    try {
+      const resp = await fetch(`${deps.pipelineUrl}/internal/reindex`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ doc_id: c.req.param("id"), type: body.type, id: body.id }),
+      });
+      return c.json(await resp.json(), resp.status as 200);
+    } catch {
+      return c.json({ error: "pipeline 不可达" }, 502);
+    }
+  });
+
   return app;
 }
