@@ -43,8 +43,8 @@ def store_document_chapters(conn, cfg: Config, path, title: str,
     with conn.cursor() as cur:
         cur.execute(
             """INSERT INTO documents (id, title, subject, grade, doc_type, source_path,
-                                      page_count, has_text_layer, parse_status)
-               VALUES (%s,%s,%s,%s,%s,%s,0,true,'parsed')
+                                      page_count, has_text_layer, parse_status, review_status)
+               VALUES (%s,%s,%s,%s,%s,%s,0,true,'parsed','pending')
                ON CONFLICT (id) DO NOTHING""",
             (doc_id, title, subject, grade, doc_type, path),
         )
@@ -54,10 +54,12 @@ def store_document_chapters(conn, cfg: Config, path, title: str,
                    VALUES (%s,%s,%s,%s,%s) ON CONFLICT (document_id, chapter_no) DO NOTHING""",
                 (str(uuid.uuid4()), doc_id, i, ch_title, content),
             )
-    export_chapter_mds(conn, cfg, doc_id)
+        export_chapter_mds(conn, cfg, doc_id)
     try:
         from kb.embed import embed_chapters
         embed_chapters(conn, cfg, doc_id, client=client)
+        with conn.cursor() as cur:
+            cur.execute("UPDATE chapters SET index_status='indexed' WHERE document_id=%s", (doc_id,))
     except Exception as e:  # noqa: BLE001 - 向量化失败不阻断入库,可 kb.cli embed 补跑
         print(f"warn: 章节向量化失败({e}),稍后可用 `kb.cli embed {doc_id}` 补跑")
     return doc_id

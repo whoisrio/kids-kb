@@ -161,6 +161,10 @@ def approve_flat_pages(conn, cfg: Config, doc_id: str, client=None) -> dict:
             )
             resolved = cur.rowcount
         chunks = embed_flat_pages(conn, cfg, doc_id, client=client)
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE pages SET review_status='approved', index_status='indexed' WHERE document_id=%s",
+                (doc_id,))
     with conn.cursor() as cur:
         n_pages = len(page_contents(cur, doc_id))
     return {"pages": n_pages, "chunks": chunks, "resolved": resolved}

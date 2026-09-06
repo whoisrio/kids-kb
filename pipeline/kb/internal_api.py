@@ -26,6 +26,12 @@ class PageVlmRequest(BaseModel):
     page_id: str
 
 
+class ReindexRequest(BaseModel):
+    doc_id: str
+    type: str
+    id: str
+
+
 def create_internal_app(reranker_factory=None, get_conn=None, cfg=None,
                         vlm_client=None, embed_client=None) -> FastAPI:
     """reranker_factory / get_conn / cfg / vlm_client 均可注入假实现；默认懒加载真实依赖。"""
@@ -159,5 +165,44 @@ def create_internal_app(reranker_factory=None, get_conn=None, cfg=None,
             raise HTTPException(status_code=500, detail=str(e)) from e
         finally:
             conn.close()
+
+    @app.post("/internal/reindex")
+    def reindex_ep(body: ReindexRequest):
+        """手动重向量化：编辑后用户触发，重建该页或章节的 chunks。"""
+        with conn_ctx() as conn:
+            try:
+                if body.type == "page":
+                    from kb.flat import embed_flat_pages
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            "SELECT page_no FROM pages WHERE id=%s AND document_id=%s",
+                            (body.id, body.doc_id))
+                        row = cur.fetchone()
+                    if not row:
+                        raise HTTPException(status_code=404, detail="page 不存在")
+                    embed_flat_pages(conn, _cfg(), body.doc_id,
+                                     page_no=row[0], client=embed_client)
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            "UPDATE pages SET index_status='indexed' WHERE id=%s", (body.id,))
+                    return {"chunks": 1}
+                if body.type == "chapter":
+                    from kb.embed import embed_chapters
+                    with conn.cursor() as cur:
+                        cur.execute("SELECT 1 FROM chapters WHERE id=%s AND document_id=%s",
+                                    (body.id, body.doc_id))
+                        if not cur.fetchone():
+                            raise HTTPException(status_code=404, detail="chapter 不存在")
+                        cur.execute("DELETE FROM chunks WHERE chapter_id=%s", (body.id,))
+                    n = embed_chapters(conn, _cfg(), body.doc_id, client=embed_client)
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            "UPDATE chapters SET index_status='indexed' WHERE id=%s", (body.id,))
+                    return {"chunks": n}
+                raise HTTPException(status_code=422, detail="type 取值: page|chapter")
+            except HTTPException:
+                raise
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=str(e)) from e
 
     return app
