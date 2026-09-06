@@ -517,3 +517,33 @@ button.ghost:hover { color: var(--redpen); border-color: var(--redpen); }
 .usage .modality-tag { font-size: 11px; border-radius: 999px; padding: 1px 8px;
   border: 1px solid var(--line); color: var(--pencil); }
 .usage .modality-tag.image { border-color: #8a6d3b; color: #8a6d3b; }
+
+/* ── 资料库 ── */
+.library { display: flex; flex-direction: column; gap: 20px; overflow-y: auto; flex: 1; }
+.library h2 { font-size: 16px; color: var(--ink); margin: 0 0 8px; }
+.lib-card { display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+  border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px;
+  background: var(--card); cursor: pointer; margin-bottom: 6px; }
+.lib-card:hover { border-color: var(--redpen); }
+.lib-card .title { font-size: 14px; color: var(--ink); font-weight: 500; }
+.lib-card .meta { font-size: 12px; color: var(--pencil); }
+.lib-card .danger { margin-left: auto; font-size: 12px; color: var(--redpen);
+  border: none; background: none; cursor: pointer; }
+.badge.review-approved { color: #2e7d32; border-color: #2e7d32; }
+.badge.review-pending { color: var(--redpen); border-color: var(--redpen); }
+.badge.review-rejected { color: #c62828; border-color: #c62828; }
+.badge.review-auto_passed { color: #1565c0; border-color: #1565c0; }
+.badge.stale { color: #e65100; border-color: #e65100; }
+.badge.idx-indexed { color: #2e7d32; border-color: #2e7d32; }
+.badge.idx-stale { color: #e65100; border-color: #e65100; }
+.badge.idx-not_indexed { color: var(--pencil); border-color: var(--line); }
+.library-detail { display: flex; flex-direction: column; gap: 12px; overflow-y: auto; flex: 1; }
+.cd-body { display: grid; grid-template-columns: 220px 1fr; gap: 14px; overflow-y: auto; flex: 1; }
+.cd-toc { display: flex; flex-direction: column; gap: 4px; }
+.cd-toc button { display: flex; justify-content: space-between; align-items: center;
+  padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px;
+  background: var(--card); cursor: pointer; font-size: 13px; text-align: left; }
+.cd-toc button.active { border-color: var(--redpen); }
+.cd-toc button:hover { border-color: var(--redpen); }
+.cd-content { border: 1px solid var(--line); border-radius: 10px; padding: 14px;
+  background: var(--card); overflow-y: auto; font-size: 14px; line-height: 1.7; }

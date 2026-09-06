@@ -21,3 +21,18 @@ export async function deleteLibraryDoc(id: string, fetchImpl: FetchLike = fetch)
   const res = await fetchImpl(`/api/library/${encodeURIComponent(id)}`, { method: "DELETE" });
   if (!res.ok && res.status !== 204) throw new Error(`${res.status}`);
 }
+
+export async function fetchLibraryDoc(id: string, fetchImpl: FetchLike = fetch) {
+  return req<{
+    id: string; title: string; subject: string | null; file_type: string;
+    parse_status: string; review_status: string; uploaded_by: string | null;
+    created_at: string; struct_mode: string | null;
+    pages?: { id: string; page_no: number; review_status: string; index_status: string }[];
+    chapters?: ChapterSummary[];
+  }>(`/api/library/${encodeURIComponent(id)}`, fetchImpl);
+}
+
+export interface ChapterSummary {
+  id: string; chapter_no: number; title: string; content_md: string;
+  review_status: string; index_status: string;
+}

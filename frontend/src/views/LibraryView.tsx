@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { deleteLibraryDoc, fetchLibraryDocs, type LibraryDoc } from "../api/library";
+import { fetchLibraryDoc } from "../api/library";
 import { PageDetail } from "../components/PageDetail";
 import { ChapterDetail, type ChapterSummary } from "./ChapterDetail";
 
@@ -10,6 +11,8 @@ export function LibraryView({ fetchImpl = fetch, onOpenDoc }: {
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [openDocId, setOpenDocId] = useState<string | null>(null);
+  const [openDoc, setOpenDoc] = useState<{ file_type: string; pages?: { id: string; page_no: number; review_status: string; index_status: string }[]; chapters?: ChapterSummary[] } | null>(null);
+  const [openPageId, setOpenPageId] = useState<string | null>(null);
 
   const reload = useCallback(async () => {
     try {
@@ -31,15 +34,48 @@ export function LibraryView({ fetchImpl = fetch, onOpenDoc }: {
   };
 
   const subjects = [...new Set(docs.map((d) => d.subject ?? "未分类"))];
-  if (openDocId) {
-    const doc = docs.find((d) => d.id === openDocId);
+
+  const openDetail = async (doc: LibraryDoc) => {
+    setOpenDocId(doc.id);
+    try {
+      const detail = await fetchLibraryDoc(doc.id, fetchImpl);
+      setOpenDoc(detail);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  if (openPageId) {
     return (
-      <div>
-        {doc?.file_type === "pdf" && (
-          <PageDetail pageId={openDocId} onExit={() => setOpenDocId(null)} onError={setError} />
+      <PageDetail
+        pageId={openPageId}
+        fetchImpl={fetchImpl}
+        onExit={() => { setOpenPageId(null); void reload(); }}
+        onError={setError}
+      />
+    );
+  }
+
+  if (openDocId) {
+    return (
+      <div className="library-detail">
+        <button className="ghost" onClick={() => { setOpenDocId(null); setOpenDoc(null); void reload(); }}>← 返回列表</button>
+        {openDoc?.file_type === "pdf" && (
+          <div className="page-cards">
+            {openDoc.pages?.map((p) => (
+              <button key={p.id} className="page-card" onClick={() => setOpenPageId(p.id)}>
+                <img src={`/api/review/pages/${p.id}/image`} alt={`第 ${p.page_no} 页`} loading="lazy" />
+                <div className="meta">
+                  <span className="doc">第 {p.page_no} 页</span>
+                  <span className={`badge review-${p.review_status}`}>{p.review_status}</span>
+                  {p.index_status === "stale" && <span className="badge stale">索引过期</span>}
+                </div>
+              </button>
+            ))}
+          </div>
         )}
-        {doc && doc.file_type !== "pdf" && (
-          <ChapterDetail docId={openDocId} chapters={[] as ChapterSummary[]} onExit={() => setOpenDocId(null)} />
+        {openDoc && openDoc.file_type !== "pdf" && (
+          <ChapterDetail docId={openDocId} chapters={openDoc.chapters ?? []} onExit={() => { setOpenDocId(null); setOpenDoc(null); void reload(); }} />
         )}
       </div>
     );
@@ -51,7 +87,7 @@ export function LibraryView({ fetchImpl = fetch, onOpenDoc }: {
         <section key={subject}>
           <h2>{subject}</h2>
           {docs.filter((d) => (d.subject ?? "未分类") === subject).map((d) => (
-            <div key={d.id} className="lib-card" onClick={() => onOpenDoc?.(d)}>
+            <div key={d.id} className="lib-card" onClick={() => void openDetail(d)}>
               <span className="title">{d.title}</span>
               <span className="meta">{d.file_type} · {d.parse_status}</span>
               <span className={`badge review-${d.review_status}`}>{d.review_status}</span>
