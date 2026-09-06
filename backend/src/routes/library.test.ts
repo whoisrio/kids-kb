@@ -61,3 +61,30 @@ describe("POST /api/library/:id/reindex", () => {
     expect(res.status).toBe(502);
   });
 });
+
+describe("GET /api/library/:id", () => {
+  it("returns chapters with status for non-pdf doc", async () => {
+    const pool2 = {
+      query: async (sql: string) => {
+        if (sql.includes("FROM documents d")) {
+          return { rows: [{ id: DOC_ID, title: "英语教材", subject: "英语",
+            parse_status: "parsed", review_status: "approved",
+            uploaded_by: null, created_at: "2026-09-06", struct_mode: "toc", file_type: "md" }] };
+        }
+        if (sql.includes("FROM chapters")) {
+          return { rows: [{ id: "ch1", chapter_no: 1, title: "第一章",
+            content_md: "# 第一章", review_status: "auto_passed", index_status: "indexed" }] };
+        }
+        return { rows: [] };
+      },
+    } as never;
+    const app2 = new Hono().route("/api/library",
+      libraryRoutes(pool2, { pipelineUrl: "http://mock:8766" } as never, { storageRoot: "/tmp" } as never));
+    const res = await app2.request(`/api/library/${DOC_ID}`);
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.chapters[0]).toMatchObject({
+      title: "第一章", review_status: "auto_passed", index_status: "indexed",
+    });
+  });
+});

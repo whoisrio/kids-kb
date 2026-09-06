@@ -54,5 +54,33 @@ export function libraryRoutes(pool: pg.Pool, deps: LibraryDeps, cfg: BackendConf
     }
   });
 
+  app.get("/:id", async (c) => {
+    try {
+      const { rows: [doc] } = await pool.query(
+        `SELECT d.id::text, d.title, d.subject, d.parse_status, d.review_status,
+                d.uploaded_by, d.created_at, d.struct_mode,
+                CASE WHEN d.source_path LIKE '%%.pdf' THEN 'pdf'
+                     WHEN d.source_path LIKE '%%.docx' THEN 'docx'
+                     ELSE 'md' END AS file_type
+         FROM documents d WHERE d.id=$1`, [c.req.param("id")]);
+      if (!doc) return c.json({ error: "文档不存在" }, 404);
+      if (doc.file_type === "pdf") {
+        const { rows: pages } = await pool.query(
+          `SELECT id::text, page_no, review_status, index_status
+           FROM pages WHERE document_id=$1 ORDER BY page_no`, [doc.id]);
+        return c.json({ ...doc, pages });
+      }
+      const { rows: chapters } = await pool.query(
+        `SELECT id::text, chapter_no, title, content_md, review_status, index_status
+         FROM chapters WHERE document_id=$1 ORDER BY chapter_no`, [doc.id]);
+      return c.json({ ...doc, chapters });
+    } catch (err) {
+      if ((err as { code?: string }).code === "22P02") {
+        return c.json({ error: "id 格式非法" }, 422);
+      }
+      throw err;
+    }
+  });
+
   return app;
 }

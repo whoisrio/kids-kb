@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { deleteLibraryDoc, fetchLibraryDocs, type LibraryDoc } from "../api/library";
+import { PageDetail } from "../components/PageDetail";
+import { ChapterDetail, type ChapterSummary } from "./ChapterDetail";
 
 export function LibraryView({ fetchImpl = fetch, onOpenDoc }: {
   fetchImpl?: typeof fetch; onOpenDoc?: (doc: LibraryDoc) => void;
@@ -7,6 +9,7 @@ export function LibraryView({ fetchImpl = fetch, onOpenDoc }: {
   const [docs, setDocs] = useState<LibraryDoc[]>([]);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [error, setError] = useState("");
+  const [openDocId, setOpenDocId] = useState<string | null>(null);
 
   const reload = useCallback(async () => {
     try {
@@ -28,6 +31,19 @@ export function LibraryView({ fetchImpl = fetch, onOpenDoc }: {
   };
 
   const subjects = [...new Set(docs.map((d) => d.subject ?? "未分类"))];
+  if (openDocId) {
+    const doc = docs.find((d) => d.id === openDocId);
+    return (
+      <div>
+        {doc?.file_type === "pdf" && (
+          <PageDetail pageId={openDocId} onExit={() => setOpenDocId(null)} onError={setError} />
+        )}
+        {doc && doc.file_type !== "pdf" && (
+          <ChapterDetail docId={openDocId} chapters={[] as ChapterSummary[]} onExit={() => setOpenDocId(null)} />
+        )}
+      </div>
+    );
+  }
   return (
     <div className="library">
       {error && <div className="form-error" role="alert">{error}</div>}
