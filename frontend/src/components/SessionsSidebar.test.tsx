@@ -11,7 +11,7 @@ const SESSIONS: SessionSummary[] = [
 describe("SessionsSidebar", () => {
   it("渲染会话列表（标题 + 模型），当前会话高亮标记", () => {
     render(
-      <SessionsSidebar sessions={SESSIONS} activeId="s1" onSelect={() => {}} onNew={() => {}} />,
+      <SessionsSidebar sessions={SESSIONS} activeId="s1" onSelect={() => {}} onNew={() => {}} onDelete={() => {}} />,
     );
     expect(screen.getByText("口算题")).toBeInTheDocument();
     expect(screen.getByText("英语语法错因")).toBeInTheDocument();
@@ -26,7 +26,7 @@ describe("SessionsSidebar", () => {
     const onSelect = vi.fn();
     const onNew = vi.fn();
     render(
-      <SessionsSidebar sessions={SESSIONS} activeId="s1" onSelect={onSelect} onNew={onNew} />,
+      <SessionsSidebar sessions={SESSIONS} activeId="s1" onSelect={onSelect} onNew={onNew} onDelete={vi.fn()} />,
     );
     fireEvent.click(screen.getByText("英语语法错因"));
     expect(onSelect).toHaveBeenCalledWith("s2");
@@ -36,13 +36,13 @@ describe("SessionsSidebar", () => {
   });
 
   it("无会话时空态提示", () => {
-    render(<SessionsSidebar sessions={[]} activeId={null} onSelect={() => {}} onNew={() => {}} />);
+    render(<SessionsSidebar sessions={[]} activeId={null} onSelect={() => {}} onNew={() => {}} onDelete={() => {}} />);
     expect(screen.getByText("还没有历史会话")).toBeInTheDocument();
   });
 
   it("meta 行显示模型与修改时间（MM-DD HH:mm）", () => {
     render(
-      <SessionsSidebar sessions={SESSIONS} activeId="s1" onSelect={() => {}} onNew={() => {}} />,
+      <SessionsSidebar sessions={SESSIONS} activeId="s1" onSelect={() => {}} onNew={() => {}} onDelete={() => {}} />,
     );
     const meta = screen.getByText("qwen3:4b").closest(".m");
     expect(meta).not.toBeNull();

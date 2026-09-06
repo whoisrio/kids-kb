@@ -22,6 +22,10 @@ class EmbedFlatPageRequest(BaseModel):
     page_no: int
 
 
+class PageVlmRequest(BaseModel):
+    page_id: str
+
+
 def create_internal_app(reranker_factory=None, get_conn=None, cfg=None,
                         vlm_client=None, embed_client=None) -> FastAPI:
     """reranker_factory / get_conn / cfg / vlm_client 均可注入假实现；默认懒加载真实依赖。"""
@@ -109,5 +113,51 @@ def create_internal_app(reranker_factory=None, get_conn=None, cfg=None,
             except Exception as e:
                 raise HTTPException(status_code=500, detail=str(e)) from e
         return {"chunks": chunks}
+
+    @app.post("/internal/approve-item")
+    def approve_item_ep(item_id: str):
+        """条目人工确认：qc_status=approved + 关 pending 复核行 + 即时向量化。
+        approve 与向量化单一事实来源（CLI approve 与 React 复核页共用同一实现）。
+        向量化失败不阻断（embedded=None，可 kb.cli embed 补跑）。"""
+        from kb.embed import embed_approved_items
+        conn = _conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("UPDATE items SET qc_status='approved', updated_at=now() WHERE id=%s RETURNING id", (item_id,))
+                if not cur.fetchone():
+                    raise HTTPException(status_code=404, detail="item 不存在")
+                cur.execute("UPDATE review_queue SET status='approved' WHERE item_id=%s AND status='pending'", (item_id,))
+            try:
+                n = embed_approved_items(conn, cfg, client=embed_client)
+            except Exception as e:  # noqa: BLE001 - 向量化失败不阻断复核
+                print(f"warn: 条目向量化失败({e}),可 kb.cli embed 补跑")
+                n = None
+            return {"id": item_id, "qc_status": "approved", "embedded": n}
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e)) from e
+        finally:
+            conn.close()
+
+    @app.post("/internal/page-vlm")
+    def page_vlm_ep(body: PageVlmRequest):
+        """页级 VLM 重跑（复核页「远端整页解析」）：覆盖旧 page_md，采用版本仍由 adopt 决定。
+        镜像不在此刷新（B3：镜像改由 export 重算）。"""
+        from kb.pagelvl import transcribe_page
+        conn = _conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT 1 FROM pages WHERE id=%s", (body.page_id,))
+                if not cur.fetchone():
+                    raise HTTPException(status_code=404, detail="page 不存在")
+            md = transcribe_page(conn, cfg, body.page_id, client=vlm_client)
+            return {"page_id": body.page_id, "page_md_len": len(md)}
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e)) from e
+        finally:
+            conn.close()
 
     return app

@@ -42,9 +42,6 @@ def main() -> None:
     p_ingest.add_argument("--start", type=int, default=1, help="起始页(1-based，含)")
     p_ingest.add_argument("--end", type=int, default=None, help="结束页(1-based，含)，默认到末页")
     sub.add_parser("status")
-    p_review = sub.add_parser("review", help="启动复核 web 页")
-    p_review.add_argument("--host", default="127.0.0.1")
-    p_review.add_argument("--port", type=int, default=8765)
     p_internal = sub.add_parser("serve-internal", help="内部服务（/internal/rerank 等，只对 TS 后端）")
     p_internal.add_argument("--host", default="127.0.0.1")
     p_internal.add_argument("--port", type=int, default=8766)
@@ -82,12 +79,6 @@ def main() -> None:
     p_search.add_argument("--rerank", action="store_true",
                           help="用本地 bge-reranker-v2-m3 重排（需 uv sync --extra rerank）")
     args = ap.parse_args()
-
-    if args.cmd == "review":
-        import uvicorn
-        from kb.review_api import create_app
-        uvicorn.run(create_app(), host=args.host, port=args.port)
-        return
 
     if args.cmd == "serve-internal":
         import uvicorn

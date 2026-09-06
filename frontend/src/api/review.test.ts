@@ -1,0 +1,66 @@
+import { describe, expect, it } from "vitest";
+import { fetchRouter, jsonResponse } from "../test/support";
+import {
+  adoptReviewPage, approveReviewItem, approveReviewPage, fetchReviewDocs, fetchReviewItems,
+  fetchReviewPage, fetchReviewPages, pageVlm, rejectReviewPage, reviewSearch, updateReviewBlock,
+  updateReviewItem,
+} from "./review";
+
+describe("api/review", () => {
+  it("读路径：docs/pages/items/page 详情与 query 拼装", async () => {
+    const fetchImpl = fetchRouter({
+      "/api/review/docs": () => jsonResponse([{ id: "d1", title: "书", pending_pages: 2 }]),
+      "/api/review/pages?status=pending&doc_id=d1": () => jsonResponse({ pages: [] }),
+      "/api/review/items?doc_id=d1&status=pending": () => jsonResponse({ items: [] }),
+      "/api/review/pages/p1": () => jsonResponse({ id: "p1", blocks: [] }),
+    });
+    expect((await fetchReviewDocs(fetchImpl))[0].pending_pages).toBe(2);
+    expect(await fetchReviewPages("d1", "pending", fetchImpl)).toEqual({ pages: [] });
+    expect(await fetchReviewItems("d1", "pending", fetchImpl)).toEqual({ items: [] });
+    expect((await fetchReviewPage("p1", fetchImpl)).id).toBe("p1");
+  });
+
+  it("写路径：方法/路径/body 逐一对齐", async () => {
+    const calls: { method: string; url: string; body?: unknown }[] = [];
+    const fetchImpl = async (input: RequestInfo | URL, init?: RequestInit) => {
+      calls.push({ method: init?.method ?? "GET", url: String(input), body: init?.body ? JSON.parse(String(init.body)) : undefined });
+      return jsonResponse({});
+    };
+    await updateReviewBlock("b1", "改", fetchImpl);
+    await updateReviewItem("i1", "改", fetchImpl);
+    await rejectReviewPage("p1", "缺题", fetchImpl);
+    await adoptReviewPage("p1", "page_md", fetchImpl);
+    await approveReviewPage("p1", fetchImpl);
+    await approveReviewItem("i1", fetchImpl);
+    await pageVlm("p1", fetchImpl);
+    expect(calls.map((c) => `${c.method} ${c.url}`)).toEqual([
+      "PATCH /api/review/blocks/b1",
+      "PATCH /api/review/items/i1",
+      "POST /api/review/pages/p1/reject",
+      "POST /api/review/pages/p1/adopt",
+      "POST /api/review/pages/p1/approve",
+      "POST /api/review/items/i1/approve",
+      "POST /api/review/pages/p1/page-vlm",
+    ]);
+    expect(calls[0].body).toEqual({ content_md: "改" });
+    expect(calls[2].body).toEqual({ reason: "缺题" });
+    expect(calls[3].body).toEqual({ source: "page_md" });
+  });
+
+  it("reviewSearch：q/subject 拼装；空 q 由调用方拦", async () => {
+    let seen = "";
+    const fetchImpl = async (input: RequestInfo | URL) => {
+      seen = String(input);
+      return jsonResponse({ hits: [] });
+    };
+    await reviewSearch("竖式", "数学", fetchImpl);
+    expect(seen).toBe("/api/review/search?q=" + encodeURIComponent("竖式") + "&subject=" + encodeURIComponent("数学"));
+  });
+
+  it("非 2xx 抛错（message 取 body.error）", async () => {
+    const fetchImpl = fetchRouter({
+      "/api/review/pages/nope": () => jsonResponse({ error: "page 不存在" }, 404),
+    });
+    await expect(fetchReviewPage("nope", fetchImpl)).rejects.toThrow("page 不存在");
+  });
+});

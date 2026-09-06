@@ -1,5 +1,5 @@
 // 批量校验 LaTeX 可渲染性。stdin: ["x^2", "\\frac{1"] -> stdout: [true, false]
-const katex = require("../kb/static/vendor/katex/katex.min.js");
+const katex = require("katex");
 let input = "";
 process.stdin.on("data", (c) => (input += c));
 process.stdin.on("end", () => {

@@ -91,7 +91,7 @@ uv run python -m kb.cli search "..." --mode vector --rerank        # 单向量 /
 - meta 带 subject/grade/chapter/taxonomy/tags/label/页码，`search()` 支持 filters 精确过滤 + 语义混排
 - embedding 默认本地 ollama bge-m3（1024 维），`KB_EMBED_BASE_URL`/`KB_EMBED_MODEL` 可配置；
   pgvector HNSW 索引，余弦距离
-- 复核页「检索」tab 可直接查询，命中卡片点进条目详情（含溯源裁图）
+- 复核页「资料」tab 的试搜可直接查询，命中卡片点进条目详情（含溯源裁图）
 - `assemble_chapter` 把采用版本的页内容拼成章节 markdown（完整文档产物，adopted=page_md 用整页稿）
 
 ## 聊天：会话分支与 thinking
@@ -116,14 +116,8 @@ KB_LAYOUT_ENGINE=paddleocr uv run --extra layout python -m kb.cli reprocess <doc
 `2026-08-31-pdf-pipeline-phase2a-layout.md`（版面+分级解析）、
 `2026-08-31-pdf-pipeline-phase2b-structure.md`（结构化拆分）
 
-## 人工复核（页级 web 页）
+## 人工复核（React 复核页）
 
-```bash
-cd pipeline && uv run python -m kb.cli review   # http://127.0.0.1:8765
-```
-
-以页为单位：待复核 = 有 pending 复核行的页；已通过 = 干净的 parsed 页（自动归入，无需逐页点）。
-点进页详情看整页扫描图 + 区块 bbox 高亮（红框=有问题），点击块在右侧查看/编辑转录
-（Markdown + KaTeX 渲染）；「✓ 整页通过」关掉该页全部 pending 行，「✗ 打回本页」建页级
-自定义行。已通过的页仍可编辑（改坏了会自动新建可检测行）和打回。
-版面类问题（layout_gap/layout_overlap）重跑版面后机器复算自动关闭。
+打开 http://127.0.0.1:5200 的「复核」页：试卷 tab 确认对错与题库匹配；资料 tab
+（待复核页 / 已通过页 / 条目 / 试搜）覆盖旧静态复核页的全部高频操作——块编辑、
+整页通过（flat 文档页级通过即向量化）、条目确认即时可检索、检索试搜。

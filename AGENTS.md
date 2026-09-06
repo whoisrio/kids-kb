@@ -32,7 +32,7 @@
 验证产品实际效果时，**必须用 e2e/ 下的 Playwright 用例**（真实三服务 + ollama + PostgreSQL，断言到 UI、API、JSONL、DB 字段），不允许用 ego-browser 之类的临时浏览器驱动代替——一次性验证不可回归，用例才是资产。新增页面/链路时同步补 spec。
 
 - 运行：`cd e2e && npm test`。Playwright 自动拉起缺失的服务（在跑的复用），需本机 ollama 与 PostgreSQL 就绪。
-- 前置：模型切换用例需 ≥2 个注册模型（config 里 CHAT_MODELS，e2e 默认 `qwen3.5:4b,qwen3.5:2b`）。
+- 前置：模型切换用例需 ≥2 个注册模型（config 里 CHAT_MODELS，e2e 默认 `qwen3.5:4b-32k,qwen3.5:2b`）。
 
 ## 边界纪律
 
