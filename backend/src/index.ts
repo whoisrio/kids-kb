@@ -9,6 +9,8 @@ import { makeReranker } from "./retrieval/rerank.js";
 import { hybridSearch } from "./retrieval/search.js";
 import { childrenRoutes } from "./routes/children.js";
 import { attemptsRoutes } from "./routes/attempts.js";
+import { statsRoutes } from "./routes/stats.js";
+import { usageRoutes } from "./routes/usage.js";
 import { sessionsRoutes } from "./routes/sessions.js";
 import { modelsRoutes } from "./routes/models.js";
 import { papersRoutes } from "./routes/papers.js";
@@ -53,6 +55,8 @@ export function createApp(
   app.route("/api/models", modelsRoutes(cfg.chatModels));
   app.route("/api/children", childrenRoutes(pool));
   app.route("/api/attempts", attemptsRoutes(pool));
+  app.route("/api/stats", statsRoutes(pool));
+  app.route("/api/usage", usageRoutes(pool));
   app.route("/api/papers", papersRoutes(pool, paperJobs, cfg));
   app.route("/api/paper-questions", paperQuestionsRoutes(pool, paperJobs));
   app.route("/api/review", reviewRoutes(pool, {
