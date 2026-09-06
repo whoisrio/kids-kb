@@ -44,6 +44,7 @@ export function PageDetail({ pageId, fetchImpl = fetch, onExit, onError }: {
       <div className="pd-head">
         <button className="ghost" onClick={onExit}>← 返回列表</button>
         <span>《{data.doc_title}》第 {data.page_no} 页</span>
+        {data.index_status === "stale" && <span className="badge stale">索引已过期</span>}
         <button className="primary" disabled={busy}
                 onClick={() => void act(async () => { await approveReviewPage(pageId, fetchImpl); }, onExit)}>
           ✓ 整页通过
@@ -80,7 +81,13 @@ export function PageDetail({ pageId, fetchImpl = fetch, onExit, onError }: {
               }}
               onClick={() => setSelected(b.id)}
               aria-label={`块 ${b.id}`}
-            />
+            >
+              {b.items?.map((item: { id: string; label: string | null; content_type: string; role: string }) => (
+                <span key={item.id} className={`bbox-tag role-${item.role}`}>
+                  #{item.label}
+                </span>
+              ))}
+            </button>
           ))}
         </div>
         <div className="pd-panel">

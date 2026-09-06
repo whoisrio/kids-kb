@@ -69,13 +69,25 @@ export function reviewRoutes(pool: pg.Pool, deps: ReviewDeps): Hono {
   app.get("/pages/:id", async (c) => {
     try {
       const { rows: [page] } = await pool.query(
-        `SELECT p.id::text, p.page_no, d.title AS doc_title, p.page_md, p.page_md_model, p.adopted_source
+      `SELECT p.id::text, p.page_no, d.title AS doc_title, p.page_md, p.page_md_model, p.adopted_source,
+              p.review_status, p.index_status
          FROM pages p JOIN documents d ON d.id = p.document_id WHERE p.id = $1`,
         [c.req.param("id")]);
       if (!page) return c.json({ error: "page 不存在" }, 404);
       const { rows: blocks } = await pool.query(
         `SELECT id::text, block_type, bbox, content_md, source_model
          FROM blocks WHERE page_id = $1 ORDER BY created_at, id`, [page.id]);
+      const blockIds = blocks.map((b) => b.id);
+      const { rows: itemMappings } = await pool.query(
+        `SELECT ib.block_id::text, i.id::text, i.label, i.content_type, ib.role
+         FROM item_blocks ib
+         JOIN items i ON i.id = ib.item_id
+         WHERE ib.block_id = ANY($1::uuid[])`, [blockIds]);
+      const itemsByBlock = new Map<string, { id: string; label: string | null; content_type: string; role: string }[]>();
+      for (const m of itemMappings) {
+        if (!itemsByBlock.has(m.block_id)) itemsByBlock.set(m.block_id, []);
+        itemsByBlock.get(m.block_id)!.push({ id: m.id, label: m.label, content_type: m.content_type, role: m.role });
+      }
       const { rows: pendingRows } = await pool.query(
         `SELECT r.id::text, r.reason, r.block_id::text
          FROM review_queue r LEFT JOIN blocks b ON b.id = r.block_id
@@ -92,7 +104,9 @@ export function reviewRoutes(pool: pg.Pool, deps: ReviewDeps): Hono {
         image_url: `/api/review/pages/${page.id}/image`,
         page_md: page.page_md, page_md_model: page.page_md_model,
         adopted_source: page.adopted_source,
-        blocks: blocks.map((b) => ({ ...b, pending: byBlock.get(b.id) ?? [] })),
+        blocks: blocks.map((b) => ({ ...b, pending: byBlock.get(b.id) ?? [], items: itemsByBlock.get(b.id) ?? [] })),
+        review_status: page.review_status,
+        index_status: page.index_status,
         page_pending: pagePending,
       });
     } catch (err) {
