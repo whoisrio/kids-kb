@@ -4,7 +4,7 @@ import { Rail } from "./components/Rail";
 import { SessionsSidebar } from "./components/SessionsSidebar";
 import { useChat } from "./hooks/useChat";
 import { ChatView } from "./views/ChatView";
-import { ReviewView } from "./views/ReviewView";
+import { LibraryView } from "./views/LibraryView";
 import { StatsView } from "./views/StatsView";
 import { UsageView } from "./views/UsageView";
 import type { ChatMessage } from "./api/chat";
@@ -26,7 +26,7 @@ function transcript(messages: ChatMessage[]): string {
 }
 
 export function App() {
-  const [view, setView] = useState<"chat" | "review" | "stats" | "usage">("chat");
+  const [view, setView] = useState<"chat" | "library" | "stats" | "usage">("chat");
   const [children, setChildren] = useState<{ id: string; name: string; grade: string | null }[]>([]);
   const [childId, setChildId] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -99,7 +99,7 @@ export function App() {
             <span className="date">{today()}</span>
             <h1>{{
               chat: "聊天",
-              review: "复核",
+              library: "资料库",
               stats: "统计",
               usage: "用量",
             }[view]}</h1>
@@ -139,8 +139,8 @@ export function App() {
               onSwitchLane={(lane) => void chat.selectLane(lane)}
               onToast={showToast}
             />
-          : view === "review"
-            ? <ReviewView />
+          : view === "library"
+            ? <LibraryView />
             : view === "stats"
               ? <StatsView childId={childId} onToast={showToast} />
               : <UsageView />}

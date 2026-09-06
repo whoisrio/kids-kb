@@ -1,6 +1,6 @@
 interface RailProps {
-  activeView: "chat" | "review" | "stats" | "usage";
-  onSelect: (view: "chat" | "review" | "stats" | "usage") => void;
+  activeView: "chat" | "library" | "stats" | "usage";
+  onSelect: (view: "chat" | "library" | "stats" | "usage") => void;
   kidChip?: string;
 }
 
@@ -42,13 +42,8 @@ export function Rail({ activeView, onSelect, kidChip }: RailProps) {
       </div>
       <div className="nav">
         {nav(activeView, onSelect, "chat", "聊天")}
-        {nav(activeView, onSelect, "review", "复核")}
+        {nav(activeView, onSelect, "library", "资料库")}
         {nav(activeView, onSelect, "stats", "统计")}
-        <button disabled>
-          <span className="dot"></span>
-          <span className="txt">资料库</span>
-          <span className="todo">待建设</span>
-        </button>
         <div className="sep">系统</div>
         {nav(activeView, onSelect, "usage", "用量")}
       </div>
