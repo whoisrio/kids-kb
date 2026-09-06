@@ -23,7 +23,7 @@ const pool = {
 
 function app() {
   return new Hono().route("/api/library",
-    libraryRoutes(pool, { pipelineUrl: "http://localhost:8766" } as never, { storageRoot: "/tmp" } as never));
+    libraryRoutes(pool, { pipelineUrl: "http://localhost:8766", search: async () => [] } as never, { storageRoot: "/tmp" } as never));
 }
 
 describe("GET /api/library", () => {
@@ -36,6 +36,22 @@ describe("GET /api/library", () => {
       title: "数学练习册", file_type: "pdf",
       review_status: "pending", pending_pages: 2,
     });
+  });
+});
+
+describe("GET /api/library/search", () => {
+  it("returns hits", async () => {
+    const searchPool = {
+      query: async () => ({ rows: [] }),
+    } as never;
+    const mockSearch = async () => [{ doc_id: DOC_ID, doc_title: "数学练习册", content_md: "24+37=" }];
+    const app2 = new Hono().route("/api/library",
+      libraryRoutes(searchPool, { pipelineUrl: "http://mock:8766", search: mockSearch } as never, { storageRoot: "/tmp" } as never));
+    const res = await app2.request("/api/library/search?q=数学");
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.hits).toHaveLength(1);
+    expect(data.hits[0].doc_title).toBe("数学练习册");
   });
 });
 

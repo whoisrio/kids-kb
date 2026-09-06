@@ -5,6 +5,7 @@ import type { BackendConfig } from "../config.js";
 
 export interface LibraryDeps {
   pipelineUrl: string;
+  search: (q: string, filters?: Record<string, string>) => Promise<{ doc_id: string; doc_title: string; content_md: string; page_no?: number; chapter_no?: number }[]>;
 }
 
 export function libraryRoutes(pool: pg.Pool, deps: LibraryDeps, cfg: BackendConfig): Hono {
@@ -24,6 +25,15 @@ export function libraryRoutes(pool: pg.Pool, deps: LibraryDeps, cfg: BackendConf
        LEFT JOIN pages p ON p.document_id = d.id
        GROUP BY d.id ORDER BY d.created_at DESC`);
     return c.json({ documents: rows });
+  });
+
+  app.get("/search", async (c) => {
+    const q = (c.req.query("q") ?? "").trim();
+    if (!q) return c.json({ error: "q 不能为空" }, 422);
+    const docId = c.req.query("doc_id");
+    const filters: Record<string, string> = {};
+    if (docId) filters.doc_id = docId;
+    return c.json({ hits: await deps.search(q, filters) });
   });
 
   app.delete("/:id", async (c) => {
