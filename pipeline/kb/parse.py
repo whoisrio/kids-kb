@@ -141,7 +141,7 @@ def run_parse(conn, cfg: Config, doc_id: str, client=None, ocr=None) -> int:
                     record_llm_call(conn, doc_id, "transcribe", cfg.vision_model, usage)
             except Exception as e:  # noqa: BLE001 - 单块失败不中断
                 cur.execute(
-                    "UPDATE pages SET status='failed', parse_error=%s WHERE id=%s",
+                    "UPDATE pages SET parse_status='failed', parse_error=%s WHERE id=%s",
                     (str(e)[:500], page_id),
                 )
                 continue
@@ -149,7 +149,7 @@ def run_parse(conn, cfg: Config, doc_id: str, client=None, ocr=None) -> int:
                 # 空转录是失败（思考型模型 reasoning 烧穿预算的典型产物），
                 # 不能落空串——空串块会被自愈逻辑误标为 parsed。
                 cur.execute(
-                    "UPDATE pages SET status='failed', parse_error=%s WHERE id=%s",
+                    "UPDATE pages SET parse_status='failed', parse_error=%s WHERE id=%s",
                     ("转录结果为空", page_id),
                 )
                 continue
@@ -158,12 +158,12 @@ def run_parse(conn, cfg: Config, doc_id: str, client=None, ocr=None) -> int:
                        prompt_tokens=%s, completion_tokens=%s WHERE id=%s""",
                 (normalize_latex(text), source, usage[0], usage[1], block_id),
             )
-            cur.execute("UPDATE pages SET status='parsed', parse_error=NULL WHERE id=%s", (page_id,))
+            cur.execute("UPDATE pages SET parse_status='parsed', parse_error=NULL WHERE id=%s", (page_id,))
             n += 1
         # 自愈历史漂移：块内容齐全的页必为 parsed（与逐块更新同一不变量）
         cur.execute(
-            """UPDATE pages SET status='parsed', parse_error=NULL
-               WHERE document_id=%s AND status IN ('rendered', 'failed')
+            """UPDATE pages SET parse_status='parsed', parse_error=NULL
+               WHERE document_id=%s AND parse_status IN ('rendered', 'failed')
                AND NOT EXISTS (
                    SELECT 1 FROM blocks b WHERE b.page_id = pages.id AND b.content_md IS NULL
                )""",

@@ -44,7 +44,7 @@ def auto_page_vlm(conn, cfg: Config, doc_id: str, client=None) -> int:
     with conn.cursor() as cur:
         cur.execute(
             """SELECT p.id FROM pages p
-               WHERE p.document_id=%s AND p.status IN ('parsed','failed')
+               WHERE p.document_id=%s AND p.parse_status IN ('parsed','failed')
                  AND p.page_md IS NULL
                  AND (SELECT count(*) FROM review_queue r
                       LEFT JOIN blocks b ON b.id = r.block_id

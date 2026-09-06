@@ -28,7 +28,7 @@ export function reviewRoutes(pool: pg.Pool, deps: ReviewDeps): Hono {
 
   app.get("/docs", async (c) => {
     const { rows } = await pool.query(
-      `SELECT d.id::text, d.title, d.subject, d.doc_type, d.status, d.struct_mode,
+      `SELECT d.id::text, d.title, d.subject, d.doc_type, d.parse_status, d.struct_mode,
               count(p.id) FILTER (WHERE coalesce(pr.n, 0) > 0)::int AS pending_pages
        FROM documents d
        LEFT JOIN pages p ON p.document_id = d.id
@@ -61,7 +61,7 @@ export function reviewRoutes(pool: pg.Pool, deps: ReviewDeps): Hono {
          WHERE r.status = 'pending' AND (
            r.page_id = p.id OR r.block_id IN (SELECT id FROM blocks WHERE page_id = p.id))
        ) pr ON true
-       WHERE p.status = 'parsed' ${docFilter} AND ${having}
+       WHERE p.parse_status = 'parsed' ${docFilter} AND ${having}
        ORDER BY d.title, p.page_no`, params);
     return c.json({ pages: rows.map((r) => ({ ...r, pending_reasons: r.reasons ?? [] })) });
   });
@@ -130,6 +130,24 @@ export function reviewRoutes(pool: pg.Pool, deps: ReviewDeps): Hono {
     } catch (err) {
       return invalidId(c, err) ?? (() => { throw err; })();
     }
+  });
+
+  app.get("/chapters", async (c) => {
+    const docId = c.req.query("doc_id");
+    const params: unknown[] = [];
+    let where = "";
+    if (docId) {
+      where = "WHERE c.document_id = $1::uuid";
+      params.push(docId);
+    }
+    const { rows } = await pool.query(
+      `SELECT c.id::text, c.document_id::text, d.title AS doc_title,
+              c.chapter_no, c.title, c.content_md
+       FROM chapters c JOIN documents d ON d.id = c.document_id
+       ${where} ORDER BY d.title, c.chapter_no`,
+      params,
+    );
+    return c.json({ chapters: rows });
   });
 
   app.get("/items", async (c) => {

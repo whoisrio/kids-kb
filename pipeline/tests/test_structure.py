@@ -32,7 +32,7 @@ def doc_with_chapter(conn, tmp_path):
                                     ("text", "答：第二个因数十位是 8")]),
                                (3, [("text", "1. 盼望祖国早日统一 算式谜")])]:
             cur.execute(
-                "INSERT INTO pages (id, document_id, page_no, image_path, status) VALUES (%s,%s,%s,'/tmp/x.png','parsed') RETURNING id",
+                "INSERT INTO pages (id, document_id, page_no, image_path, parse_status) VALUES (%s,%s,%s,'/tmp/x.png','parsed') RETURNING id",
                 (str(uuid.uuid4()), doc_id, page_no),
             )
             page_id = str(cur.fetchone()[0])

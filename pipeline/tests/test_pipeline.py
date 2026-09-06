@@ -42,7 +42,7 @@ def test_ingest_end_to_end(conn, tmp_path):
     doc_id = ingest(conn, cfg, p, title="7星学霸", subject="数学", grade="四年级",
                     client=FakeClient())
     with conn.cursor() as cur:
-        cur.execute("SELECT status FROM pages WHERE document_id=%s", (doc_id,))
+        cur.execute("SELECT parse_status FROM pages WHERE document_id=%s", (doc_id,))
         assert {r[0] for r in cur.fetchall()} == {"parsed"}
         cur.execute("SELECT count(*) FROM blocks WHERE content_md='转录结果'")
         assert cur.fetchone()[0] == 2

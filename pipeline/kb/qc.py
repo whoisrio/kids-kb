@@ -135,7 +135,7 @@ def run_qc(conn, doc_id: str, cfg=None, vlm_client=None) -> int:
         cur.execute(
             """SELECT b.id, b.content_md, b.block_type FROM blocks b
                JOIN pages p ON p.id = b.page_id
-               WHERE p.document_id=%s AND p.status IN ('parsed', 'failed')""",
+               WHERE p.document_id=%s AND p.parse_status IN ('parsed', 'failed')""",
             (doc_id,),
         )
         n = 0
@@ -144,7 +144,7 @@ def run_qc(conn, doc_id: str, cfg=None, vlm_client=None) -> int:
         # 页级版面检查：覆盖/重叠可复算，进 CHECKABLE 集合自动关闭
         cur.execute(
             """SELECT id, image_path FROM pages
-               WHERE document_id=%s AND status IN ('parsed', 'failed')""",
+               WHERE document_id=%s AND parse_status IN ('parsed', 'failed')""",
             (doc_id,),
         )
         for page_id, image_path in cur.fetchall():

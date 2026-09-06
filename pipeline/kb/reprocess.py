@@ -79,7 +79,7 @@ def reprocess_pages_paddleocr(conn, cfg: Config, doc_id: str, page_nos: list[int
                 )
                 stats["blocks"] += 1
             cur.execute(
-                "UPDATE pages SET status='parsed', parse_error=NULL WHERE id=%s",
+                "UPDATE pages SET parse_status='parsed', parse_error=NULL WHERE id=%s",
                 (page_id,),
             )
     from kb.export_md import export_page_mds

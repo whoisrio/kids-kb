@@ -27,7 +27,7 @@ def doc_with_blocks(conn, tmp_path):
     doc_id = render_document(conn, cfg, p, title="t")
     run_layout(conn, doc_id)
     with conn.cursor() as cur:
-        cur.execute("UPDATE pages SET status='parsed'")
+        cur.execute("UPDATE pages SET parse_status='parsed'")
         cur.execute("UPDATE blocks SET block_type='formula', content_md='正确内容 $1+1=2$'")
     return doc_id, cfg
 

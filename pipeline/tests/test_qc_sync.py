@@ -23,7 +23,7 @@ def doc1(conn, tmp_path):
     doc_id = render_document(conn, cfg, p, title="t")
     run_layout(conn, doc_id)
     with conn.cursor() as cur:
-        cur.execute("UPDATE pages SET status='parsed'")
+        cur.execute("UPDATE pages SET parse_status='parsed'")
         cur.execute("UPDATE blocks SET content_md='完整的正文。' RETURNING id")
         block_id = cur.fetchone()[0]
     return doc_id, block_id

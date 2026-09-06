@@ -42,7 +42,7 @@ def flat_doc(conn, tmp_path):
         spec = [(1, "blocks", None), (2, "page_md", "第二套 素养达标 竖式计算题"), (3, "blocks", None)]
         for page_no, adopted, page_md in spec:
             cur.execute(
-                """INSERT INTO pages (id, document_id, page_no, image_path, status, adopted_source, page_md)
+                """INSERT INTO pages (id, document_id, page_no, image_path, parse_status, adopted_source, page_md)
                    VALUES (%s,%s,%s,%s,'parsed',%s,%s) RETURNING id""",
                 (str(uuid.uuid4()), doc_id, page_no, str(png), adopted, page_md),
             )
@@ -91,7 +91,7 @@ def test_page_contents_orders_blocks_with_equal_created_at(conn):
             (doc_id, f"/tmp/{uuid.uuid4()}.pdf"),
         )
         cur.execute(
-            """INSERT INTO pages (id, document_id, page_no, image_path, status, adopted_source)
+            """INSERT INTO pages (id, document_id, page_no, image_path, parse_status, adopted_source)
                VALUES (%s,%s,1,'/tmp/flat-order.png','parsed','blocks')""",
             (page_id, doc_id),
         )

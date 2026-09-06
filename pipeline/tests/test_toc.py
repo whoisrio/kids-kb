@@ -28,7 +28,7 @@ def doc_with_toc(conn, tmp_path):
     doc_id = render_document(conn, cfg, p, title="t")
     run_layout(conn, doc_id)
     with conn.cursor() as cur:
-        cur.execute("UPDATE pages SET status='parsed'")
+        cur.execute("UPDATE pages SET parse_status='parsed'")
         cur.execute(
             """UPDATE blocks SET content_md='目录 第 1 讲 xxx' WHERE page_id IN
                (SELECT id FROM pages WHERE page_no=1)"""

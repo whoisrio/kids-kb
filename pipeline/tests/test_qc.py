@@ -34,7 +34,7 @@ def test_run_qc_inserts_review_rows(conn, tmp_path):
     doc_id = render_document(conn, cfg, p, title="t")
     run_layout(conn, doc_id)
     with conn.cursor() as cur:
-        cur.execute("UPDATE pages SET status='parsed'")
+        cur.execute("UPDATE pages SET parse_status='parsed'")
         cur.execute("UPDATE blocks SET content_md=''")  # 模拟空转录
     assert run_qc(conn, doc_id) == 1
     with conn.cursor() as cur:
@@ -64,7 +64,7 @@ def test_run_qc_skips_empty_for_figure_blocks(conn, tmp_path):
     doc_id = render_document(conn, cfg, p, title="t")
     run_layout(conn, doc_id)
     with conn.cursor() as cur:
-        cur.execute("UPDATE pages SET status='parsed'")
+        cur.execute("UPDATE pages SET parse_status='parsed'")
         cur.execute("UPDATE blocks SET block_type='figure', content_md=''")
     assert run_qc(conn, doc_id) == 0
     with conn.cursor() as cur:
@@ -92,10 +92,10 @@ def test_run_qc_auto_resolves_stale_review_rows(conn, tmp_path):
     doc_id = render_document(conn, cfg, p, title="t")
     run_layout(conn, doc_id)
     with conn.cursor() as cur:  # 先失败 -> 产生 empty 复核行
-        cur.execute("UPDATE pages SET status='failed', parse_error='x'")
+        cur.execute("UPDATE pages SET parse_status='failed', parse_error='x'")
     assert run_qc(conn, doc_id) == 1
     with conn.cursor() as cur:  # 重试成功 -> 复核行应自动关闭
-        cur.execute("UPDATE pages SET status='parsed', parse_error=NULL")
+        cur.execute("UPDATE pages SET parse_status='parsed', parse_error=NULL")
         cur.execute("UPDATE blocks SET content_md='完整内容。'")
     assert run_qc(conn, doc_id) == 0
     with conn.cursor() as cur:
@@ -124,7 +124,7 @@ def test_run_qc_keeps_custom_reason_rows(conn, tmp_path):
     doc_id = render_document(conn, cfg, p, title="t")
     run_layout(conn, doc_id)
     with conn.cursor() as cur:
-        cur.execute("UPDATE pages SET status='parsed'")
+        cur.execute("UPDATE pages SET parse_status='parsed'")
         cur.execute("UPDATE blocks SET content_md='内容正常。'")
         cur.execute("INSERT INTO review_queue (block_id, reason) SELECT id, '幻觉前缀' FROM blocks")
     assert run_qc(conn, doc_id) == 0  # 不新增

@@ -43,7 +43,7 @@ def store_document_chapters(conn, cfg: Config, path, title: str,
     with conn.cursor() as cur:
         cur.execute(
             """INSERT INTO documents (id, title, subject, grade, doc_type, source_path,
-                                      page_count, has_text_layer, status)
+                                      page_count, has_text_layer, parse_status)
                VALUES (%s,%s,%s,%s,%s,%s,0,true,'parsed')
                ON CONFLICT (id) DO NOTHING""",
             (doc_id, title, subject, grade, doc_type, path),

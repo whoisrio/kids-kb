@@ -39,7 +39,7 @@ def render_document(
             cur.execute(
                 """INSERT INTO documents
                    (id, title, subject, grade, doc_type, source_path, page_count,
-                    has_text_layer, status)
+                    has_text_layer, parse_status)
                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,'rendered')""",
                 (doc_id, title, subject, grade, doc_type, pdf_path,
                  doc.page_count, detect_text_layer(doc)),
@@ -48,7 +48,7 @@ def render_document(
     pages_dir.mkdir(parents=True, exist_ok=True)
     with conn.cursor() as cur:
         cur.execute(
-            "SELECT page_no FROM pages WHERE document_id=%s AND status IN ('rendered','parsed')",
+            "SELECT page_no FROM pages WHERE document_id=%s AND parse_status IN ('rendered','parsed')",
             (doc_id,),
         )
         done = {r[0] for r in cur.fetchall()}
@@ -62,10 +62,10 @@ def render_document(
                 pix = doc[i].get_pixmap(dpi=cfg.dpi)
                 pix.save(img_rel)
                 cur.execute(
-                    """INSERT INTO pages (document_id, page_no, image_path, status)
+                    """INSERT INTO pages (document_id, page_no, image_path, parse_status)
                        VALUES (%s,%s,%s,'rendered')
                        ON CONFLICT (document_id, page_no)
-                       DO UPDATE SET image_path=EXCLUDED.image_path, status='rendered'""",
+                       DO UPDATE SET image_path=EXCLUDED.image_path, parse_status='rendered'""",
                     (doc_id, page_no, img_rel),
                 )
     return doc_id

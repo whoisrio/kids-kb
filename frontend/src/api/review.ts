@@ -28,6 +28,11 @@ export interface ReviewItemSummary {
   content_md: string | null; source_model: string | null;
 }
 
+export interface ReviewChapter {
+  id: string; document_id: string; doc_title: string;
+  chapter_no: number; title: string; content_md: string | null;
+}
+
 export interface ReviewItemDetail {
   id: string; content_type: string; label: string | null; chapter: string | null;
   qc_status: string; content_md: string | null; taxonomy: string | null; tags: string[] | null;
@@ -82,6 +87,15 @@ export function fetchReviewItems(
   if (status) q.set("status", status);
   const s = q.toString();
   return req(`/api/review/items${s ? `?${s}` : ""}`, fetchImpl);
+}
+
+export function fetchReviewChapters(
+  docId: string | undefined, fetchImpl: FetchLike = fetch,
+): Promise<{ chapters: ReviewChapter[] }> {
+  const q = new URLSearchParams();
+  if (docId) q.set("doc_id", docId);
+  const s = q.toString();
+  return req(`/api/review/chapters${s ? `?${s}` : ""}`, fetchImpl);
 }
 
 export function fetchReviewItem(id: string, fetchImpl: FetchLike = fetch): Promise<ReviewItemDetail> {

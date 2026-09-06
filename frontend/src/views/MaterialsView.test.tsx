@@ -43,6 +43,19 @@ describe("MaterialsView", () => {
     expect(screen.getByPlaceholderText(/语义检索/)).toBeInTheDocument();
   });
 
+  it("章节 tab：无页文本资料内容可见", async () => {
+    render(<MaterialsView fetchImpl={stub({
+      "/api/review/chapters": () => jsonResponse({
+        chapters: [
+          { id: "c1", document_id: "d3", doc_title: "英语语法测试", chapter_no: 1, title: "英语语法测试", content_md: "一、单项选择" },
+        ],
+      }),
+    })} />);
+    fireEvent.click(screen.getByRole("button", { name: "章节" }));
+    expect(await screen.findByText("一、单项选择")).toBeInTheDocument();
+    expect(screen.getByText("英语语法测试")).toBeInTheDocument();
+  });
+
   it("选中页卡进入页详情（PageDetail 挂载）", async () => {
     render(<MaterialsView fetchImpl={stub({
       "/api/review/pages/p1": () => jsonResponse({

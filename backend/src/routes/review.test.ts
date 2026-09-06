@@ -24,6 +24,7 @@ maybe("review API（真库）", () => {
   let storageRoot: string;
   let docId = "";
   let flatDocId = "";
+  let textDocId = "";
   let page1 = "";
   let page2 = "";
   let block11 = "";
@@ -98,6 +99,15 @@ maybe("review API（真库）", () => {
       "INSERT INTO item_blocks (item_id, block_id, role) VALUES ($1,$2,'stem')", [itemId, block11]);
     await pool.query(
       "INSERT INTO review_queue (item_id, reason) VALUES ($1,'ungrounded:例 1 摘录')", [itemId]);
+
+    const textDoc = await pool.query(
+      `INSERT INTO documents (title, subject, doc_type, source_path, page_count, status)
+       VALUES ('英语语法测试','英语','workbook','/tmp/c.docx',0,'parsed') RETURNING id::text`);
+    textDocId = textDoc.rows[0].id;
+    await pool.query(
+      "INSERT INTO chapters (document_id, chapter_no, title, content_md) VALUES ($1,1,'英语语法测试','一、单项选择')",
+      [textDocId],
+    );
   });
   afterAll(async () => { await pool.end(); });
 
@@ -165,6 +175,18 @@ maybe("review API（真库）", () => {
     expect(items[0]).toMatchObject({
       id: itemId, label: "例 1", chapter: "第 1 讲 加法", qc_status: "pending",
       pending_reasons: ["ungrounded:例 1 摘录"],
+    });
+  });
+
+  it("GET /chapters：无页文本资料的内容可见，可按 doc_id 过滤", async () => {
+    const resp = await app.request(`/api/review/chapters?doc_id=${textDocId}`);
+    expect(resp.status).toBe(200);
+    const { chapters } = (await resp.json()) as {
+      chapters: { id: string; doc_title: string; chapter_no: number; title: string; content_md: string }[];
+    };
+    expect(chapters).toHaveLength(1);
+    expect(chapters[0]).toMatchObject({
+      doc_title: "英语语法测试", chapter_no: 1, title: "英语语法测试", content_md: "一、单项选择",
     });
   });
 

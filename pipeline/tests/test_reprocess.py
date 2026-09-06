@@ -89,7 +89,7 @@ def test_reprocess_replaces_page_blocks(conn, doc3):
         # 空内容的 figure 落 NULL（留给 run_parse 用视觉模型补转录），不是空串
         assert cur.fetchall() == [("text", "新内容一"), ("formula", "$$1+1=2$$"),
                                   ("figure", None)]
-        cur.execute("SELECT status FROM pages WHERE page_no=2")
+        cur.execute("SELECT parse_status FROM pages WHERE page_no=2")
         assert cur.fetchone()[0] == "parsed"  # 内容已带，不再走分级解析
         cur.execute("SELECT count(*) FROM review_queue")
         assert cur.fetchone()[0] == 0  # 复核行随旧块级联删除

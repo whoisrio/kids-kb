@@ -27,7 +27,7 @@ def doc_chapter(conn, tmp_path):
     doc_id = render_document(conn, cfg, p, title="7星学霸", subject="数学", grade="四年级")
     run_layout(conn, doc_id)
     with conn.cursor() as cur:
-        cur.execute("UPDATE pages SET status='parsed'")
+        cur.execute("UPDATE pages SET parse_status='parsed'")
         cur.execute("UPDATE blocks SET content_md='例1 在方框中填入合适的数字' WHERE block_type='page'")
         cur.execute(
             "UPDATE pages SET page_md='第 2 页整页稿', adopted_source='page_md' WHERE page_no=2")

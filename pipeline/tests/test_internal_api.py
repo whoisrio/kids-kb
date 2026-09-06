@@ -216,7 +216,7 @@ class TestApproveItem:
             )
             page_id = str(uuid.uuid4())
             cur.execute(
-                "INSERT INTO pages (id, document_id, page_no, image_path, status) VALUES (%s,%s,1,'/tmp/x.png','parsed')",
+                "INSERT INTO pages (id, document_id, page_no, image_path, parse_status) VALUES (%s,%s,1,'/tmp/x.png','parsed')",
                 (page_id, doc_id),
             )
             block_id = str(uuid.uuid4())
@@ -314,7 +314,7 @@ class TestPageVlm:
                 "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJ"
                 "AAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="))
             cur.execute(
-                "INSERT INTO pages (id, document_id, page_no, image_path, status) VALUES (%s,%s,1,%s,'parsed')",
+                "INSERT INTO pages (id, document_id, page_no, image_path, parse_status) VALUES (%s,%s,1,%s,'parsed')",
                 (page_id, doc_id, str(png)))
         app = create_internal_app(get_conn=lambda: connect(cfg.database_url), cfg=cfg,
                                   vlm_client=FakeVLM([_vlm_json("# 第 1 讲 口算\n\n整页稿")]))

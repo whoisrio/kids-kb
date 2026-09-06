@@ -48,7 +48,7 @@ def test_render_document_creates_rows_and_images(conn, cfg, scanned_pdf):
         cur.execute("SELECT page_count, has_text_layer FROM documents WHERE id=%s", (doc_id,))
         page_count, has_tl = cur.fetchone()
         assert (page_count, has_tl) == (2, False)
-        cur.execute("SELECT page_no, image_path, status FROM pages ORDER BY page_no")
+        cur.execute("SELECT page_no, image_path, parse_status FROM pages ORDER BY page_no")
         rows = cur.fetchall()
     assert [r[0] for r in rows] == [1, 2]
     assert all(r[2] == "rendered" for r in rows)
@@ -85,8 +85,8 @@ def test_render_document_page_range(conn, cfg, tmp_path):
 def test_render_document_does_not_reset_parsed_pages(conn, cfg, scanned_pdf):
     doc_id = render_document(conn, cfg, scanned_pdf, title="测试卷", doc_type="exam")
     with conn.cursor() as cur:
-        cur.execute("UPDATE pages SET status='parsed' WHERE document_id=%s", (doc_id,))
+        cur.execute("UPDATE pages SET parse_status='parsed' WHERE document_id=%s", (doc_id,))
     render_document(conn, cfg, scanned_pdf, title="测试卷", doc_type="exam")
     with conn.cursor() as cur:
-        cur.execute("SELECT DISTINCT status FROM pages WHERE document_id=%s", (doc_id,))
+        cur.execute("SELECT DISTINCT parse_status FROM pages WHERE document_id=%s", (doc_id,))
         assert {r[0] for r in cur.fetchall()} == {"parsed"}

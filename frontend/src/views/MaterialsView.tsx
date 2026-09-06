@@ -1,16 +1,16 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   fetchReviewDocs, fetchReviewItems, fetchReviewPages, fetchReviewItem,
-  reviewSearch, type ReviewDoc, type ReviewItemDetail, type ReviewItemSummary,
+  fetchReviewChapters, reviewSearch, type ReviewChapter, type ReviewDoc, type ReviewItemDetail, type ReviewItemSummary,
   type ReviewPageSummary, type ReviewSearchHit,
 } from "../api/review";
 import { ItemDetail } from "../components/ItemDetail";
 import { PageDetail } from "../components/PageDetail";
 
-type Block = "pending" | "approved" | "items" | "search";
+type Block = "pending" | "approved" | "chapters" | "items" | "search";
 
 const BLOCKS: [Block, string][] = [
-  ["pending", "待复核页"], ["approved", "已通过页"], ["items", "条目"], ["search", "试搜"],
+  ["pending", "待复核页"], ["approved", "已通过页"], ["chapters", "章节"], ["items", "条目"], ["search", "试搜"],
 ];
 
 /** 资料 tab：文档下拉（待复核徽标）+ 四块（对应旧静态页）。 */
@@ -19,6 +19,7 @@ export function MaterialsView({ fetchImpl = fetch }: { fetchImpl?: typeof fetch 
   const [docId, setDocId] = useState("");
   const [block, setBlock] = useState<Block>("pending");
   const [pages, setPages] = useState<ReviewPageSummary[]>([]);
+  const [chapters, setChapters] = useState<ReviewChapter[]>([]);
   const [items, setItems] = useState<ReviewItemSummary[]>([]);
   const [pageId, setPageId] = useState<string | null>(null);
   const [item, setItem] = useState<ReviewItemDetail | null>(null);
@@ -37,6 +38,8 @@ export function MaterialsView({ fetchImpl = fetch }: { fetchImpl?: typeof fetch 
     try {
       if (block === "pending" || block === "approved") {
         setPages((await fetchReviewPages(docId || undefined, block, fetchImpl)).pages);
+      } else if (block === "chapters") {
+        setChapters((await fetchReviewChapters(docId || undefined, fetchImpl)).chapters);
       } else if (block === "items") {
         setItems((await fetchReviewItems(docId || undefined, "pending", fetchImpl)).items);
       }
@@ -126,6 +129,19 @@ export function MaterialsView({ fetchImpl = fetch }: { fetchImpl?: typeof fetch 
               <span className="content">{(it.content_md ?? "").slice(0, 60)}</span>
               {it.pending_reasons.map((r) => <span key={r} className="badge">{r.slice(0, 40)}</span>)}
             </button>
+          ))}
+        </div>
+      )}
+
+      {!pageId && !item && block === "chapters" && (
+        <div className="item-rows">
+          {chapters.length === 0 && <div className="chat-empty">没有章节内容</div>}
+          {chapters.map((chapter) => (
+            <div key={chapter.id} className="item-row">
+              <span className="label">{chapter.title}</span>
+              <span className="chap">{chapter.doc_title} · 第 {chapter.chapter_no} 章</span>
+              <span className="content">{(chapter.content_md ?? "").slice(0, 160)}</span>
+            </div>
           ))}
         </div>
       )}

@@ -19,11 +19,11 @@ def list_documents(conn) -> list[tuple]:
     """每本书的解析进度（标题、状态、已解析页/总页）。"""
     with conn.cursor() as cur:
         cur.execute(
-            """SELECT d.title, d.status,
-                      count(p.id) FILTER (WHERE p.status='parsed') AS parsed,
+            """SELECT d.title, d.parse_status,
+                      count(p.id) FILTER (WHERE p.parse_status='parsed') AS parsed,
                       count(p.id) AS total
                FROM documents d LEFT JOIN pages p ON p.document_id=d.id
-               GROUP BY d.title, d.status ORDER BY min(d.created_at)"""
+               GROUP BY d.title, d.parse_status ORDER BY min(d.created_at)"""
         )
         return cur.fetchall()
 

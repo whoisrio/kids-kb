@@ -38,7 +38,7 @@ def run_llm_crosscheck(conn, cfg: Config, doc_id: str, compare_client=None,
         cur.execute(
             """SELECT b.id, b.crop_path, b.content_md, b.block_type FROM blocks b
                JOIN pages p ON p.id = b.page_id
-               WHERE p.document_id=%s AND p.status='parsed' AND b.content_md IS NOT NULL
+               WHERE p.document_id=%s AND p.parse_status='parsed' AND b.content_md IS NOT NULL
                ORDER BY p.page_no""",
             (doc_id,),
         )

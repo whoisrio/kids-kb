@@ -32,7 +32,7 @@ def doc(conn, tmp_path):
             (str(uuid.uuid4()), doc_id),
         )
         cur.execute(
-            """INSERT INTO pages (id, document_id, page_no, image_path, status)
+            """INSERT INTO pages (id, document_id, page_no, image_path, parse_status)
                VALUES (%s,%s,2,'/tmp/p2.png','parsed') RETURNING id""",
             (str(uuid.uuid4()), doc_id),
         )
@@ -43,12 +43,12 @@ def doc(conn, tmp_path):
                 (str(uuid.uuid4()), p2, btype, content),
             )
         cur.execute(
-            """INSERT INTO pages (id, document_id, page_no, image_path, status, page_md, adopted_source)
+            """INSERT INTO pages (id, document_id, page_no, image_path, parse_status, page_md, adopted_source)
                VALUES (%s,%s,3,'/tmp/p3.png','parsed','整页转录内容','page_md')""",
             (str(uuid.uuid4()), doc_id),
         )
         cur.execute(
-            """INSERT INTO pages (id, document_id, page_no, image_path, status)
+            """INSERT INTO pages (id, document_id, page_no, image_path, parse_status)
                VALUES (%s,%s,4,'/tmp/p4.png','pending')""",
             (str(uuid.uuid4()), doc_id),
         )

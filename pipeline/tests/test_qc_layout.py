@@ -39,7 +39,7 @@ def test_run_qc_page_layout_rows(conn, tmp_path):
     doc_id = render_document(conn, cfg, p, title="t")
     run_layout(conn, doc_id)  # 骨架期整页块无 bbox
     with conn.cursor() as cur:
-        cur.execute("UPDATE pages SET status='parsed'")
+        cur.execute("UPDATE pages SET parse_status='parsed'")
         cur.execute("UPDATE blocks SET content_md='正文'")  # 块级无问题
         # 人为造一个只覆盖左上角 5% 的 bbox
         cur.execute("UPDATE blocks SET bbox='[0,0,20,100]'::jsonb")

@@ -56,7 +56,7 @@ def doc_item(conn, tmp_path):
     doc_id = render_document(conn, cfg, p, title="t")
     run_layout(conn, doc_id)
     with conn.cursor() as cur:
-        cur.execute("UPDATE pages SET status='parsed'")
+        cur.execute("UPDATE pages SET parse_status='parsed'")
         cur.execute("UPDATE blocks SET content_md='在方框中填入合适的数字。由9乘4等于36推出除数个位为4。' RETURNING id")
         block_id = str(cur.fetchone()[0])
         cur.execute(

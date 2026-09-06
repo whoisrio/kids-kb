@@ -128,7 +128,7 @@ def run_layout(conn, doc_id: str, analyzer: LayoutAnalyzer | None = None,
             )
         cur.execute(
             """SELECT p.id, p.image_path FROM pages p
-               WHERE p.document_id=%s AND p.status='rendered'
+               WHERE p.document_id=%s AND p.parse_status='rendered'
                AND NOT EXISTS (SELECT 1 FROM blocks b WHERE b.page_id=p.id)
                ORDER BY p.page_no""",
             (doc_id,),

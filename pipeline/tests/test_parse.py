@@ -145,7 +145,7 @@ def test_run_parse_fills_block_content_and_marks_page(conn, parsed_doc):
     with conn.cursor() as cur:
         cur.execute("SELECT count(*) FROM blocks WHERE content_md IS NOT NULL")
         assert cur.fetchone()[0] == 2
-        cur.execute("SELECT status FROM pages WHERE document_id=%s", (doc_id,))
+        cur.execute("SELECT parse_status FROM pages WHERE document_id=%s", (doc_id,))
         assert {r[0] for r in cur.fetchall()} == {"parsed"}
 
 
@@ -165,7 +165,7 @@ def test_run_parse_failure_marks_page_failed(conn, parsed_doc):
     n = run_parse(conn, cfg, doc_id, client=BoomClient())
     assert n == 0
     with conn.cursor() as cur:
-        cur.execute("SELECT status, parse_error FROM pages WHERE document_id=%s", (doc_id,))
+        cur.execute("SELECT parse_status, parse_error FROM pages WHERE document_id=%s", (doc_id,))
         rows = cur.fetchall()
     assert all(s == "failed" and "模型挂了" in (e or "") for s, e in rows)
 
@@ -191,7 +191,7 @@ def test_run_parse_empty_transcription_marks_page_failed(conn, parsed_doc):
     n = run_parse(conn, cfg, doc_id, client=EmptyClient())
     assert n == 0
     with conn.cursor() as cur:
-        cur.execute("SELECT status, parse_error FROM pages WHERE document_id=%s", (doc_id,))
+        cur.execute("SELECT parse_status, parse_error FROM pages WHERE document_id=%s", (doc_id,))
         rows = cur.fetchall()
         cur.execute("SELECT count(*) FROM blocks WHERE content_md IS NOT NULL")
         assert cur.fetchone()[0] == 0
@@ -205,10 +205,10 @@ def test_run_parse_repairs_drifted_page_status(conn, parsed_doc):
     doc_id, cfg = parsed_doc
     with conn.cursor() as cur:  # 模拟状态漂移：内容在，状态被重置
         cur.execute("UPDATE blocks SET content_md='已有内容'")
-        cur.execute("UPDATE pages SET status='rendered'")
+        cur.execute("UPDATE pages SET parse_status='rendered'")
     assert run_parse(conn, cfg, doc_id, client=FakeClient()) == 0  # 无待解析块
     with conn.cursor() as cur:
-        cur.execute("SELECT status FROM pages WHERE document_id=%s", (doc_id,))
+        cur.execute("SELECT parse_status FROM pages WHERE document_id=%s", (doc_id,))
         assert {r[0] for r in cur.fetchall()} == {"parsed"}
 
 
