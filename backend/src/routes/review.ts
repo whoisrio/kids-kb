@@ -77,6 +77,7 @@ export function reviewRoutes(pool: pg.Pool, deps: ReviewDeps): Hono {
       const { rows: blocks } = await pool.query(
         `SELECT id::text, block_type, bbox, content_md, source_model
          FROM blocks WHERE page_id = $1 ORDER BY created_at, id`, [page.id]);
+      const blocksWithCrop = blocks.map((b) => ({ ...b, crop_url: `/api/review/blocks/${b.id}/crop` }));
       const blockIds = blocks.map((b) => b.id);
       const { rows: itemMappings } = await pool.query(
         `SELECT ib.block_id::text, i.id::text, i.label, i.content_type, ib.role,
@@ -105,11 +106,11 @@ export function reviewRoutes(pool: pg.Pool, deps: ReviewDeps): Hono {
         image_url: `/api/review/pages/${page.id}/image`,
         page_md: page.page_md, page_md_model: page.page_md_model,
         adopted_source: page.adopted_source,
-        blocks: blocks.map((b) => ({ ...b, pending: byBlock.get(b.id) ?? [], items: itemsByBlock.get(b.id) ?? [] })),
+        blocks: blocksWithCrop.map((b) => ({ ...b, pending: byBlock.get(b.id) ?? [], items: itemsByBlock.get(b.id) ?? [] })),
         review_status: page.review_status,
         index_status: page.index_status,
         page_pending: pagePending,
-        items: [...new Map(itemMappings.map((m) => [m.id, { id: m.id, label: m.label, content_type: m.content_type, content_md: m.content_md, qc_status: m.qc_status, block_ids: itemMappings.filter((x) => x.id === m.id).map((x) => x.block_id) }])).values()],
+        items: [...new Map(itemMappings.map((m) => [m.id, { id: m.id, label: m.label, content_type: m.content_type, content_md: m.content_md, qc_status: m.qc_status, block_ids: itemMappings.filter((x) => x.id === m.id).map((x) => x.block_id), block_crops: itemMappings.filter((x) => x.id === m.id).map((x) => `/api/review/blocks/${x.block_id}/crop`) }])).values()],
       });
     } catch (err) {
       return invalidId(c, err) ?? (() => { throw err; })();

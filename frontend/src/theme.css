@@ -571,3 +571,5 @@ button.ghost:hover { color: var(--redpen); border-color: var(--redpen); }
 .badge.qc-pending { color: var(--redpen); border-color: var(--redpen); }
 .badge.qc-rejected { color: #c62828; border-color: #c62828; }
 .badge.qc-auto_passed { color: #1565c0; border-color: #1565c0; }
+.block-crop { max-width: 100%; border-radius: 6px; border: 1px solid var(--line);
+  margin: 4px 0; display: block; }

@@ -144,6 +144,9 @@ export function PageDetail({ pageId, fetchImpl = fetch, onExit, onError }: {
                   </>
                 ) : (
                   <div className="bc">
+                    {b.block_type === "figure" && b.crop_url && (
+                      <img src={b.crop_url} alt={`块图 ${b.id}`} className="block-crop" />
+                    )}
                     {blockView === "rendered" ? (
                       <div className="md">
                         <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
@@ -171,6 +174,9 @@ export function PageDetail({ pageId, fetchImpl = fetch, onExit, onError }: {
               <div key={item.id} className={`itemcard${item.qc_status === "approved" ? " approved" : item.qc_status === "rejected" ? " rejected" : ""}`}>
                 <div className="bt">{item.content_type}{item.label ? ` · ${item.label}` : ""} <span className={`badge qc-${item.qc_status}`}>{item.qc_status}</span></div>
                 <div className="bc">
+                  {item.block_crops?.filter(Boolean).map((crop: string, i: number) => (
+                    <img key={i} src={crop} alt={`条目图 ${i}`} className="block-crop" />
+                  ))}
                   <div className="md">
                     <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
                       {item.content_md ?? "（无内容）"}

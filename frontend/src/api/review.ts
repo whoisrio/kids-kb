@@ -12,6 +12,7 @@ export interface ReviewPageSummary {
 export interface ReviewBlock {
   id: string; block_type: string; bbox: number[] | null; content_md: string | null;
   source_model: string | null; pending: { id: string; reason: string }[];
+  crop_url?: string;
   items?: { id: string; label: string | null; content_type: string; role: string }[];
 }
 
@@ -28,7 +29,8 @@ export interface ReviewPageDetail {
 
 export interface ReviewPageItem {
   id: string; label: string | null; content_type: string;
-  content_md: string | null; qc_status: string; block_ids: string[];
+  content_md: string | null; qc_status: string;
+  block_ids: string[]; block_crops: string[];
 }
 
 export interface ReviewItemSummary {
