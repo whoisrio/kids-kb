@@ -82,7 +82,7 @@ test.beforeAll(async () => {
 
 test("t1 页复核：页卡/页图 bbox/块编辑/整页通过（flat 页级向量化）", async ({ page }) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "复核" }).click();
+  await page.getByRole("button", { name: "资料库" }).click();
   await page.getByRole("button", { name: "资料", exact: true }).click();
   const docSelect = page.getByRole("combobox", { name: "选择文档" });
   await expect(docSelect).toContainText(TITLE);
@@ -118,7 +118,7 @@ test("t1 页复核：页卡/页图 bbox/块编辑/整页通过（flat 页级向�
 
 test("t2 条目 approve 即时可检索 + 试搜", async ({ page }) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "复核" }).click();
+  await page.getByRole("button", { name: "资料库" }).click();
   await page.getByRole("button", { name: "资料", exact: true }).click();
   await page.getByRole("combobox", { name: "选择文档" }).selectOption(docId);
   await page.getByRole("button", { name: "条目" }).click();
