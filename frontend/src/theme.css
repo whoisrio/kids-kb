@@ -443,6 +443,12 @@ button.ghost:hover { color: var(--redpen); border-color: var(--redpen); }
 .pd-image .bbox:hover { border-color: #2563eb; background: rgba(37, 99, 235, .06); }
 .pd-image .bbox.has-issue { border: 2px solid var(--redpen); background: rgba(224, 60, 40, .07); }
 .pd-image .bbox.selected { border: 2.5px solid #2563eb; background: rgba(37, 99, 235, .1); }
+.pd-image .bbox .bbox-tag { position: absolute; top: -18px; left: 0;
+  font-size: 10px; font-weight: 600; padding: 1px 6px; border-radius: 4px 4px 0 0;
+  color: #fff; background: rgba(37, 99, 235, .8); white-space: nowrap; pointer-events: none; }
+.pd-image .bbox .bbox-tag.role-figure { background: rgba(46, 125, 50, .8); }
+.pd-image .bbox .bbox-tag.role-solution { background: rgba(138, 109, 59, .8); }
+.pd-image .bbox.has-issue .bbox-tag { background: rgba(224, 60, 40, .85); }
 .pd-panel { display: flex; flex-direction: column; gap: 10px; overflow-y: auto; min-height: 0; }
 .pd-pagemd { border: 1px solid var(--line); border-radius: 10px; background: var(--card); padding: 10px; }
 .pd-pagemd .meta { font-size: 12px; color: var(--pencil); margin-bottom: 6px; }
