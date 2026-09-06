@@ -1,9 +1,24 @@
 interface RailProps {
-  activeView: "chat" | "review";
-  onSelect: (view: "chat" | "review") => void;
+  activeView: "chat" | "review" | "stats" | "usage";
+  onSelect: (view: "chat" | "review" | "stats" | "usage") => void;
+  kidChip?: string;
 }
 
-export function Rail({ activeView, onSelect }: RailProps) {
+function nav(
+  activeView: RailProps["activeView"],
+  onSelect: RailProps["onSelect"],
+  view: RailProps["activeView"],
+  label: string,
+) {
+  return (
+    <button className={activeView === view ? "active" : ""} onClick={() => onSelect(view)}>
+      <span className="dot"></span>
+      <span className="txt">{label}</span>
+    </button>
+  );
+}
+
+export function Rail({ activeView, onSelect, kidChip }: RailProps) {
   return (
     <nav className="rail">
       <div className="brand">
@@ -26,33 +41,19 @@ export function Rail({ activeView, onSelect }: RailProps) {
         </span>
       </div>
       <div className="nav">
-        <button className={activeView === "chat" ? "active" : ""} onClick={() => onSelect("chat")}>
-          <span className="dot"></span>
-          <span className="txt">聊天</span>
-        </button>
-        <button className={activeView === "review" ? "active" : ""} onClick={() => onSelect("review")}>
-          <span className="dot"></span>
-          <span className="txt">复核</span>
-        </button>
-        <button disabled>
-          <span className="dot"></span>
-          <span className="txt">统计</span>
-          <span className="todo">待建设</span>
-        </button>
+        {nav(activeView, onSelect, "chat", "聊天")}
+        {nav(activeView, onSelect, "review", "复核")}
+        {nav(activeView, onSelect, "stats", "统计")}
         <button disabled>
           <span className="dot"></span>
           <span className="txt">资料库</span>
           <span className="todo">待建设</span>
         </button>
         <div className="sep">系统</div>
-        <button disabled>
-          <span className="dot"></span>
-          <span className="txt">用量</span>
-          <span className="todo">待建设</span>
-        </button>
+        {nav(activeView, onSelect, "usage", "用量")}
       </div>
       <div className="rail-foot">
-        <span className="kid-chip">👦 小宝 · 四年级</span>
+        <span className="kid-chip">{kidChip ?? "未选择孩子"}</span>
       </div>
     </nav>
   );

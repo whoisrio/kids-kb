@@ -5,6 +5,8 @@ import { SessionsSidebar } from "./components/SessionsSidebar";
 import { useChat } from "./hooks/useChat";
 import { ChatView } from "./views/ChatView";
 import { ReviewView } from "./views/ReviewView";
+import { StatsView } from "./views/StatsView";
+import { UsageView } from "./views/UsageView";
 import type { ChatMessage } from "./api/chat";
 
 const WEEKDAYS = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
@@ -24,12 +26,39 @@ function transcript(messages: ChatMessage[]): string {
 }
 
 export function App() {
-  const [kid, setKid] = useState("小宝");
-  const [view, setView] = useState<"chat" | "review">("chat");
+  const [view, setView] = useState<"chat" | "review" | "stats" | "usage">("chat");
+  const [children, setChildren] = useState<{ id: string; name: string; grade: string | null }[]>([]);
+  const [childId, setChildId] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const chat = useChat();
+
+  useEffect(() => {
+    fetch("/api/children")
+      .then((response) => response.json())
+      .then((data: { children?: { id: string; name: string; grade: string | null }[] }) => {
+        const list = Array.isArray(data?.children) ? data.children : [];
+        setChildren(list);
+        setChildId((current) => current ?? list[0]?.id ?? null);
+      })
+      .catch(() => {});
+  }, []);
+
+  const selectedChild = children.find((child) => child.id === childId) ?? null;
+  const kidSwitch = (
+    <div className="kid-switch">
+      {children.map((child) => (
+        <button
+          key={child.id}
+          className={childId === child.id ? "on" : ""}
+          onClick={() => setChildId(child.id)}
+        >
+          {child.name}
+        </button>
+      ))}
+    </div>
+  );
 
   const showToast = (text: string) => {
     setToast(text);
@@ -50,7 +79,11 @@ export function App() {
 
   return (
     <div className="app">
-      <Rail activeView={view} onSelect={setView} />
+      <Rail
+        activeView={view}
+        onSelect={setView}
+        kidChip={selectedChild ? `${selectedChild.name} · ${selectedChild.grade ?? ""}` : undefined}
+      />
       {view === "chat" && (
         <SessionsSidebar
           sessions={chat.sessions}
@@ -64,7 +97,12 @@ export function App() {
         <div className="topbar">
           <div>
             <span className="date">{today()}</span>
-            <h1>{view === "chat" ? "聊天" : "复核"}</h1>
+            <h1>{{
+              chat: "聊天",
+              review: "复核",
+              stats: "统计",
+              usage: "用量",
+            }[view]}</h1>
           </div>
           {view === "chat" ? (
             <>
@@ -73,14 +111,15 @@ export function App() {
                 <button className="ghost" onClick={() => void copyAll()}>复制全文</button>
               )}
               <ModelPicker models={chat.models} value={chat.model} onChange={chat.selectModel} />
-              <div className="kid-switch">
-                {["小宝", "朵朵"].map((item) => (
-                  <button key={item} className={kid === item ? "on" : ""} onClick={() => setKid(item)}>
-                    {item}
-                  </button>
-                ))}
-              </div>
+              {kidSwitch}
             </>
+          ) : view === "stats" ? (
+            <>
+              <span className="hint">错题、错因与订正</span>
+              {kidSwitch}
+            </>
+          ) : view === "usage" ? (
+            <span className="hint">模型 token 消耗与调用流水</span>
           ) : (
             <span className="hint">确认试卷对错与题库匹配</span>
           )}
@@ -100,7 +139,11 @@ export function App() {
               onSwitchLane={(lane) => void chat.selectLane(lane)}
               onToast={showToast}
             />
-          : <ReviewView />}
+          : view === "review"
+            ? <ReviewView />
+            : view === "stats"
+              ? <StatsView childId={childId} onToast={showToast} />
+              : <UsageView />}
       </main>
       {toast && <div className="toast" role="status">{toast}</div>}
       {confirmDelete && (

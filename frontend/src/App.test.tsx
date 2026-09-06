@@ -24,7 +24,11 @@ const S1_DETAIL = {
 };
 
 function stubFetch(routes: Record<string, (init?: RequestInit) => Response>) {
-  vi.stubGlobal("fetch", fetchRouter(routes));
+  const fullRoutes = routes["/api/children"] ? routes : {
+    ...routes,
+    "/api/children": () => jsonResponse({ children: [] }),
+  };
+  vi.stubGlobal("fetch", fetchRouter(fullRoutes));
 }
 
 describe("App 集成（会话侧栏 + 模型下拉 + 聊天流）", () => {
@@ -196,5 +200,47 @@ describe("App 集成（会话侧栏 + 模型下拉 + 聊天流）", () => {
     await waitFor(() => expect(deleteCalled).toBe(true));
     await waitFor(() => expect(screen.queryByText("第一问")).not.toBeInTheDocument());
     expect(screen.queryByText("口算题")).not.toBeInTheDocument();
+  });
+});
+
+describe("App 视图与孩子接线", () => {
+  it("Rail 统计/用量可点；统计页随孩子加载；顶栏孩子切换为真数据", async () => {
+    stubFetch({
+      "/api/models": () => jsonResponse(MODELS),
+      "/api/sessions": () => jsonResponse([]),
+      "/api/children": () => jsonResponse({ children: [
+        { id: "c1", name: "小宝", grade: "四年级" },
+        { id: "c2", name: "朵朵", grade: "二年级" },
+      ] }),
+      "/api/stats/overview?child_id=c1": () => jsonResponse({
+        hero: { weekWrong: 0, weekTotal: 0, weekRate: null, lastWeekRate: null, rateDelta: null, corrected: 0, pending: 0 },
+        causes: [], weakTags: [], trend: [], pendingList: [],
+      }),
+      "/api/stats/overview?child_id=c2": () => jsonResponse({
+        hero: { weekWrong: 7, weekTotal: 0, weekRate: null, lastWeekRate: null, rateDelta: null, corrected: 0, pending: 7 },
+        causes: [], weakTags: [], trend: [], pendingList: [],
+      }),
+    });
+    const { unmount } = render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: "统计" }));
+    await waitFor(() => expect(screen.getByText("本周错题")).toBeInTheDocument());
+    expect(screen.getByText("0", { selector: ".hero-card[data-k=week-wrong] .num" })).toBeInTheDocument();
+    await fireEvent.click(screen.getByRole("button", { name: "朵朵" }));
+    await waitFor(() => expect(screen.getByText("7", { selector: ".hero-card[data-k=week-wrong] .num" })).toBeInTheDocument());
+    expect(screen.getByText(/朵朵 · 二年级/)).toBeInTheDocument();
+    unmount();
+
+    stubFetch({
+      "/api/models": () => jsonResponse(MODELS),
+      "/api/sessions": () => jsonResponse([]),
+      "/api/children": () => jsonResponse({ children: [{ id: "c1", name: "小宝", grade: "四年级" }] }),
+      "/api/usage/overview": () => jsonResponse({
+        hero: { promptTokens: 1, completionTokens: 1, totalTokens: 2, calls: 1, textTokens: 2, imageTokens: 0 },
+        byPurpose: [], byModel: [], recent: [],
+      }),
+    });
+    render(<App />);
+    await fireEvent.click(screen.getByRole("button", { name: "用量" }));
+    await waitFor(() => expect(screen.getByText("本月 token 总量")).toBeInTheDocument());
   });
 });
