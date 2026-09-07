@@ -34,7 +34,7 @@ test.beforeAll(async () => {
   ];
   for (const [pageNo, contents] of pages) {
     const { rows: [page] } = await pool.query(
-      `INSERT INTO pages (document_id, page_no, image_path, status)
+      `INSERT INTO pages (document_id, page_no, image_path, parse_status)
        VALUES ($1,$2,'/tmp/x.png','parsed') RETURNING id::text`,
       [docId, pageNo],
     );
