@@ -23,6 +23,7 @@ class Config:
     doc_ognize_model: str | None = None
     embed_base_url: str = "http://localhost:11434"
     embed_model: str = "bge-m3"
+    trajectory_level: str = "simple"  # KB_TRAJECTORY_LEVEL: verbose|simple|off
 
     def doc_ognize_endpoint(self) -> tuple[str, str, str]:
         """整理文档内容模型的 (base_url, api_key, model)；未配置逐项回落 vision 渠道。"""
@@ -52,4 +53,5 @@ def load_config(env_path: str | os.PathLike[str] = ".env") -> Config:
         doc_ognize_model=os.environ.get("DOC_OGNIZE_MODEL") or None,
         embed_base_url=os.environ.get("KB_EMBED_BASE_URL", "http://localhost:11434"),
         embed_model=os.environ.get("KB_EMBED_MODEL", "bge-m3"),
+        trajectory_level=os.environ.get("KB_TRAJECTORY_LEVEL", "simple"),
     )
