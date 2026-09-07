@@ -16,6 +16,7 @@ import { modelsRoutes } from "./routes/models.js";
 import { papersRoutes } from "./routes/papers.js";
 import { paperQuestionsRoutes } from "./routes/paperQuestions.js";
 import { reviewRoutes } from "./routes/review.js";
+import { trajectoryRoutes } from "./routes/trajectory.js";
 import { libraryRoutes } from "./routes/library.js";
 import { redriveWhenPipelineReady, type PaperJobDeps } from "./papers/jobs.js";
 
@@ -63,6 +64,7 @@ export function createApp(
   app.route("/api/review", reviewRoutes(pool, {
     search, pipelineUrl: cfg.pipelineUrl, storageRoot: cfg.storageRoot,
   }));
+  app.route("/api", trajectoryRoutes(pool));
   app.route("/api/library", libraryRoutes(pool, { pipelineUrl: cfg.pipelineUrl, search }, cfg));
   return app;
 }
