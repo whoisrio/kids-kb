@@ -21,16 +21,23 @@ PAGE_VLM_PROMPT = (
 _AUTO_THRESHOLD = 2  # 实质问题（非页眉页脚 empty）达到此数自动整页转录
 
 
-def transcribe_page(conn, cfg: Config, page_id: str, client=None) -> str:
+def transcribe_page(conn, cfg: Config, page_id: str, client=None,
+                    recorder=None) -> str:
     """整页图发远端 VLM，page_md/page_md_model 落库。手动重发覆盖旧值。返回 page_md。"""
     client = client or OpenAI(base_url=cfg.vision_base_url, api_key=cfg.vision_api_key)
     with conn.cursor() as cur:
         cur.execute(
             "SELECT image_path, document_id FROM pages WHERE id=%s", (page_id,))
         image_path, doc_id = cur.fetchone()
+    import time
+
+    t0 = time.monotonic()
     text, usage = transcribe_image(client, cfg.vision_model, image_path,
                                    prompt=PAGE_VLM_PROMPT)
-    record_llm_call(conn, str(doc_id), "page_vlm", cfg.vision_model, usage)
+    record_llm_call(conn, str(doc_id), "page_vlm", cfg.vision_model, usage,
+                    recorder=recorder, stage="page_vlm", page_id=str(page_id),
+                    duration_ms=int((time.monotonic() - t0) * 1000),
+                    prompt=PAGE_VLM_PROMPT, output=text)
     with conn.cursor() as cur:
         cur.execute(
             "UPDATE pages SET page_md=%s, page_md_model=%s WHERE id=%s",
@@ -39,7 +46,7 @@ def transcribe_page(conn, cfg: Config, page_id: str, client=None) -> str:
     return text
 
 
-def auto_page_vlm(conn, cfg: Config, doc_id: str, client=None) -> int:
+def auto_page_vlm(conn, cfg: Config, doc_id: str, client=None, recorder=None) -> int:
     """实质问题（非页眉页脚 empty）pending ≥2 且无 page_md 的页自动整页转录。返回触发页数。"""
     with conn.cursor() as cur:
         cur.execute(
@@ -56,5 +63,5 @@ def auto_page_vlm(conn, cfg: Config, doc_id: str, client=None) -> int:
         )
         page_ids = [str(r[0]) for r in cur.fetchall()]
     for pid in page_ids:
-        transcribe_page(conn, cfg, pid, client=client)
+        transcribe_page(conn, cfg, pid, client=client, recorder=recorder)
     return len(page_ids)

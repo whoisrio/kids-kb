@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import base64
 import re
+import time
 from pathlib import Path
 
 import pymupdf as fitz
@@ -113,7 +114,8 @@ def ocr_image(image_path) -> str:
     return "\n".join(r[1] for r in lines)
 
 
-def run_parse(conn, cfg: Config, doc_id: str, client=None, ocr=None) -> int:
+def run_parse(conn, cfg: Config, doc_id: str, client=None, ocr=None,
+              recorder=None) -> int:
     """按区块类型分级解析；单块失败不中断。返回成功解析的 block 数。"""
     client = client or OpenAI(base_url=cfg.vision_base_url, api_key=cfg.vision_api_key)
     ocr = ocr or ocr_image
@@ -132,14 +134,27 @@ def run_parse(conn, cfg: Config, doc_id: str, client=None, ocr=None) -> int:
                 if block_type in _OCRABLE_TYPES:
                     text, source, usage = ocr(crop_path), "rapidocr", (None, None)
                     if starred_math(text):  # OCR 把竖式拍成星号 -> 升级视觉模型
+                        t0 = time.monotonic()
                         text, usage = transcribe_image(client, cfg.vision_model, crop_path)
                         source = cfg.vision_model
-                        record_llm_call(conn, doc_id, "transcribe", cfg.vision_model, usage)
+                        record_llm_call(
+                            conn, doc_id, "transcribe", cfg.vision_model, usage,
+                            recorder=recorder, stage="parse", page_id=str(page_id),
+                            duration_ms=int((time.monotonic() - t0) * 1000),
+                            prompt=TRANSCRIBE_PROMPT, output=text)
                 else:
+                    t0 = time.monotonic()
                     text, usage = transcribe_image(client, cfg.vision_model, crop_path)
                     source = cfg.vision_model
-                    record_llm_call(conn, doc_id, "transcribe", cfg.vision_model, usage)
+                    record_llm_call(
+                        conn, doc_id, "transcribe", cfg.vision_model, usage,
+                        recorder=recorder, stage="parse", page_id=str(page_id),
+                        duration_ms=int((time.monotonic() - t0) * 1000),
+                        prompt=TRANSCRIBE_PROMPT, output=text)
             except Exception as e:  # noqa: BLE001 - 单块失败不中断
+                if recorder is not None:
+                    recorder.error("parse", f"块转录失败: {str(e)[:200]}",
+                                   page_id=str(page_id), exc=e)
                 cur.execute(
                     "UPDATE pages SET parse_status='failed', parse_error=%s WHERE id=%s",
                     (str(e)[:500], page_id),

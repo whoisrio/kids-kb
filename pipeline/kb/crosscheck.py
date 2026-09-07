@@ -8,13 +8,14 @@ llm_disagree 属人工裁决类，不进 CHECKABLE_REASONS，不会随内容编�
 from __future__ import annotations
 
 import uuid
+import time
 
 from openai import OpenAI
 
 from kb.config import Config
 from kb.golden import char_error_rate
 from kb.metering import record_llm_call
-from kb.parse import transcribe_image
+from kb.parse import TRANSCRIBE_PROMPT, transcribe_image
 
 _ALWAYS_TYPES = {"formula", "figure", "table"}
 _SAMPLE_MOD = 20  # text 块抽 1/20 = 5%
@@ -28,7 +29,7 @@ def _sampled(block_id: str, block_type: str) -> bool:
 
 
 def run_llm_crosscheck(conn, cfg: Config, doc_id: str, compare_client=None,
-                       threshold: float = _CER_THRESHOLD) -> int:
+                       threshold: float = _CER_THRESHOLD, recorder=None) -> int:
     """返回新增 llm_disagree 复核行数。"""
     if not cfg.vision_compare_model:
         return 0
@@ -52,8 +53,12 @@ def run_llm_crosscheck(conn, cfg: Config, doc_id: str, compare_client=None,
             )
             if cur.fetchone():
                 continue  # 幂等：已有记录不重复比对
+            t0 = time.monotonic()
             second, usage = transcribe_image(client, cfg.vision_compare_model, crop_path)
-            record_llm_call(conn, doc_id, "crosscheck", cfg.vision_compare_model, usage)
+            record_llm_call(conn, doc_id, "crosscheck", cfg.vision_compare_model, usage,
+                            recorder=recorder, stage="crosscheck",
+                            duration_ms=int((time.monotonic() - t0) * 1000),
+                            prompt=TRANSCRIBE_PROMPT, output=second)
             if char_error_rate(content, second) <= threshold:
                 continue
             cur.execute(
