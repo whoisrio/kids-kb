@@ -16,7 +16,9 @@
 5. 批量复核通过：`approve <doc_id>`（可 `--chapter N` 限章）。
    通过即自动向量化，之后聊天可检索到条目级内容；
    也可在复核页逐条 approve（同样即时向量化）。
-6. 落盘镜像：`export <doc_id>`。
+6. 处理日志：每次 ingest/structure/approve/编辑/向量化都会写 `pipeline_events`（级别由 `KB_TRAJECTORY_LEVEL=verbose|simple|off` 控制，默认 simple）。
+   复核页「处理日志」tab 按文档查 run 时间线，页详情「本页日志」按页查；JSONL 镜像在 `pipeline/storage/<doc_id>/trajectory/<run_id>.jsonl`。
+7. 落盘镜像：`export <doc_id>`。
 
 ## 开发启动
 
