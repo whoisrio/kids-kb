@@ -12,7 +12,8 @@ export interface LibraryDeps {
 
 const DOCUMENT_STATS_SQL = `
   SELECT d.id::text, d.title, d.subject, d.parse_status, d.review_status,
-         d.uploaded_by, d.created_at, d.struct_mode,
+         d.uploaded_by, d.created_at, d.struct_mode, d.doc_type,
+         '/api/review/pages/' || cover.id::text || '/image' AS cover_url,
          CASE WHEN lower(d.source_path) LIKE '%.pdf' THEN 'pdf'
               WHEN lower(d.source_path) LIKE '%.docx' THEN 'docx'
               ELSE 'md' END AS file_type,
@@ -71,6 +72,11 @@ const DOCUMENT_STATS_SQL = `
            count(*) FILTER (WHERE index_status = 'not_indexed') AS index_not_indexed
     FROM chapters WHERE document_id = d.id
   ) cs ON true
+  LEFT JOIN LATERAL (
+    SELECT id FROM pages
+    WHERE document_id = d.id AND NOT excluded_from_index
+    ORDER BY page_no LIMIT 1
+  ) cover ON true
 `;
 
 type Pagination = { page: number; pageSize: number; offset: number };
@@ -111,11 +117,15 @@ export function libraryRoutes(pool: pg.Pool, deps: LibraryDeps, cfg: BackendConf
       const q = (c.req.query("q") ?? "").trim();
       const subject = (c.req.query("subject") ?? "").trim();
       const fileType = c.req.query("file_type");
+      const docType = c.req.query("doc_type");
       const autoReview = c.req.query("auto_review");
       const reviewStatus = c.req.query("review_status");
       const indexStatus = c.req.query("index_status");
       if (fileType) {
         if (!["pdf", "docx", "md"].includes(fileType)) return c.json({ error: "file_type 非法" }, 422);
+      }
+      if (docType) {
+        if (!["workbook", "exam"].includes(docType)) return c.json({ error: "doc_type 非法" }, 422);
       }
       if (autoReview) {
         if (!["pending", "passed", "needs_review", "failed"].includes(autoReview)) {
@@ -133,7 +143,7 @@ export function libraryRoutes(pool: pg.Pool, deps: LibraryDeps, cfg: BackendConf
         }
       }
       const params: unknown[] = [
-        q || null, subject || null, fileType || null,
+        q || null, subject || null, fileType || null, docType || null,
         autoReview || null, reviewStatus || null, indexStatus || null,
         p.pageSize, p.offset,
       ];
@@ -144,29 +154,30 @@ export function libraryRoutes(pool: pg.Pool, deps: LibraryDeps, cfg: BackendConf
          WHERE ($1::text IS NULL OR title ILIKE '%' || $1::text || '%')
            AND ($2::text IS NULL OR subject = $2::text)
            AND ($3::text IS NULL OR file_type = $3::text)
-           AND (
-             $4::text IS NULL OR
-             ($4::text = 'passed' AND total_units > 0 AND auto_pending = 0 AND auto_needs_review = 0 AND auto_failed = 0) OR
-             ($4::text = 'pending' AND auto_pending > 0) OR
-             ($4::text = 'needs_review' AND auto_needs_review > 0) OR
-             ($4::text = 'failed' AND auto_failed > 0)
-           )
+           AND ($4::text IS NULL OR doc_type = $4::text)
            AND (
              $5::text IS NULL OR
-             ($5::text = 'approved' AND total_units > 0 AND manual_unreviewed = 0 AND manual_rejected = 0) OR
-             ($5::text = 'unreviewed' AND manual_unreviewed > 0) OR
-             ($5::text = 'rejected' AND manual_rejected > 0)
+             ($5::text = 'passed' AND total_units > 0 AND auto_pending = 0 AND auto_needs_review = 0 AND auto_failed = 0) OR
+             ($5::text = 'pending' AND auto_pending > 0) OR
+             ($5::text = 'needs_review' AND auto_needs_review > 0) OR
+             ($5::text = 'failed' AND auto_failed > 0)
            )
            AND (
              $6::text IS NULL OR
-             ($6::text = 'indexed' AND total_units > 0 AND index_indexed = total_units - index_excluded) OR
-             ($6::text = 'partial' AND index_indexed > 0 AND index_indexed < total_units - index_excluded) OR
-             ($6::text = 'stale' AND index_stale > 0) OR
-             ($6::text = 'not_indexed' AND index_not_indexed > 0) OR
-             ($6::text = 'excluded' AND index_excluded > 0)
+             ($6::text = 'approved' AND total_units > 0 AND manual_unreviewed = 0 AND manual_rejected = 0) OR
+             ($6::text = 'unreviewed' AND manual_unreviewed > 0) OR
+             ($6::text = 'rejected' AND manual_rejected > 0)
+           )
+           AND (
+             $7::text IS NULL OR
+             ($7::text = 'indexed' AND total_units > 0 AND index_indexed = total_units - index_excluded) OR
+             ($7::text = 'partial' AND index_indexed > 0 AND index_indexed < total_units - index_excluded) OR
+             ($7::text = 'stale' AND index_stale > 0) OR
+             ($7::text = 'not_indexed' AND index_not_indexed > 0) OR
+             ($7::text = 'excluded' AND index_excluded > 0)
            )
          ORDER BY created_at DESC
-         LIMIT $7::int OFFSET $8::int`,
+         LIMIT $8::int OFFSET $9::int`,
         params,
       );
       const total = rows[0] ? Number(rows[0].total_count) : 0;
@@ -186,6 +197,28 @@ export function libraryRoutes(pool: pg.Pool, deps: LibraryDeps, cfg: BackendConf
       if (err instanceof Error && /page|pageSize/.test(err.message)) return c.json({ error: err.message }, 422);
       throw err;
     }
+  });
+
+  app.get("/summary", async (c) => {
+    const { rows: [totals] } = await pool.query(
+      `SELECT count(*)::int AS total_docs,
+              (SELECT count(*)::int FROM pages
+               WHERE index_status = 'indexed' AND NOT excluded_from_index) +
+              (SELECT count(*)::int FROM chapters
+               WHERE index_status = 'indexed') AS indexed_units,
+              (SELECT count(*)::int FROM pages
+               WHERE NOT excluded_from_index
+                 AND auto_review_status IN ('pending', 'needs_review')) AS pending_review_pages
+       FROM documents`);
+    const { rows: bySubject } = await pool.query(
+      `SELECT subject, count(*)::int AS count
+       FROM documents GROUP BY subject ORDER BY count DESC, subject`);
+    return c.json({
+      total_docs: Number(totals.total_docs),
+      by_subject: bySubject.map((r) => ({ subject: r.subject, count: Number(r.count) })),
+      indexed_units: Number(totals.indexed_units),
+      pending_review_pages: Number(totals.pending_review_pages),
+    });
   });
 
   app.get("/search", async (c) => {

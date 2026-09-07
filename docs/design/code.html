@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+
+<html lang="zh-CN"><head><meta charset="utf-8"/><meta content="width=device-width, initial-scale=1.0" name="viewport"/><link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet"/><link href="https://fonts.googleapis.com" rel="preconnect"/><link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/><link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/><style>@layer base{html,body{margin:0;padding:0;}body{overscroll-behavior:none;}main>:first-child{margin-top:0!important;}main>:last-child{margin-bottom:0!important;}}::-webkit-scrollbar{display:none;}</style><script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script><script id="tailwind-config">tailwind.config = {
+  darkMode: "class",
+  theme: {
+    extend: {
+      colors: {
+        "primary": "#1d4ed8",
+        "primary-container": "#dbeafe",
+        "on-primary": "#ffffff",
+        "on-primary-container": "#1e40af",
+        "secondary": "#0f172a",
+        "secondary-container": "#e2e8f0",
+        "on-secondary": "#ffffff",
+        "on-secondary-container": "#334155",
+        "tertiary": "#d97706",
+        "tertiary-container": "#fef3c7",
+        "on-tertiary": "#ffffff",
+        "on-tertiary-container": "#92400e",
+        "background": "#f8fafc",
+        "surface": "#ffffff",
+        "surface-dim": "#f1f5f9",
+        "surface-container-lowest": "#ffffff",
+        "surface-container-low": "#f8fafc",
+        "surface-container": "#f1f5f9",
+        "surface-container-high": "#e2e8f0",
+        "surface-container-highest": "#cbd5e1",
+        "on-surface": "#0f172a",
+        "on-surface-variant": "#64748b",
+        "outline": "#94a3b8",
+        "outline-variant": "#e2e8f0",
+        "error": "#ef4444",
+        "error-container": "#fee2e2"
+      },
+      borderRadius: {
+        "DEFAULT": "0.25rem",
+        "lg": "0.375rem",
+        "xl": "0.5rem",
+        "2xl": "0.75rem",
+        "full": "9999px"
+      },
+      fontFamily: {
+        "display": ["Plus Jakarta Sans", "sans-serif"],
+        "headline-lg": ["Plus Jakarta Sans", "sans-serif"],
+        "headline-md": ["Plus Jakarta Sans", "sans-serif"],
+        "headline-sm": ["Plus Jakarta Sans", "sans-serif"],
+        "body-lg": ["Inter", "sans-serif"],
+        "body-md": ["Inter", "sans-serif"],
+        "body-sm": ["Inter", "sans-serif"],
+        "label-lg": ["Inter", "sans-serif"],
+        "label-md": ["Inter", "sans-serif"],
+        "label-sm": ["Inter", "sans-serif"]
+      }
+    }
+  }
+};</script></head><body class="bg-background font-body-md text-on-surface antialiased selection:bg-blue-100 selection:text-primary"><aside class="fixed left-0 top-0 h-full w-72 bg-white border-r border-slate-200 z-40 flex flex-col justify-between py-5 shadow-sm"><div class="flex flex-col gap-6"><div class="px-6 flex items-center gap-3"><div class="w-10 h-10 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center shadow-sm"><img alt="KidsKB Logo" class="h-8 w-auto object-contain" src="https://lh3.googleusercontent.com/aida/AEtjO1XVNXIQP_ANUZ75fsRQQF60lLRlG4OrgY-Jsk1zP7zrpF_aQQ7zxkUA9YY3yEKKwDXK3RwhExDxkbGnypqYpTZ0WoYfS0-LomalhmZJFJNW9mYe1oTSdUg5e6-4MI5BMA0qLPfOzLKv42WAVW0iJ-F64efhvMo_Y_07_YHxCR8Ypsy48n7NvXPhy-RL7FJbAu_4xMAeZtquKEIhspiJMyxa0c0me-zodZT1wOrby1uKzBZ9IYUQ2NeZdg"/></div><div><span class="font-headline-sm text-base font-bold text-slate-900 block leading-tight tracking-tight">童学知库</span><span class="text-[11px] font-semibold text-primary block tracking-wider uppercase">KidsKB AI Learning</span></div></div><div class="px-4"><div class="px-3 py-1 text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">学习工作区</div><nav class="flex flex-col gap-1"><a class="flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-colors font-medium text-sm" data-path="learning-analytics-dashboard" href="#"><span class="material-symbols-outlined text-[20px] text-slate-400">analytics</span><span>学情分析看板</span></a><a aria-current="page" class="flex items-center gap-3 px-3.5 py-2.5 rounded-lg bg-blue-600 text-white font-semibold text-sm shadow-sm transition-all" data-path="exercise-document-library" href="#"><span class="material-symbols-outlined text-[20px] text-white">menu_book</span><span>习题资料库</span></a><a class="flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-colors font-medium text-sm" data-path="ai-tutor-hybrid-search" href="#"><span class="material-symbols-outlined text-[20px] text-slate-400">psychology</span><span>AI 辅导与检索</span></a><a class="flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-colors font-medium text-sm" data-path="qc-review-workbench" href="#"><span class="material-symbols-outlined text-[20px] text-slate-400">fact_check</span><span>习题复核工作台</span></a></nav></div></div><div class="px-4 flex flex-col gap-3"><div class="p-3.5 rounded-xl bg-slate-50 border border-slate-200/80"><div class="flex items-center justify-between mb-1.5"><div class="flex items-center gap-1.5 text-slate-700"><span class="material-symbols-outlined text-[16px] text-blue-600">token</span><span class="text-xs font-semibold">模型用量配额</span></div><span class="text-xs font-bold text-blue-600 font-mono">68%</span></div><div class="w-full h-1.5 bg-slate-200 rounded-full overflow-hidden mb-2"><div class="h-full bg-blue-600 rounded-full" style="width: 68%"></div></div><div class="flex items-center justify-between text-xs text-slate-500"><span>状态正常</span><span class="flex items-center gap-1.5 text-emerald-600 font-medium"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>活跃</span></div></div><div class="flex items-center justify-between px-2 text-slate-500 text-xs"><a class="flex items-center gap-1.5 hover:text-slate-900 transition-colors" data-path="system-settings" href="#"><span class="material-symbols-outlined text-[16px]">settings</span><span>系统设置</span></a><a class="flex items-center gap-1.5 hover:text-slate-900 transition-colors" data-path="api-and-model-usage" href="#"><span class="material-symbols-outlined text-[16px]">data_usage</span><span>用量明细</span></a></div></div></aside><div class="pl-72"><header class="fixed top-0 left-72 right-0 h-16 bg-white/95 backdrop-blur-md border-b border-slate-200 z-30 flex items-center justify-between px-8"><div class="flex items-center gap-4 flex-1 max-w-2xl"><div class="relative flex items-center bg-slate-50 border border-slate-200 hover:border-slate-300 rounded-lg px-3 py-1.5 cursor-pointer transition-colors shadow-xs"><div class="w-7 h-7 rounded-full bg-blue-100 border border-blue-200 flex items-center justify-center text-blue-700 mr-2.5"><span class="material-symbols-outlined text-[17px]">face</span></div><div class="text-left mr-2"><span class="text-xs font-bold text-slate-900 block leading-tight">乐乐</span><span class="text-[11px] font-medium text-slate-500 block">四年级 (上)</span></div><span class="material-symbols-outlined text-slate-400 text-[18px]">expand_more</span></div><div class="relative flex-1"><span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-[18px]">search</span><input class="w-full h-9 pl-9 pr-12 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 placeholder:text-slate-400 text-xs font-normal focus:outline-none focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-100 transition-all" placeholder="在书架中搜索教辅名、学科、试卷或考点..." type="text"/><kbd class="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] font-semibold text-slate-400 bg-white border border-slate-200 px-1.5 py-0.5 rounded shadow-2xs">⌘K</kbd></div></div><div class="flex items-center gap-3"><div class="hidden xl:flex items-center gap-2 px-3 py-1 rounded-full bg-slate-100 text-slate-600 text-xs font-medium border border-slate-200"><span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span><span>学情实时同步中</span></div><button class="flex items-center gap-1.5 bg-blue-600 text-white px-3.5 py-1.5 rounded-lg text-xs font-semibold hover:bg-blue-700 transition-colors shadow-sm"><span class="material-symbols-outlined text-[17px]">upload_file</span><span>快捷上传试卷</span></button><button class="relative p-2 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition-colors"><span class="material-symbols-outlined text-[20px]">notifications</span><span class="absolute top-2 right-2 w-2 h-2 bg-amber-500 rounded-full ring-2 ring-white"></span></button><div class="flex items-center gap-2.5 pl-2 border-l border-slate-200"><img alt="Profile" class="w-8 h-8 rounded-full object-cover border border-slate-200 shadow-xs" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBnLtDk6z8nC8tDN7OAcZTZRxxi6maTTQsMSdudEd7EAAm9i5o7E-q0EkqycsPmVTCV6RKyPWGAUkXgcCuw-J5vdfx_h92cmYv5sTjKuer5Fwaqu1oHjmZHZOc5w_-Ii3knBYrEm0PfHa2eL9DK_6mNPNtUSZhvCKD4swsMbS1vWOXiJ64k6qAOnC-ZtK8zGiPX57s3HW_8HoQlw_-4C_S-VrJT8TbQqWx5bTjcTT57P-Z00d3apuFJ"/><div class="hidden md:block text-left"><span class="text-xs font-semibold block leading-tight text-slate-900">家长端</span><span class="text-[11px] text-slate-500 block">乐乐爸爸</span></div></div></div></header><main class="relative pt-16 bg-slate-50/50 min-h-screen"><div class="w-full max-w-7xl mx-auto px-8 py-7"><div class="flex flex-col w-full gap-6">
+<!-- Header Section: Modern Academic Title, Clear Intro & Primary Action -->
+<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+<div class="flex flex-col gap-1.5">
+<div class="flex items-center gap-1.5 text-slate-500 text-xs font-medium">
+<span class="hover:text-blue-600 cursor-pointer transition-colors">知库工作台</span>
+<span class="material-symbols-outlined text-[13px] text-slate-400">chevron_right</span>
+<span class="text-slate-900 font-semibold">习题资料库</span>
+</div>
+<div class="flex items-center gap-3">
+<h1 class="font-display text-2xl font-bold text-slate-900 tracking-tight">数字书架与资料库</h1>
+<span class="px-2.5 py-0.5 rounded-md bg-blue-50 border border-blue-200 text-blue-700 text-xs font-semibold">全宽书架视图</span>
+</div>
+<p class="text-xs text-slate-500 leading-relaxed">
+        收录孩子日常练习、单元测试与错题笔记，已智能梳理考点章节并生成专属数字资料库。
+      </p>
+</div>
+<div class="flex items-center gap-2.5 flex-shrink-0">
+<button class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 text-white text-xs font-semibold hover:bg-blue-700 shadow-sm transition-all active:scale-[0.98]">
+<span class="material-symbols-outlined text-[18px]">add_photo_alternate</span>
+<span>上传新教辅 / 试卷</span>
+</button>
+</div>
+</div>
+<!-- 3 Life-like Metric Cards -->
+<div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+<!-- Metric 1: 在库资料 -->
+<div class="p-4 rounded-xl bg-white border border-slate-200 shadow-sm flex items-center justify-between hover:border-slate-300 transition-colors">
+<div class="flex flex-col gap-1">
+<span class="text-xs font-medium text-slate-500">在库资料</span>
+<div class="flex items-baseline gap-1.5">
+<span class="font-display text-3xl font-extrabold text-slate-900 leading-none">18</span>
+<span class="text-xs font-medium text-slate-500">本 / 套</span>
+</div>
+<div class="text-slate-500 text-xs mt-1 font-normal">
+<span>数学 11 · 语文 4 · 英语 3</span>
+</div>
+</div>
+<div class="w-11 h-11 rounded-lg bg-blue-50 text-blue-600 border border-blue-100 flex items-center justify-center">
+<span class="material-symbols-outlined text-[24px]">library_books</span>
+</div>
+</div>
+<!-- Metric 2: 已拆解题目 -->
+<div class="p-4 rounded-xl bg-white border border-slate-200 shadow-sm flex items-center justify-between hover:border-slate-300 transition-colors">
+<div class="flex flex-col gap-1">
+<span class="text-xs font-medium text-slate-500">已拆解题目</span>
+<div class="flex items-baseline gap-1.5">
+<span class="font-display text-3xl font-extrabold text-blue-600 leading-none">1,280</span>
+<span class="text-xs font-medium text-slate-500">题</span>
+</div>
+<div class="text-emerald-700 text-xs mt-1 flex items-center gap-1 font-medium">
+<span class="material-symbols-outlined text-[15px] text-emerald-600">verified</span>
+<span>已归纳 216 个核心考点</span>
+</div>
+</div>
+<div class="w-11 h-11 rounded-lg bg-emerald-50 text-emerald-600 border border-emerald-100 flex items-center justify-center">
+<span class="material-symbols-outlined text-[24px]">quiz</span>
+</div>
+</div>
+<!-- Metric 3: 待确认页面 -->
+<div class="p-4 rounded-xl bg-white border border-slate-200 shadow-sm flex items-center justify-between hover:border-slate-300 transition-colors">
+<div class="flex flex-col gap-1">
+<span class="text-xs font-medium text-amber-700">待确认页面</span>
+<div class="flex items-baseline gap-1.5">
+<span class="font-display text-3xl font-extrabold text-amber-600 leading-none">2</span>
+<span class="text-xs font-medium text-amber-700">页需核对</span>
+</div>
+<a class="text-amber-700 text-xs mt-1 flex items-center gap-0.5 hover:underline font-semibold" href="#">
+<span>点击前往复核工作台</span>
+<span class="material-symbols-outlined text-[14px]">arrow_forward</span>
+</a>
+</div>
+<div class="w-11 h-11 rounded-lg bg-amber-50 text-amber-600 border border-amber-200 flex items-center justify-center">
+<span class="material-symbols-outlined text-[24px]">pending_actions</span>
+</div>
+</div>
+</div>
+<!-- Simplified Filter & Category Bar -->
+<div class="p-3.5 rounded-xl bg-white border border-slate-200 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+<!-- Tabs -->
+<div class="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
+<button class="px-3.5 py-1.5 rounded-lg bg-blue-600 text-white font-semibold text-xs shadow-xs transition-all whitespace-nowrap">
+          全部资料 (18)
+        </button>
+<button class="px-3.5 py-1.5 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-all font-medium text-xs whitespace-nowrap">
+          同步教辅 (8)
+        </button>
+<button class="px-3.5 py-1.5 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-all font-medium text-xs whitespace-nowrap">
+          期中期末试卷 (7)
+        </button>
+<button class="px-3.5 py-1.5 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-all font-medium text-xs whitespace-nowrap">
+          日常错题 (3)
+        </button>
+</div>
+<!-- Compact Filters & View Switcher -->
+<div class="flex items-center gap-2.5 flex-wrap">
+<div class="relative">
+<select class="h-8 pl-3 pr-7 rounded-lg bg-slate-50 border border-slate-200 text-slate-700 text-xs appearance-none focus:outline-none focus:border-blue-500 cursor-pointer font-medium">
+<option value="">全部学科</option>
+<option selected="" value="math">数学 (11)</option>
+<option value="chinese">语文 (4)</option>
+<option value="english">英语 (3)</option>
+</select>
+<span class="material-symbols-outlined absolute right-1.5 top-1/2 -translate-y-1/2 text-slate-400 text-[16px] pointer-events-none">expand_more</span>
+</div>
+<div class="relative">
+<select class="h-8 pl-3 pr-7 rounded-lg bg-slate-50 border border-slate-200 text-slate-700 text-xs appearance-none focus:outline-none focus:border-blue-500 cursor-pointer font-medium">
+<option selected="" value="updated">最新更新</option>
+<option value="count">题目数量</option>
+<option value="name">资料名称</option>
+</select>
+<span class="material-symbols-outlined absolute right-1.5 top-1/2 -translate-y-1/2 text-slate-400 text-[16px] pointer-events-none">expand_more</span>
+</div>
+<div class="flex items-center bg-slate-100 p-0.5 rounded-lg border border-slate-200 gap-0.5" id="view-switcher-group"><button class="flex items-center gap-1 px-2.5 py-1 rounded-md bg-white text-blue-700 shadow-xs text-xs font-semibold transition-all" id="btn-view-grid" onclick="document.getElementById('grid-view-container').classList.remove('hidden'); document.getElementById('table-view-container').classList.add('hidden'); this.className='flex items-center gap-1 px-2.5 py-1 rounded-md bg-white text-blue-700 shadow-xs text-xs font-semibold transition-all'; document.getElementById('btn-view-table').className='flex items-center gap-1 px-2.5 py-1 rounded-md text-slate-600 hover:text-slate-900 text-xs font-medium transition-all';"><span class="material-symbols-outlined text-[15px]">grid_view</span><span>书架视图</span></button><button class="flex items-center gap-1 px-2.5 py-1 rounded-md text-slate-600 hover:text-slate-900 text-xs font-medium transition-all" id="btn-view-table" onclick="document.getElementById('grid-view-container').classList.add('hidden'); document.getElementById('table-view-container').classList.remove('hidden'); this.className='flex items-center gap-1 px-2.5 py-1 rounded-md bg-white text-blue-700 shadow-xs text-xs font-semibold transition-all'; document.getElementById('btn-view-grid').className='flex items-center gap-1 px-2.5 py-1 rounded-md text-slate-600 hover:text-slate-900 text-xs font-medium transition-all';"><span class="material-symbols-outlined text-[15px]">table_chart</span><span>明细表格</span></button></div></div>
+</div>
+<!-- Full-width Digital Bookshelf / Exercise Drawer Grid (3 columns on desktop) -->
+<div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4" id="grid-view-container">
+<!-- Card 1: 7星学霸 -->
+<div class="p-4 rounded-xl bg-white border border-slate-200 hover:border-blue-400 hover:shadow-md transition-all flex flex-col justify-between group shadow-xs">
+<div class="flex flex-col gap-3">
+<!-- Top Badges & Status -->
+<div class="flex items-center justify-between gap-2">
+<div class="flex items-center gap-1.5 flex-wrap">
+<span class="px-2.5 py-0.5 rounded-md bg-blue-50 text-blue-700 border border-blue-100 text-xs font-semibold flex items-center gap-1">
+<span class="material-symbols-outlined text-[13px]">calculate</span>
+                  数学 · 四年级上
+                </span>
+<span class="px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 text-xs font-medium">
+                  同步培优
+                </span>
+</div>
+<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-100 text-[11px] font-semibold">
+<span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                全部就绪
+              </span>
+</div>
+<!-- Book Cover & Info -->
+<div class="flex items-start gap-3.5 mt-0.5">
+<div class="w-20 h-28 rounded-lg bg-slate-100 flex-shrink-0 overflow-hidden relative shadow-xs border border-slate-200">
+<img class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" data-alt="Modern Chinese primary school math enrichment exercise book cover titled 7 Star Top Student with gentle sage green accents clean typography geometric learning illustrations warm ambient daylight" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBNZwjYSO2ugSorjK2-75vhyUHEFzHDjXsc2quqUBcqLn1Voss9S0iDDvlcMyHVoAqoE_vbdbBWvv8e6ow6WoD4WImKa2jdrdhsSxNsEWKSem0ms7gMGx1S0A_psHZXksDyMUsU678KT7UTpmpm2FoKseRJ549Tur3qQEMw2kqNLwWITfJTU5GCo8_cCN_DLbcOVYaI72GZ37tE2q_qWmOCh9guoRQMZgan6DOc4Prfw7_2k8VNIUXx"/>
+<span class="absolute bottom-1 right-1 bg-slate-900/80 text-white text-[10px] px-1 rounded font-mono">128页</span>
+</div>
+<div class="flex-1 min-w-0 flex flex-col gap-1">
+<h3 class="font-headline-sm text-sm text-slate-900 font-bold group-hover:text-blue-600 transition-colors line-clamp-2 leading-snug">
+                  《7星学霸题中题·数学4年级第7辑》
+                </h3>
+<span class="text-slate-500 text-xs">华东师大出版社 · 38.4 MB</span>
+<div class="flex items-center gap-2 mt-1">
+<span class="text-xs text-blue-600 font-bold">142 道习题</span>
+<span class="text-slate-300">•</span>
+<span class="text-xs text-slate-500 font-medium">36 个知识考点</span>
+</div>
+</div>
+</div>
+<p class="text-xs text-slate-600 line-clamp-2 bg-slate-50 border border-slate-100 p-2.5 rounded-lg leading-relaxed">
+              主要内容：和倍问题、线段图辅助模型与除法变式题，已完成章节分层归档。
+            </p>
+</div>
+<!-- Card Actions -->
+<div class="flex items-center justify-between pt-3 mt-2 border-t border-slate-100 gap-2">
+<button class="flex-1 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-600 text-blue-700 hover:text-white border border-blue-200 hover:border-blue-600 text-xs transition-all flex items-center justify-center gap-1 font-semibold">
+<span class="material-symbols-outlined text-[15px]">list_alt</span>
+<span>题目清单</span>
+</button>
+<button class="flex-1 py-1.5 rounded-lg bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 text-xs transition-colors flex items-center justify-center gap-1 font-medium">
+<span class="material-symbols-outlined text-[15px]">model_training</span>
+<span>巩固练习</span>
+</button>
+<button class="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors" title="更多">
+<span class="material-symbols-outlined text-[17px]">more_horiz</span>
+</button>
+</div>
+</div>
+<!-- Card 2: 学霸提优大试卷 (需人工复核) -->
+<div class="p-4 rounded-xl bg-white border border-amber-300 hover:border-amber-400 hover:shadow-md transition-all flex flex-col justify-between group shadow-xs">
+<div class="flex flex-col gap-3">
+<!-- Top Badges & Status -->
+<div class="flex items-center justify-between gap-2">
+<div class="flex items-center gap-1.5 flex-wrap">
+<span class="px-2.5 py-0.5 rounded-md bg-blue-50 text-blue-700 border border-blue-100 text-xs font-semibold flex items-center gap-1">
+<span class="material-symbols-outlined text-[13px]">calculate</span>
+                  数学 · 四年级上
+                </span>
+<span class="px-2 py-0.5 rounded-md bg-amber-50 text-amber-800 border border-amber-100 text-xs font-medium">
+                  期中测评
+                </span>
+</div>
+<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-50 text-amber-700 border border-amber-200 text-[11px] font-semibold">
+<span class="material-symbols-outlined text-[13px]">report_problem</span>
+                2页待确认
+              </span>
+</div>
+<!-- Book Cover & Info -->
+<div class="flex items-start gap-3.5 mt-0.5">
+<div class="w-20 h-28 rounded-lg bg-slate-100 flex-shrink-0 overflow-hidden relative shadow-xs border border-slate-200">
+<img class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" data-alt="Elementary school exam test paper sheet scan with printed math arithmetic equations geometry problems in clean monochrome format" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCxjI3VKRBsP1jOnHs9cQAMKLXl889e6g-5EGzdFCfvPre-wY8aMP5JHnGl-Dt_dta4DIw7yw3LHmn4mw8kcn58I3zya6XXSrhEBQq1XYfQgh-Tl_eDOa6MGrHsHBSrqHWRwwRUIs5XcDFJeseEzGIHwyOOzlBlZ_iCag9t5gN98FJI6MjOaFMEQexstvDyKACIUYwzHZvAmS5N_u_Plm-h_fzpL8lcC1-nHJMCKy8ujud5K-nVD2kD"/>
+<span class="absolute bottom-1 right-1 bg-slate-900/80 text-white text-[10px] px-1 rounded font-mono">8页</span>
+</div>
+<div class="flex-1 min-w-0 flex flex-col gap-1">
+<h3 class="font-headline-sm text-sm text-slate-900 font-bold group-hover:text-amber-700 transition-colors line-clamp-2 leading-snug">
+                  《学霸提优大试卷·数学4年级期中冲刺卷》
+                </h3>
+<span class="text-slate-500 text-xs">名校期中调研卷 (A/B) · 14.2 MB</span>
+<div class="flex items-center gap-2 mt-1">
+<span class="text-xs text-slate-800 font-bold">已入库 24 / 28 题</span>
+<span class="text-slate-300">•</span>
+<span class="text-xs text-amber-700 font-semibold">需人工校准</span>
+</div>
+</div>
+</div>
+<p class="text-xs text-amber-800 line-clamp-2 bg-amber-50/70 border border-amber-100 p-2.5 rounded-lg leading-relaxed">
+              待办提示：第4页竖式填空题打印稍模糊，建议快速复核数字后合并入库。
+            </p>
+</div>
+<!-- Card Actions -->
+<div class="flex items-center justify-between pt-3 mt-2 border-t border-slate-100 gap-2">
+<button class="flex-1 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-xs transition-colors flex items-center justify-center gap-1 font-semibold shadow-xs">
+<span class="material-symbols-outlined text-[15px]">fact_check</span>
+<span>前往复核 (2)</span>
+</button>
+<button class="flex-1 py-1.5 rounded-lg bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 text-xs transition-colors flex items-center justify-center gap-1 font-medium">
+<span class="material-symbols-outlined text-[15px]">visibility</span>
+<span>查看试卷</span>
+</button>
+<button class="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors" title="更多">
+<span class="material-symbols-outlined text-[17px]">more_horiz</span>
+</button>
+</div>
+</div>
+<!-- Card 3: 语文阅读理解 -->
+<div class="p-4 rounded-xl bg-white border border-slate-200 hover:border-blue-400 hover:shadow-md transition-all flex flex-col justify-between group shadow-xs">
+<div class="flex flex-col gap-3">
+<!-- Top Badges & Status -->
+<div class="flex items-center justify-between gap-2">
+<div class="flex items-center gap-1.5 flex-wrap">
+<span class="px-2.5 py-0.5 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-100 text-xs font-semibold flex items-center gap-1">
+<span class="material-symbols-outlined text-[13px]">auto_stories</span>
+                  语文 · 阅读理解
+                </span>
+<span class="px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 text-xs font-medium">
+                  四年级通用
+                </span>
+</div>
+<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-100 text-[11px] font-semibold">
+<span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                全部就绪
+              </span>
+</div>
+<!-- Book Cover & Info -->
+<div class="flex items-start gap-3.5 mt-0.5">
+<div class="w-20 h-28 rounded-lg bg-slate-100 flex-shrink-0 overflow-hidden relative shadow-xs border border-slate-200">
+<img class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" data-alt="Chinese primary school textbook literary reading comprehension guide book cover with warm terracotta and sage palette clean layout" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDSIgK0kxbVoxynhU8N5zGLzCSQ0Myix16L77y8ftwqNzsqk79ypn1fXUT6aczcxC8mpxE1GH-VSyT_rpdMSTWWpd2Gqv7WxusUigklFHEemGSmu82i_om8O37ZfFAwgB3Fh28w3UJOg9gtMq3mweg5Fzhfa4c8p6zagPhi7t4-XnP6kqGUbS1zLnbAZD3vDIbUvIlQ0T0uU82CiA6Lt8jsNi0cv4lhSmESlgL8Nq9MZ_Wq2DZHAygD"/>
+<span class="absolute bottom-1 right-1 bg-slate-900/80 text-white text-[10px] px-1 rounded font-mono">160页</span>
+</div>
+<div class="flex-1 min-w-0 flex flex-col gap-1">
+<h3 class="font-headline-sm text-sm text-slate-900 font-bold group-hover:text-blue-600 transition-colors line-clamp-2 leading-snug">
+                  《小学语文四年级阅读理解培优80篇》
+                </h3>
+<span class="text-slate-500 text-xs">人教同步培优 · 52.1 MB</span>
+<div class="flex items-center gap-2 mt-1">
+<span class="text-xs text-blue-600 font-bold">240 道习题</span>
+<span class="text-slate-300">•</span>
+<span class="text-xs text-slate-500 font-medium">共 80 篇美文阅读</span>
+</div>
+</div>
+</div>
+<p class="text-xs text-slate-600 line-clamp-2 bg-slate-50 border border-slate-100 p-2.5 rounded-lg leading-relaxed">
+              主要内容：涵盖说明文、写景散文与寓言童话，支持按中心思想与修辞手法检索。
+            </p>
+</div>
+<!-- Card Actions -->
+<div class="flex items-center justify-between pt-3 mt-2 border-t border-slate-100 gap-2">
+<button class="flex-1 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-600 text-blue-700 hover:text-white border border-blue-200 hover:border-blue-600 text-xs transition-all flex items-center justify-center gap-1 font-semibold">
+<span class="material-symbols-outlined text-[15px]">list_alt</span>
+<span>题目清单</span>
+</button>
+<button class="flex-1 py-1.5 rounded-lg bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 text-xs transition-colors flex items-center justify-center gap-1 font-medium">
+<span class="material-symbols-outlined text-[15px]">model_training</span>
+<span>巩固练习</span>
+</button>
+<button class="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors" title="更多">
+<span class="material-symbols-outlined text-[17px]">more_horiz</span>
+</button>
+</div>
+</div>
+<!-- Card 4: 乐乐错题本 (处理中) -->
+<div class="p-4 rounded-xl bg-white border border-blue-200 hover:border-blue-400 hover:shadow-md transition-all flex flex-col justify-between group shadow-xs">
+<div class="flex flex-col gap-3">
+<!-- Top Badges & Status -->
+<div class="flex items-center justify-between gap-2">
+<div class="flex items-center gap-1.5 flex-wrap">
+<span class="px-2.5 py-0.5 rounded-md bg-blue-50 text-blue-700 border border-blue-100 text-xs font-semibold flex items-center gap-1">
+<span class="material-symbols-outlined text-[13px]">edit_note</span>
+                  错题本
+                </span>
+<span class="px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 text-xs font-medium">
+                  手写拍照整理
+                </span>
+</div>
+<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 border border-blue-200 text-[11px] font-semibold">
+<span class="w-1.5 h-1.5 rounded-full bg-blue-600 animate-pulse"></span>
+                处理中 85%
+              </span>
+</div>
+<!-- Book Cover & Info -->
+<div class="flex items-start gap-3.5 mt-0.5">
+<div class="w-20 h-28 rounded-lg bg-slate-100 flex-shrink-0 overflow-hidden relative shadow-xs border border-slate-200">
+<img class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300 opacity-85" data-alt="Handwritten student notebook with pencil marks, math sketches and teacher red ink corrections captured neatly from smartphone camera perspective" src="https://lh3.googleusercontent.com/aida-public/AB6AXuANRirKCx3PJA-YC5jxtbpKjJf3YjI5jmZhjUsT42lhUoikP16egFx0LgMvgWIhxibMh5VIVXbPhzHx4SnTF0_-GpFXaVVgcx0q9Y4dTlQtnQTXQYMSJK2s5CYID0kM-bYCFBnZDWqu4ZUXMgU1Cx5VfcWQ5VuiurkxUmvCVSr363p52Cq3ogS8Jov5QXg73RdAw10d3-dxesKY9SO1BOe00X_VdF6m7lE8bJVg_wavTFcml5Fo8lKt"/>
+<div class="absolute inset-0 bg-slate-900/20 backdrop-blur-[1px] flex items-center justify-center">
+<span class="material-symbols-outlined text-white animate-spin text-[22px]">progress_activity</span>
+</div>
+<span class="absolute bottom-1 right-1 bg-slate-900/80 text-white text-[10px] px-1 rounded font-mono">34页</span>
+</div>
+<div class="flex-1 min-w-0 flex flex-col gap-1">
+<h3 class="font-headline-sm text-sm text-slate-900 font-bold group-hover:text-blue-600 transition-colors line-clamp-2 leading-snug">
+                  《乐乐日常错题收集本 (2024秋季学期)》
+                </h3>
+<span class="text-slate-500 text-xs">手机拍照整理 · 34 页</span>
+<!-- Progress line -->
+<div class="w-full pt-1">
+<div class="flex items-center justify-between text-xs text-blue-600 font-semibold mb-1">
+<span>已解析 29 / 34 页</span>
+<span class="font-mono">85%</span>
+</div>
+<div class="w-full h-1.5 rounded-full bg-slate-100 overflow-hidden">
+<div class="h-full bg-blue-600 rounded-full transition-all duration-500" style="width: 85%"></div>
+</div>
+</div>
+</div>
+</div>
+<p class="text-xs text-slate-600 line-clamp-2 bg-slate-50 border border-slate-100 p-2.5 rounded-lg leading-relaxed">
+              正在同步识别手写字迹与橡皮擦除区，即将完成和倍问题错因归类。
+            </p>
+</div>
+<!-- Card Actions -->
+<div class="flex items-center justify-between pt-3 mt-2 border-t border-slate-100 gap-2">
+<button class="flex-1 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-600 text-blue-700 hover:text-white border border-blue-200 hover:border-blue-600 text-xs transition-all flex items-center justify-center gap-1 font-semibold">
+<span class="material-symbols-outlined text-[15px]">sync</span>
+<span>查看进度</span>
+</button>
+<button class="flex-1 py-1.5 rounded-lg bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 text-xs transition-colors flex items-center justify-center gap-1 font-medium">
+<span class="material-symbols-outlined text-[15px]">photo_library</span>
+<span>原始切片</span>
+</button>
+<button class="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors" title="更多">
+<span class="material-symbols-outlined text-[17px]">more_horiz</span>
+</button>
+</div>
+</div>
+<!-- Card 5: 英语语法通关练 -->
+<div class="p-4 rounded-xl bg-white border border-slate-200 hover:border-blue-400 hover:shadow-md transition-all flex flex-col justify-between group shadow-xs">
+<div class="flex flex-col gap-3">
+<!-- Top Badges & Status -->
+<div class="flex items-center justify-between gap-2">
+<div class="flex items-center gap-1.5 flex-wrap">
+<span class="px-2.5 py-0.5 rounded-md bg-sky-50 text-sky-700 border border-sky-100 text-xs font-semibold flex items-center gap-1">
+<span class="material-symbols-outlined text-[13px]">translate</span>
+                  英语 · 四年级
+                </span>
+<span class="px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 text-xs font-medium">
+                  语法专项
+                </span>
+</div>
+<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-100 text-[11px] font-semibold">
+<span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                全部就绪
+              </span>
+</div>
+<!-- Book Cover & Info -->
+<div class="flex items-start gap-3.5 mt-0.5">
+<div class="w-20 h-28 rounded-lg bg-slate-100 flex-shrink-0 overflow-hidden relative shadow-xs border border-slate-200">
+<img class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" data-alt="English grammar workbook for kids with clean educational illustrations and cute typography" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDBq7TakzTNEzIQyd0drn-VADTrjWftVkitoADs2HLt4D4LN3cvS3_K15YxsngPbbhy2UG-D-9iSHaEqDVOPXyxBrKm_rRbWt0At9wdCxq8-CGDO-bqboUHbKwanQWpOFoqMHhOvVFvm11P2-xhNsSr80aU7vdUrg5YozofrRcb78KiUCLOPzx1-Gb_446YdXbtyCnnUf9q3V_Rf6tsOs8u7T94423Q87HU4nZK45UnJe7zrxQSEdqp"/>
+<span class="absolute bottom-1 right-1 bg-slate-900/80 text-white text-[10px] px-1 rounded font-mono">64页</span>
+</div>
+<div class="flex-1 min-w-0 flex flex-col gap-1">
+<h3 class="font-headline-sm text-sm text-slate-900 font-bold group-hover:text-blue-600 transition-colors line-clamp-2 leading-snug">
+                  《小学英语同步语法通关练·四年级》
+                </h3>
+<span class="text-slate-500 text-xs">外研社同步版 · 21.0 MB</span>
+<div class="flex items-center gap-2 mt-1">
+<span class="text-xs text-blue-600 font-bold">96 道习题</span>
+<span class="text-slate-300">•</span>
+<span class="text-xs text-slate-500 font-medium">时态与一般现在时</span>
+</div>
+</div>
+</div>
+<p class="text-xs text-slate-600 line-clamp-2 bg-slate-50 border border-slate-100 p-2.5 rounded-lg leading-relaxed">
+              主要内容：单项选择、情景问答与短文填空，适合每天10分钟微习惯练习。
+            </p>
+</div>
+<!-- Card Actions -->
+<div class="flex items-center justify-between pt-3 mt-2 border-t border-slate-100 gap-2">
+<button class="flex-1 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-600 text-blue-700 hover:text-white border border-blue-200 hover:border-blue-600 text-xs transition-all flex items-center justify-center gap-1 font-semibold">
+<span class="material-symbols-outlined text-[15px]">list_alt</span>
+<span>题目清单</span>
+</button>
+<button class="flex-1 py-1.5 rounded-lg bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 text-xs transition-colors flex items-center justify-center gap-1 font-medium">
+<span class="material-symbols-outlined text-[15px]">model_training</span>
+<span>巩固练习</span>
+</button>
+<button class="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors" title="更多">
+<span class="material-symbols-outlined text-[17px]">more_horiz</span>
+</button>
+</div>
+</div>
+<!-- Card 6: 单元精练测评 A/B 卷 -->
+<div class="p-4 rounded-xl bg-white border border-slate-200 hover:border-blue-400 hover:shadow-md transition-all flex flex-col justify-between group shadow-xs">
+<div class="flex flex-col gap-3">
+<!-- Top Badges & Status -->
+<div class="flex items-center justify-between gap-2">
+<div class="flex items-center gap-1.5 flex-wrap">
+<span class="px-2.5 py-0.5 rounded-md bg-blue-50 text-blue-700 border border-blue-100 text-xs font-semibold flex items-center gap-1">
+<span class="material-symbols-outlined text-[13px]">calculate</span>
+                  数学 · 四年级上
+                </span>
+<span class="px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 text-xs font-medium">
+                  单元月考
+                </span>
+</div>
+<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-100 text-[11px] font-semibold">
+<span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                全部就绪
+              </span>
+</div>
+<!-- Book Cover & Info -->
+<div class="flex items-start gap-3.5 mt-0.5">
+<div class="w-20 h-28 rounded-lg bg-slate-100 flex-shrink-0 overflow-hidden relative shadow-xs border border-slate-200">
+<img class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" data-alt="Elementary school exam test sheet collection clean modern cover illustration" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCxjI3VKRBsP1jOnHs9cQAMKLXl889e6g-5EGzdFCfvPre-wY8aMP5JHnGl-Dt_dta4DIw7yw3LHmn4mw8kcn58I3zya6XXSrhEBQq1XYfQgh-Tl_eDOa6MGrHsHBSrqHWRwwRUIs5XcDFJeseEzGIHwyOOzlBlZ_iCag9t5gN98FJI6MjOaFMEQexstvDyKACIUYwzHZvAmS5N_u_Plm-h_fzpL8lcC1-nHJMCKy8ujud5K-nVD2kD"/>
+<span class="absolute bottom-1 right-1 bg-slate-900/80 text-white text-[10px] px-1 rounded font-mono">24页</span>
+</div>
+<div class="flex-1 min-w-0 flex flex-col gap-1">
+<h3 class="font-headline-sm text-sm text-slate-900 font-bold group-hover:text-blue-600 transition-colors line-clamp-2 leading-snug">
+                  《单元精练测评A/B卷·四年级上》
+                </h3>
+<span class="text-slate-500 text-xs">期末全真模拟卷 · 18.6 MB</span>
+<div class="flex items-center gap-2 mt-1">
+<span class="text-xs text-blue-600 font-bold">110 道习题</span>
+<span class="text-slate-300">•</span>
+<span class="text-xs text-slate-500 font-medium">共 6 套完整试卷</span>
+</div>
+</div>
+</div>
+<p class="text-xs text-slate-600 line-clamp-2 bg-slate-50 border border-slate-100 p-2.5 rounded-lg leading-relaxed">
+              主要内容：大数的认识、公顷与平方千米、角的度量等单元考点全覆盖。
+            </p>
+</div>
+<!-- Card Actions -->
+<div class="flex items-center justify-between pt-3 mt-2 border-t border-slate-100 gap-2">
+<button class="flex-1 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-600 text-blue-700 hover:text-white border border-blue-200 hover:border-blue-600 text-xs transition-all flex items-center justify-center gap-1 font-semibold">
+<span class="material-symbols-outlined text-[15px]">list_alt</span>
+<span>题目清单</span>
+</button>
+<button class="flex-1 py-1.5 rounded-lg bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 text-xs transition-colors flex items-center justify-center gap-1 font-medium">
+<span class="material-symbols-outlined text-[15px]">model_training</span>
+<span>巩固练习</span>
+</button>
+<button class="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors" title="更多">
+<span class="material-symbols-outlined text-[17px]">more_horiz</span>
+</button>
+</div>
+</div>
+</div>
+<!-- Table View Container -->
+<div class="w-full flex flex-col gap-4 hidden" id="table-view-container"><div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden"><div class="px-4 py-3 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50/70"><div class="flex items-center gap-3 flex-wrap"><div class="flex items-center gap-2"><input class="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer" type="checkbox"/><span class="text-xs text-slate-600 font-medium">已选 <span class="text-blue-600 font-bold">0</span> 项</span></div><div class="h-4 w-px bg-slate-300 hidden sm:block"></div><div class="flex items-center gap-1.5 flex-wrap"><button class="px-2.5 py-1 rounded-md bg-white border border-slate-200 text-slate-700 hover:text-blue-600 hover:border-blue-300 text-xs font-medium flex items-center gap-1 transition-colors shadow-2xs"><span class="material-symbols-outlined text-[14px]">file_download</span><span>批量导出习题</span></button><button class="px-2.5 py-1 rounded-md bg-white border border-slate-200 text-slate-700 hover:text-blue-600 hover:border-blue-300 text-xs font-medium flex items-center gap-1 transition-colors shadow-2xs"><span class="material-symbols-outlined text-[14px]">label</span><span>批量添加考点标签</span></button><button class="px-2.5 py-1 rounded-md bg-white border border-slate-200 text-slate-700 hover:text-amber-700 hover:border-amber-300 text-xs font-medium flex items-center gap-1 transition-colors shadow-2xs"><span class="material-symbols-outlined text-[14px]">fact_check</span><span>合并复核</span></button></div></div><div class="flex items-center gap-2 text-slate-500 text-xs"><span>共 <span class="font-bold text-slate-900">6</span> 项在库教辅资料</span></div></div><div class="overflow-x-auto"><table class="w-full text-left border-collapse"><thead class="bg-slate-50 text-slate-600 text-xs font-semibold border-b border-slate-200"><tr><th class="p-3 pl-4 w-10"><input class="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer" type="checkbox"/></th><th class="py-3 px-3">资料名称与封面</th><th class="py-3 px-3">学科 / 年级</th><th class="py-3 px-3">类型</th><th class="py-3 px-3">收录题目 / 考点</th><th class="py-3 px-3">文件规格</th><th class="py-3 px-3">状态与进展</th><th class="py-3 px-3">更新时间</th><th class="py-3 pr-4 text-right">快捷操作</th></tr></thead><tbody class="divide-y divide-slate-100 text-slate-800 text-xs"><tr class="hover:bg-slate-50/70 transition-colors"><td class="p-3 pl-4"><input class="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer" type="checkbox"/></td><td class="py-3 px-3"><div class="flex items-center gap-3"><div class="w-10 h-14 rounded bg-slate-100 flex-shrink-0 overflow-hidden relative shadow-2xs border border-slate-200"><img alt="Cover" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBNZwjYSO2ugSorjK2-75vhyUHEFzHDjXsc2quqUBcqLn1Voss9S0iDDvlcMyHVoAqoE_vbdbBWvv8e6ow6WoD4WImKa2jdrdhsSxNsEWKSem0ms7gMGx1S0A_psHZXksDyMUsU678KT7UTpmpm2FoKseRJ549Tur3qQEMw2kqNLwWITfJTU5GCo8_cCN_DLbcOVYaI72GZ37tE2q_qWmOCh9guoRQMZgan6DOc4Prfw7_2k8VNIUXx"/></div><div class="min-w-0"><span class="font-bold text-slate-900 block hover:text-blue-600 cursor-pointer transition-colors">《7星学霸题中题·数学4年级第7辑》</span><span class="text-[11px] text-slate-500 block">华东师大出版社 · 章节分层归档</span></div></div></td><td class="py-3 px-3"><span class="px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-100 font-semibold inline-flex items-center gap-1"><span class="material-symbols-outlined text-[13px]">calculate</span>数学·四年级上</span></td><td class="py-3 px-3"><span class="px-2 py-0.5 rounded bg-slate-100 text-slate-600 font-medium">同步培优</span></td><td class="py-3 px-3"><div><span class="font-bold text-blue-600">142</span> 道题</div><span class="text-[11px] text-slate-500">36 个核心考点</span></td><td class="py-3 px-3"><div>38.4 MB</div><span class="text-[11px] text-slate-500">共 128 页</span></td><td class="py-3 px-3"><span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-100 font-semibold"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>全部就绪</span></td><td class="py-3 px-3 text-slate-500 font-medium">今天 14:20</td><td class="py-3 pr-4 text-right"><div class="flex items-center justify-end gap-1.5"><button class="px-2.5 py-1 rounded bg-blue-50 text-blue-700 hover:bg-blue-600 hover:text-white border border-blue-200 font-semibold transition-all">题目清单</button><button class="px-2 py-1 rounded bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors font-medium">练题</button><button class="p-1 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded transition-colors"><span class="material-symbols-outlined text-[17px]">more_horiz</span></button></div></td></tr><tr class="hover:bg-slate-50/70 transition-colors bg-amber-50/30"><td class="p-3 pl-4"><input class="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer" type="checkbox"/></td><td class="py-3 px-3"><div class="flex items-center gap-3"><div class="w-10 h-14 rounded bg-slate-100 flex-shrink-0 overflow-hidden relative shadow-2xs border border-slate-200"><img alt="Cover" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCxjI3VKRBsP1jOnHs9cQAMKLXl889e6g-5EGzdFCfvPre-wY8aMP5JHnGl-Dt_dta4DIw7yw3LHmn4mw8kcn58I3zya6XXSrhEBQq1XYfQgh-Tl_eDOa6MGrHsHBSrqHWRwwRUIs5XcDFJeseEzGIHwyOOzlBlZ_iCag9t5gN98FJI6MjOaFMEQexstvDyKACIUYwzHZvAmS5N_u_Plm-h_fzpL8lcC1-nHJMCKy8ujud5K-nVD2kD"/></div><div class="min-w-0"><span class="font-bold text-slate-900 block hover:text-amber-700 cursor-pointer transition-colors">《学霸提优大试卷·数学4年级期中冲刺卷》</span><span class="text-[11px] text-amber-700 block font-medium">第4页竖式填空需人工复核确认</span></div></div></td><td class="py-3 px-3"><span class="px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-100 font-semibold inline-flex items-center gap-1"><span class="material-symbols-outlined text-[13px]">calculate</span>数学·四年级上</span></td><td class="py-3 px-3"><span class="px-2 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-100 font-medium">期中测评</span></td><td class="py-3 px-3"><div><span class="font-bold text-slate-900">24 / 28</span> 题</div><span class="text-[11px] text-amber-700 font-semibold">待核对 2 题</span></td><td class="py-3 px-3"><div>14.2 MB</div><span class="text-[11px] text-slate-500">共 8 页</span></td><td class="py-3 px-3"><span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-50 text-amber-700 border border-amber-200 font-semibold"><span class="material-symbols-outlined text-[13px]">report_problem</span>2页待确认</span></td><td class="py-3 px-3 text-slate-500 font-medium">今天 11:05</td><td class="py-3 pr-4 text-right"><div class="flex items-center justify-end gap-1.5"><button class="px-2.5 py-1 rounded bg-amber-500 text-white hover:bg-amber-600 font-semibold transition-all shadow-2xs">前往复核</button><button class="px-2 py-1 rounded bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors font-medium">试卷</button><button class="p-1 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded transition-colors"><span class="material-symbols-outlined text-[17px]">more_horiz</span></button></div></td></tr><tr class="hover:bg-slate-50/70 transition-colors"><td class="p-3 pl-4"><input class="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer" type="checkbox"/></td><td class="py-3 px-3"><div class="flex items-center gap-3"><div class="w-10 h-14 rounded bg-slate-100 flex-shrink-0 overflow-hidden relative shadow-2xs border border-slate-200"><img alt="Cover" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDSIgK0kxbVoxynhU8N5zGLzCSQ0Myix16L77y8ftwqNzsqk79ypn1fXUT6aczcxC8mpxE1GH-VSyT_rpdMSTWWpd2Gqv7WxusUigklFHEemGSmu82i_om8O37ZfFAwgB3Fh28w3UJOg9gtMq3mweg5Fzhfa4c8p6zagPhi7t4-XnP6kqGUbS1zLnbAZD3vDIbUvIlQ0T0uU82CiA6Lt8jsNi0cv4lhSmESlgL8Nq9MZ_Wq2DZHAygD"/></div><div class="min-w-0"><span class="font-bold text-slate-900 block hover:text-blue-600 cursor-pointer transition-colors">《小学语文四年级阅读理解培优80篇》</span><span class="text-[11px] text-slate-500 block">人教同步 · 说明文与写景散文精讲</span></div></div></td><td class="py-3 px-3"><span class="px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-100 font-semibold inline-flex items-center gap-1"><span class="material-symbols-outlined text-[13px]">auto_stories</span>语文·阅读理解</span></td><td class="py-3 px-3"><span class="px-2 py-0.5 rounded bg-slate-100 text-slate-600 font-medium">四年级通用</span></td><td class="py-3 px-3"><div><span class="font-bold text-blue-600">240</span> 道题</div><span class="text-[11px] text-slate-500">80 篇精选阅读</span></td><td class="py-3 px-3"><div>52.1 MB</div><span class="text-[11px] text-slate-500">共 160 页</span></td><td class="py-3 px-3"><span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-100 font-semibold"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>全部就绪</span></td><td class="py-3 px-3 text-slate-500 font-medium">昨日 18:32</td><td class="py-3 pr-4 text-right"><div class="flex items-center justify-end gap-1.5"><button class="px-2.5 py-1 rounded bg-blue-50 text-blue-700 hover:bg-blue-600 hover:text-white border border-blue-200 font-semibold transition-all">题目清单</button><button class="px-2 py-1 rounded bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors font-medium">练题</button><button class="p-1 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded transition-colors"><span class="material-symbols-outlined text-[17px]">more_horiz</span></button></div></td></tr><tr class="hover:bg-slate-50/70 transition-colors"><td class="p-3 pl-4"><input class="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer" type="checkbox"/></td><td class="py-3 px-3"><div class="flex items-center gap-3"><div class="w-10 h-14 rounded bg-slate-100 flex-shrink-0 overflow-hidden relative shadow-2xs border border-slate-200"><img alt="Cover" class="w-full h-full object-cover opacity-85" src="https://lh3.googleusercontent.com/aida-public/AB6AXuANRirKCx3PJA-YC5jxtbpKjJf3YjI5jmZhjUsT42lhUoikP16egFx0LgMvgWIhxibMh5VIVXbPhzHx4SnTF0_-GpFXaVVgcx0q9Y4dTlQtnQTXQYMSJK2s5CYID0kM-bYCFBnZDWqu4ZUXMgU1Cx5VfcWQ5VuiurkxUmvCVSr363p52Cq3ogS8Jov5QXg73RdAw10d3-dxesKY9SO1BOe00X_VdF6m7lE8bJVg_wavTFcml5Fo8lKt"/></div><div class="min-w-0"><span class="font-bold text-slate-900 block hover:text-blue-600 cursor-pointer transition-colors">《乐乐日常错题收集本 (2024秋季学期)》</span><span class="text-[11px] text-blue-600 block font-medium">OCR 智能笔迹擦除与错因聚类中</span></div></div></td><td class="py-3 px-3"><span class="px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-100 font-semibold inline-flex items-center gap-1"><span class="material-symbols-outlined text-[13px]">edit_note</span>错题本</span></td><td class="py-3 px-3"><span class="px-2 py-0.5 rounded bg-slate-100 text-slate-600 font-medium">手写拍照</span></td><td class="py-3 px-3"><div><span class="font-bold text-blue-600">29 / 34</span> 页已析</div><span class="text-[11px] text-slate-500 font-medium">归因完成 85%</span></td><td class="py-3 px-3"><div>手机原片</div><span class="text-[11px] text-slate-500">共 34 页</span></td><td class="py-3 px-3"><span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 border border-blue-200 font-semibold"><span class="w-1.5 h-1.5 rounded-full bg-blue-600 animate-pulse"></span>处理中 85%</span></td><td class="py-3 px-3 text-slate-500 font-medium">10分钟前</td><td class="py-3 pr-4 text-right"><div class="flex items-center justify-end gap-1.5"><button class="px-2.5 py-1 rounded bg-blue-50 text-blue-700 hover:bg-blue-600 hover:text-white border border-blue-200 font-semibold transition-all">查看进度</button><button class="px-2 py-1 rounded bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors font-medium">切片</button><button class="p-1 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded transition-colors"><span class="material-symbols-outlined text-[17px]">more_horiz</span></button></div></td></tr><tr class="hover:bg-slate-50/70 transition-colors"><td class="p-3 pl-4"><input class="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer" type="checkbox"/></td><td class="py-3 px-3"><div class="flex items-center gap-3"><div class="w-10 h-14 rounded bg-slate-100 flex-shrink-0 overflow-hidden relative shadow-2xs border border-slate-200"><img alt="Cover" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDBq7TakzTNEzIQyd0drn-VADTrjWftVkitoADs2HLt4D4LN3cvS3_K15YxsngPbbhy2UG-D-9iSHaEqDVOPXyxBrKm_rRbWt0At9wdCxq8-CGDO-bqboUHbKwanQWpOFoqMHhOvVFvm11P2-xhNsSr80aU7vdUrg5YozofrRcb78KiUCLOPzx1-Gb_446YdXbtyCnnUf9q3V_Rf6tsOs8u7T94423Q87HU4nZK45UnJe7zrxQSEdqp"/></div><div class="min-w-0"><span class="font-bold text-slate-900 block hover:text-blue-600 cursor-pointer transition-colors">《小学英语同步语法通关练·四年级》</span><span class="text-[11px] text-slate-500 block">外研社同步版 · 时态与一般现在时</span></div></div></td><td class="py-3 px-3"><span class="px-2 py-0.5 rounded bg-sky-50 text-sky-700 border border-sky-100 font-semibold inline-flex items-center gap-1"><span class="material-symbols-outlined text-[13px]">translate</span>英语·四年级</span></td><td class="py-3 px-3"><span class="px-2 py-0.5 rounded bg-slate-100 text-slate-600 font-medium">语法专项</span></td><td class="py-3 px-3"><div><span class="font-bold text-blue-600">96</span> 道题</div><span class="text-[11px] text-slate-500">18 个语法点</span></td><td class="py-3 px-3"><div>21.0 MB</div><span class="text-[11px] text-slate-500">共 64 页</span></td><td class="py-3 px-3"><span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-100 font-semibold"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>全部就绪</span></td><td class="py-3 px-3 text-slate-500 font-medium">2天前</td><td class="py-3 pr-4 text-right"><div class="flex items-center justify-end gap-1.5"><button class="px-2.5 py-1 rounded bg-blue-50 text-blue-700 hover:bg-blue-600 hover:text-white border border-blue-200 font-semibold transition-all">题目清单</button><button class="px-2 py-1 rounded bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors font-medium">练题</button><button class="p-1 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded transition-colors"><span class="material-symbols-outlined text-[17px]">more_horiz</span></button></div></td></tr><tr class="hover:bg-slate-50/70 transition-colors"><td class="p-3 pl-4"><input class="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer" type="checkbox"/></td><td class="py-3 px-3"><div class="flex items-center gap-3"><div class="w-10 h-14 rounded bg-slate-100 flex-shrink-0 overflow-hidden relative shadow-2xs border border-slate-200"><img alt="Cover" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCxjI3VKRBsP1jOnHs9cQAMKLXl889e6g-5EGzdFCfvPre-wY8aMP5JHnGl-Dt_dta4DIw7yw3LHmn4mw8kcn58I3zya6XXSrhEBQq1XYfQgh-Tl_eDOa6MGrHsHBSrqHWRwwRUIs5XcDFJeseEzGIHwyOOzlBlZ_iCag9t5gN98FJI6MjOaFMEQexstvDyKACIUYwzHZvAmS5N_u_Plm-h_fzpL8lcC1-nHJMCKy8ujud5K-nVD2kD"/></div><div class="min-w-0"><span class="font-bold text-slate-900 block hover:text-blue-600 cursor-pointer transition-colors">《单元精练测评A/B卷·四年级上》</span><span class="text-[11px] text-slate-500 block">期末全真模拟 · 大数的认识与角的度量</span></div></div></td><td class="py-3 px-3"><span class="px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-100 font-semibold inline-flex items-center gap-1"><span class="material-symbols-outlined text-[13px]">calculate</span>数学·四年级上</span></td><td class="py-3 px-3"><span class="px-2 py-0.5 rounded bg-slate-100 text-slate-600 font-medium">单元月考</span></td><td class="py-3 px-3"><div><span class="font-bold text-blue-600">110</span> 道题</div><span class="text-[11px] text-slate-500">共 6 套试卷</span></td><td class="py-3 px-3"><div>18.6 MB</div><span class="text-[11px] text-slate-500">共 24 页</span></td><td class="py-3 px-3"><span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-100 font-semibold"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>全部就绪</span></td><td class="py-3 px-3 text-slate-500 font-medium">3天前</td><td class="py-3 pr-4 text-right"><div class="flex items-center justify-end gap-1.5"><button class="px-2.5 py-1 rounded bg-blue-50 text-blue-700 hover:bg-blue-600 hover:text-white border border-blue-200 font-semibold transition-all">题目清单</button><button class="px-2 py-1 rounded bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors font-medium">练题</button><button class="p-1 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded transition-colors"><span class="material-symbols-outlined text-[17px]">more_horiz</span></button></div></td></tr></tbody></table></div><div class="px-4 py-3 border-t border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white"><div class="text-xs text-slate-500 font-medium">显示第 1 至 6 条，共 18 条记录</div><div class="flex items-center gap-2"><button class="px-2.5 py-1 rounded-md border border-slate-200 text-slate-500 hover:bg-slate-50 text-xs font-medium disabled:opacity-40 transition-colors" disabled="">上一页</button><div class="flex items-center gap-1"><button class="w-7 h-7 rounded-md bg-blue-600 text-white text-xs font-bold flex items-center justify-center shadow-xs">1</button><button class="w-7 h-7 rounded-md text-slate-600 hover:bg-slate-100 text-xs font-medium flex items-center justify-center transition-colors">2</button><button class="w-7 h-7 rounded-md text-slate-600 hover:bg-slate-100 text-xs font-medium flex items-center justify-center transition-colors">3</button></div><button class="px-2.5 py-1 rounded-md border border-slate-200 text-slate-700 hover:bg-slate-50 text-xs font-medium transition-colors">下一页</button></div></div></div></div>
+<!-- Bottom Simple Tip Card -->
+<div class="p-4 rounded-xl bg-white border border-slate-200 shadow-xs flex items-center justify-between gap-3 flex-wrap">
+<div class="flex items-center gap-3">
+<div class="w-8 h-8 rounded-lg bg-blue-50 border border-blue-100 text-blue-600 flex items-center justify-center flex-shrink-0">
+<span class="material-symbols-outlined text-[18px]">lightbulb</span>
+</div>
+<p class="text-xs text-slate-600 leading-relaxed">
+          提示：直接拖拽整本 PDF 或手机拍摄的试卷图片至页面任意位置，系统即可自动拆解题目并整理进书架。
+        </p>
+</div>
+<button class="px-3 py-1.5 rounded-lg bg-slate-50 border border-slate-200 hover:bg-slate-100 text-slate-700 text-xs font-semibold transition-colors flex items-center gap-1">
+<span class="material-symbols-outlined text-[15px] text-slate-500">help_outline</span>
+<span>查看整理指南</span>
+</button>
+</div>
+</div>
+</div>
+</main></div>
+</body></html>

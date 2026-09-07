@@ -173,7 +173,7 @@ export function ReviewView() {
             ))}
             <iframe className="fail-source" title="试卷原件"
                     src={sourcePdfUrl(detail.id)} />
-            <button className="primary" onClick={() => {
+            <button className="btn-primary" onClick={() => {
               void retryPaper(detail.id).then(() => {
                 setDetail({ ...detail, status: "processing", error: null });
                 void loadPapers();
@@ -191,14 +191,14 @@ export function ReviewView() {
                 {current.confirmed_result ? " · 已确认" : ""}
               </span>
               {current.page_no <= detail.page_count && (
-                <button className="ghost" onClick={() => {
+                <button className="btn-ghost" onClick={() => {
                   void reRecognizePaper(detail.id, current.page_no).then(() => {
                     setDetail({ ...detail, status: "processing" });
                     void loadPapers();
                   });
                 }}>重识别本页</button>
               )}
-              <a className="ghost" href={sourcePdfUrl(detail.id)} target="_blank"
+              <a className="btn-ghost" href={sourcePdfUrl(detail.id)} target="_blank"
                  rel="noreferrer">查看整卷原件</a>
             </div>
             <div className="qnav">
@@ -222,7 +222,7 @@ export function ReviewView() {
               <input aria-label="备注" value={note} onChange={(e) => setNote(e.target.value)}
                      placeholder="备注,如「竖式对位错」" />
               {!current.matched_item_id && (
-                <button className="ghost" onClick={() => setMatchOpen(true)}>待匹配 · 选择题库条目</button>
+                <button className="btn-ghost" onClick={() => setMatchOpen(true)}>待匹配 · 选择题库条目</button>
               )}
             </div>
             <div className="keyhint">快捷键:1 做错 · 2 做对 · 3 半对 · Enter 采纳预选并下一条</div>

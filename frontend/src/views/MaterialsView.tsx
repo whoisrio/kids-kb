@@ -155,7 +155,7 @@ export function MaterialsView({ fetchImpl = fetch }: { fetchImpl?: typeof fetch 
             <option value="">全部科目</option>
             {["语文", "数学", "英语"].map((s) => <option key={s}>{s}</option>)}
           </select>
-          <button className="primary" onClick={() => void doSearch()} disabled={busy || !q.trim()}>检索</button>
+          <button className="btn-primary" onClick={() => void doSearch()} disabled={busy || !q.trim()}>检索</button>
           {hits && (hits.length === 0
             ? <div className="chat-empty">没有命中</div>
             : <ul className="hits">

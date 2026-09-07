@@ -68,8 +68,8 @@ export function MessageBubble({ message, index, isLast, streaming, actions, swit
             <div className="edit-box">
               <textarea aria-label="编辑消息" value={draft} onChange={(event) => setDraft(event.target.value)} />
               <div className="edit-actions">
-                <button className="primary" onClick={saveEdit}>保存</button>
-                <button className="ghost" onClick={() => setEditing(false)}>取消</button>
+                <button className="btn-primary" onClick={saveEdit}>保存</button>
+                <button className="btn-ghost" onClick={() => setEditing(false)}>取消</button>
               </div>
             </div>
           ) : (

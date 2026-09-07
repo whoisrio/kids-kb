@@ -28,19 +28,19 @@ export function ItemDetail({ item, onReload, onExit, onError, fetchImpl = fetch 
   return (
     <div className="item-detail">
       <div className="pd-head">
-        <button className="ghost" onClick={onExit}>← 返回条目</button>
+        <button className="btn-ghost" onClick={onExit}>← 返回条目</button>
         <span>《{item.doc_title}》{item.chapter ? ` ${item.chapter} · ` : ""}{item.label ?? item.content_type}</span>
-        <button className="primary" disabled={busy}
+        <button className="btn-primary" disabled={busy}
                 onClick={() => void act(() => approveReviewItem(item.id, fetchImpl), onExit)}>
           ✓ 确认
         </button>
-        <button className="ghost" disabled={busy} onClick={() => setRejecting(!rejecting)}>✗ 打回</button>
+        <button className="btn-ghost" disabled={busy} onClick={() => setRejecting(!rejecting)}>✗ 打回</button>
       </div>
       {rejecting && (
         <div className="pd-reject">
           <input aria-label="打回原因" placeholder="打回原因，如「串章/漏题」"
                  value={rejectReason} onChange={(e) => setRejectReason(e.target.value)} />
-          <button className="primary" disabled={busy || !rejectReason.trim()}
+          <button className="btn-primary" disabled={busy || !rejectReason.trim()}
                   onClick={() => void act(async () => {
                     await rejectReviewItem(item.id, rejectReason.trim(), fetchImpl);
                   }, () => { setRejecting(false); setRejectReason(""); void onReload(); })}>
@@ -58,20 +58,20 @@ export function ItemDetail({ item, onReload, onExit, onError, fetchImpl = fetch 
             <>
               <textarea aria-label="编辑条目" value={draft} onChange={(e) => setDraft(e.target.value)} />
               <div className="row">
-                <button className="primary" disabled={busy}
+                <button className="btn-primary" disabled={busy}
                         onClick={() => void act(async () => {
                           await updateReviewItem(item.id, draft, fetchImpl);
                         }, () => { setEditing(false); void onReload(); })}>
                   保存
                 </button>
-                <button className="ghost" onClick={() => setEditing(false)}>取消</button>
+                <button className="btn-ghost" onClick={() => setEditing(false)}>取消</button>
               </div>
             </>
           ) : (
             <>
               <pre>{item.content_md ?? "（空）"}</pre>
               <div className="row">
-                <button className="ghost" onClick={() => { setDraft(item.content_md ?? ""); setEditing(true); }}>✎ 编辑</button>
+                <button className="btn-ghost" onClick={() => { setDraft(item.content_md ?? ""); setEditing(true); }}>✎ 编辑</button>
               </div>
             </>
           )}

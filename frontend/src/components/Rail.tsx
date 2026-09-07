@@ -1,3 +1,5 @@
+import { Icon } from "./Icon";
+
 interface RailProps {
   activeView: "chat" | "library" | "stats" | "usage";
   onSelect: (view: "chat" | "library" | "stats" | "usage") => void;
@@ -9,10 +11,11 @@ function nav(
   onSelect: RailProps["onSelect"],
   view: RailProps["activeView"],
   label: string,
+  icon: string,
 ) {
   return (
     <button className={activeView === view ? "active" : ""} onClick={() => onSelect(view)}>
-      <span className="dot"></span>
+      <Icon name={icon} />
       <span className="txt">{label}</span>
     </button>
   );
@@ -22,30 +25,19 @@ export function Rail({ activeView, onSelect, kidChip }: RailProps) {
   return (
     <nav className="rail">
       <div className="brand">
-        <span className="logo">
-          知
-          <svg viewBox="0 0 48 48">
-            <path
-              d="M8 24 C8 12, 40 10, 41 23 C42 36, 12 40, 8 27"
-              fill="none"
-              stroke="#E03C28"
-              strokeWidth="2.2"
-              strokeLinecap="round"
-              opacity=".9"
-            />
-          </svg>
-        </span>
+        <span className="logo"><Icon name="school" /></span>
         <span>
-          <div className="name">作业本</div>
-          <div className="sub">家庭学习知识库</div>
+          <div className="name">童学知库</div>
+          <div className="sub">KidsKB AI Learning</div>
         </span>
       </div>
       <div className="nav">
-        {nav(activeView, onSelect, "chat", "聊天")}
-        {nav(activeView, onSelect, "library", "资料库")}
-        {nav(activeView, onSelect, "stats", "统计")}
+        <div className="sep">学习工作区</div>
+        {nav(activeView, onSelect, "chat", "聊天", "forum")}
+        {nav(activeView, onSelect, "library", "资料库", "menu_book")}
+        {nav(activeView, onSelect, "stats", "统计", "analytics")}
         <div className="sep">系统</div>
-        {nav(activeView, onSelect, "usage", "用量")}
+        {nav(activeView, onSelect, "usage", "用量", "monitoring")}
       </div>
       <div className="rail-foot">
         <span className="kid-chip">{kidChip ?? "未选择孩子"}</span>

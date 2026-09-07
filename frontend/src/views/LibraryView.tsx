@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { fetchLibraryDocs, type LibraryDoc, type Pagination } from "../api/library";
+import {
+  deleteLibraryDoc, fetchLibraryDocs, fetchLibrarySummary,
+  type LibraryDoc, type LibrarySummary, type Pagination,
+} from "../api/library";
+import { Icon } from "../components/Icon";
 import { LibraryDetail } from "../components/LibraryDetail";
+import { UploadDialog } from "../components/UploadDialog";
 
 const STATUS_TEXT: Record<string, string> = {
   pending: "未审核", passed: "已通过", needs_review: "需复核", failed: "失败",
@@ -9,29 +14,121 @@ const STATUS_TEXT: Record<string, string> = {
   not_indexed: "未索引", excluded: "有排除页",
 };
 
+const DOC_TYPE_TEXT: Record<string, string> = { workbook: "同步教辅", exam: "试卷" };
+const DOC_TYPE_TABS: [string, string][] = [["", "全部资料"], ["workbook", "同步教辅"], ["exam", "试卷"]];
+
+const URL_KEYS: Record<string, string> = {
+  q: "q", subject: "subject", fileType: "file_type", docType: "doc_type",
+  autoReview: "auto_review", reviewStatus: "review_status", indexStatus: "index_status", page: "page",
+};
+
 function queryValue(query: string, name: string) {
   return new URLSearchParams(query).get(name) ?? "";
 }
 
-export function LibraryView({ fetchImpl = fetch, onOpenDoc }: {
-  fetchImpl?: typeof fetch; onOpenDoc?: (doc: LibraryDoc) => void;
+/** 科目 → 封面兜底色块/徽章的图标与配色（数学=蓝、语文=indigo、英语=sky）。 */
+function subjectMeta(subject: string | null): { cls: string; icon: string } {
+  if (subject === "数学") return { cls: "subj-math", icon: "calculate" };
+  if (subject === "语文") return { cls: "subj-chinese", icon: "auto_stories" };
+  if (subject === "英语") return { cls: "subj-english", icon: "translate" };
+  return { cls: "subj-other", icon: "menu_book" };
+}
+
+function ShelfCard({ doc, onOpen, onDelete }: {
+  doc: LibraryDoc; onOpen: (doc: LibraryDoc) => void; onDelete: (doc: LibraryDoc) => void;
+}) {
+  const [coverFailed, setCoverFailed] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const subj = subjectMeta(doc.subject);
+  const pending = doc.auto_review.needs_review + doc.auto_review.pending;
+  return (
+    <div className={`shelf-card${pending > 0 ? " has-pending" : ""}`}>
+      <div className="sc-badges">
+        <div className="sc-tags">
+          <span className={`sc-subj ${subj.cls}`}>
+            <Icon name={subj.icon} />{doc.subject ?? "未分类"}
+          </span>
+          {doc.doc_type && <span className="sc-type">{DOC_TYPE_TEXT[doc.doc_type] ?? doc.doc_type}</span>}
+        </div>
+        {pending > 0 ? (
+          <span className="sc-status pending"><Icon name="report_problem" />{pending} 页待确认</span>
+        ) : (
+          <span className="sc-status ok"><span className="sc-dot" />全部就绪</span>
+        )}
+      </div>
+      <div className="sc-main">
+        <div className={`sc-cover ${subj.cls}`}>
+          {doc.cover_url && !coverFailed ? (
+            <img src={doc.cover_url} alt={`《${doc.title}》封面`} loading="lazy"
+                 onError={() => setCoverFailed(true)} />
+          ) : (
+            <Icon name={subj.icon} />
+          )}
+          <span className="sc-pages">
+            {doc.total_pages > 0 ? `${doc.total_pages}页` : `${doc.total_chapters}章`}
+          </span>
+        </div>
+        <div className="sc-info">
+          <button className="sc-title" onClick={() => onOpen(doc)}>{doc.title}</button>
+          <span className="sc-meta">
+            {doc.file_type.toUpperCase()} · {new Date(doc.created_at).toLocaleDateString()}
+          </span>
+          <span className="sc-stats"><b>{doc.index.indexed}</b> / {doc.total_units} 单元已索引</span>
+        </div>
+      </div>
+      <div className="sc-actions">
+        <button className="btn-soft grow" onClick={() => onOpen(doc)}>
+          <Icon name="list_alt" />查看清单
+        </button>
+        {pending > 0 && (
+          <button className="btn-accent grow" onClick={() => onOpen(doc)}>
+            <Icon name="fact_check" />前往复核 ({pending})
+          </button>
+        )}
+        <div className="sc-more">
+          <button className="btn-ghost" aria-label={`更多操作 ${doc.title}`}
+                  onClick={() => setMenuOpen((open) => !open)}>
+            <Icon name="more_horiz" />
+          </button>
+          {menuOpen && (
+            <div className="sc-menu">
+              <button className="danger" onClick={() => { setMenuOpen(false); onDelete(doc); }}>
+                <Icon name="delete" />删除资料
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function LibraryView({ fetchImpl = fetch, onOpenDoc, kids = [] }: {
+  fetchImpl?: typeof fetch;
+  onOpenDoc?: (doc: LibraryDoc) => void;
+  kids?: { id: string; name: string }[];
 }) {
   const initialQuery = typeof window === "undefined" ? "" : window.location.search.replace(/^\?/, "");
   const [filters, setFilters] = useState({
     q: queryValue(initialQuery, "q"),
     subject: queryValue(initialQuery, "subject"),
     fileType: queryValue(initialQuery, "file_type"),
+    docType: queryValue(initialQuery, "doc_type"),
     autoReview: queryValue(initialQuery, "auto_review"),
     reviewStatus: queryValue(initialQuery, "review_status"),
     indexStatus: queryValue(initialQuery, "index_status"),
     page: Number(queryValue(initialQuery, "page")) || 1,
   });
   const [searchDraft, setSearchDraft] = useState(filters.q);
-  const [viewMode, setViewMode] = useState<"table" | "cards">("table");
+  const [sort, setSort] = useState<"updated" | "name">("updated");
+  const [viewMode, setViewMode] = useState<"cards" | "table">("cards");
   const [docs, setDocs] = useState<LibraryDoc[]>([]);
   const [pagination, setPagination] = useState<Pagination>({ page: 1, pageSize: 20, total: 0, totalPages: 0 });
+  const [summary, setSummary] = useState<LibrarySummary | null>(null);
   const [error, setError] = useState("");
   const [openDocId, setOpenDocId] = useState<string | null>(null);
+  const [uploadOpen, setUploadOpen] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState<LibraryDoc | null>(null);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -41,17 +138,10 @@ export function LibraryView({ fetchImpl = fetch, onOpenDoc }: {
   }, [searchDraft]);
 
   const reload = useCallback(async () => {
-    const query = new URLSearchParams({
-      page: String(filters.page), pageSize: "20",
-      q: filters.q, subject: filters.subject, file_type: filters.fileType,
-      auto_review: filters.autoReview, review_status: filters.reviewStatus,
-      index_status: filters.indexStatus,
-    });
-    for (const [key, value] of [...query.entries()]) if (!value) query.delete(key);
     try {
       const data = await fetchLibraryDocs({
         page: filters.page, pageSize: 20, q: filters.q,
-        subject: filters.subject, fileType: filters.fileType,
+        subject: filters.subject, fileType: filters.fileType, docType: filters.docType,
         autoReview: filters.autoReview, reviewStatus: filters.reviewStatus,
         indexStatus: filters.indexStatus,
       }, fetchImpl);
@@ -62,11 +152,18 @@ export function LibraryView({ fetchImpl = fetch, onOpenDoc }: {
   }, [filters, fetchImpl]);
   useEffect(() => { void reload(); }, [reload]);
 
+  // 后端未提供 summary（旧版本）时指标卡降级为「—」，不阻塞列表
+  const reloadSummary = useCallback(async () => {
+    try { setSummary(await fetchLibrarySummary(fetchImpl)); } catch { /* 忽略 */ }
+  }, [fetchImpl]);
+  useEffect(() => { void reloadSummary(); }, [reloadSummary]);
+
   useEffect(() => {
     if (typeof window !== "undefined") {
-      const query = new URLSearchParams(
-        Object.entries(filters).filter(([, value]) => String(value)).map(([key, value]) => [key, String(value)]),
-      );
+      const query = new URLSearchParams();
+      for (const [key, value] of Object.entries(filters)) {
+        if (String(value)) query.set(URL_KEYS[key] ?? key, String(value));
+      }
       window.history.replaceState(null, "", `${window.location.pathname}?${query}`);
     }
   }, [filters]);
@@ -76,32 +173,126 @@ export function LibraryView({ fetchImpl = fetch, onOpenDoc }: {
     [docs],
   );
 
+  const sortedDocs = useMemo(
+    () => sort === "name" ? [...docs].sort((a, b) => a.title.localeCompare(b.title, "zh")) : docs,
+    [docs, sort],
+  );
+
   if (openDocId) {
     return <LibraryDetail docId={openDocId} fetchImpl={fetchImpl} onError={setError}
-      onExit={() => { setOpenDocId(null); void reload(); }} />;
+      onExit={() => { setOpenDocId(null); void reload(); void reloadSummary(); }} />;
   }
 
   const update = (patch: Partial<typeof filters>) => setFilters((current) => ({ ...current, page: 1, ...patch }));
 
+  const openDoc = (doc: LibraryDoc) => { setOpenDocId(doc.id); onOpenDoc?.(doc); };
+
+  const doDelete = async () => {
+    if (!confirmDelete) return;
+    try {
+      await deleteLibraryDoc(confirmDelete.id, fetchImpl);
+      setConfirmDelete(null);
+      void reload();
+      void reloadSummary();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+      setConfirmDelete(null);
+    }
+  };
+
   return (
     <div className="library">
-      <div className="ledger-head">
-        <div>
-          <h2>资料库</h2>
-          <span className="ledger-meta">{pagination.total} 份资料</span>
+      <header className="lib-head">
+        <div className="lib-head-text">
+          <nav className="crumbs" aria-label="面包屑">
+            <span>知库工作台</span>
+            <Icon name="chevron_right" />
+            <span className="cur">资料库</span>
+          </nav>
+          <h1>数字书架与资料库</h1>
+          <p className="lib-desc">
+            收录孩子日常练习、单元测试与错题笔记，已智能梳理考点章节并生成专属数字资料库。
+          </p>
         </div>
-        <div className="view-toggle" role="group" aria-label="呈现方式">
-          <button className={viewMode === "table" ? "primary" : "ghost"} onClick={() => setViewMode("table")}>表格</button>
-          <button className={viewMode === "cards" ? "primary" : "ghost"} onClick={() => setViewMode("cards")}>卡片</button>
+        <button className="btn-primary" onClick={() => setUploadOpen(true)}>
+          <Icon name="add_photo_alternate" />上传新教辅 / 试卷
+        </button>
+      </header>
+
+      <div className="metric-cards">
+        <div className="metric-card">
+          <div>
+            <span className="mc-label">在库资料</span>
+            <span className="mc-num">{summary ? summary.total_docs : "—"}
+              <span className="mc-unit">本 / 套</span>
+            </span>
+            {summary && summary.by_subject.length > 0 && (
+              <span className="mc-sub">
+                {summary.by_subject.map((s) => `${s.subject ?? "未分类"} ${s.count}`).join(" · ")}
+              </span>
+            )}
+          </div>
+          <div className="mc-icon blue"><Icon name="library_books" /></div>
+        </div>
+        <div className="metric-card">
+          <div>
+            <span className="mc-label">已索引单元</span>
+            <span className="mc-num">{summary ? summary.indexed_units.toLocaleString("zh-CN") : "—"}
+              <span className="mc-unit">个</span>
+            </span>
+            <span className="mc-sub">
+              <Icon name="verified" size={14} />聊天检索可用的题目与章节
+            </span>
+          </div>
+          <div className="mc-icon green"><Icon name="quiz" /></div>
+        </div>
+        <button className="metric-card warn" onClick={() => update({ autoReview: "needs_review" })}>
+          <div>
+            <span className="mc-label">待复核页</span>
+            <span className="mc-num">{summary ? summary.pending_review_pages : "—"}
+              <span className="mc-unit">页需核对</span>
+            </span>
+            <span className="mc-sub">
+              点击筛选需复核资料<Icon name="arrow_forward" size={14} />
+            </span>
+          </div>
+          <div className="mc-icon amber"><Icon name="pending_actions" /></div>
+        </button>
+      </div>
+
+      <div className="lib-filterbar">
+        <div className="lib-tabs" role="group" aria-label="资料类型">
+          {DOC_TYPE_TABS.map(([value, label]) => (
+            <button key={value} className={filters.docType === value ? "active" : ""}
+                    onClick={() => update({ docType: value })}>
+              {label}{filters.docType === value ? ` (${pagination.total})` : ""}
+            </button>
+          ))}
+        </div>
+        <div className="lib-filter-right">
+          <select aria-label="科目" value={filters.subject} onChange={(e) => update({ subject: e.target.value })}>
+            <option value="">全部科目</option>
+            {subjects.map((subject) => <option key={subject} value={subject}>{subject}</option>)}
+          </select>
+          <select aria-label="排序" value={sort}
+                  onChange={(e) => setSort(e.target.value as "updated" | "name")}>
+            <option value="updated">最新更新</option>
+            <option value="name">资料名称</option>
+          </select>
+          <div className="seg" role="group" aria-label="呈现方式">
+            <button className={viewMode === "cards" ? "active" : ""} onClick={() => setViewMode("cards")}>
+              <Icon name="grid_view" />书架视图
+            </button>
+            <button className={viewMode === "table" ? "active" : ""} onClick={() => setViewMode("table")}>
+              <Icon name="table_chart" />明细表格
+            </button>
+          </div>
         </div>
       </div>
+
       <div className="library-toolbar">
         <input aria-label="搜索书名" placeholder="搜索书名" value={searchDraft}
                onChange={(e) => setSearchDraft(e.target.value)} />
-        <select aria-label="科目" value={filters.subject} onChange={(e) => update({ subject: e.target.value })}>
-          <option value="">全部科目</option>
-          {subjects.map((subject) => <option key={subject} value={subject}>{subject}</option>)}
-        </select>
         <select aria-label="文件类型" value={filters.fileType} onChange={(e) => update({ fileType: e.target.value })}>
           <option value="">全部类型</option><option value="pdf">PDF</option>
           <option value="docx">DOCX</option><option value="md">Markdown</option>
@@ -125,7 +316,9 @@ export function LibraryView({ fetchImpl = fetch, onOpenDoc }: {
           ))}
         </select>
       </div>
+
       {error && <div className="form-error" role="alert">{error}</div>}
+
       {viewMode === "table" ? (
         <div className="library-table">
           <table>
@@ -133,15 +326,19 @@ export function LibraryView({ fetchImpl = fetch, onOpenDoc }: {
               <tr><th>资料</th><th>类型</th><th>自动审核</th><th>人工复核</th><th>索引</th><th>操作</th></tr>
             </thead>
             <tbody>
-              {docs.map((doc) => (
+              {sortedDocs.map((doc) => (
                 <tr key={doc.id}>
                   <td>
-                    <button className="doc-title" onClick={() => { setOpenDocId(doc.id); onOpenDoc?.(doc); }}>
+                    <button className="doc-title" onClick={() => openDoc(doc)}>
                       {doc.title}
                     </button>
                     <span className="mono">{doc.total_units} 单元 · {new Date(doc.created_at).toLocaleDateString()}</span>
                   </td>
-                  <td>{doc.subject ?? "未分类"} · {doc.file_type.toUpperCase()}</td>
+                  <td>
+                    {doc.subject ?? "未分类"}
+                    {doc.doc_type ? ` · ${DOC_TYPE_TEXT[doc.doc_type] ?? doc.doc_type}` : ""}
+                    {" · "}{doc.file_type.toUpperCase()}
+                  </td>
                   <td>
                     <span className="badge auto-passed">{doc.auto_review.passed} 通过</span>
                     {(doc.auto_review.needs_review || doc.auto_review.failed || doc.auto_review.pending) > 0 && (
@@ -157,20 +354,16 @@ export function LibraryView({ fetchImpl = fetch, onOpenDoc }: {
                     {doc.index.stale > 0 && <span className="badge index-stale">{doc.index.stale} 过期</span>}
                     {doc.index.excluded > 0 && <span className="badge excluded">{doc.index.excluded} 排除</span>}
                   </td>
-                  <td><button className="ghost" onClick={() => setOpenDocId(doc.id)}>查看</button></td>
+                  <td><button className="btn-ghost" onClick={() => openDoc(doc)}>查看</button></td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       ) : (
-        <div className="page-cards">
-          {docs.map((doc) => (
-            <button key={doc.id} className="lib-card" onClick={() => setOpenDocId(doc.id)}>
-              <span className="title">{doc.title}</span>
-              <span className="meta">{doc.subject ?? "未分类"} · {doc.file_type.toUpperCase()}</span>
-              <span className="mono">索引 {doc.index.indexed}/{doc.total_units}</span>
-            </button>
+        <div className="shelf-grid">
+          {sortedDocs.map((doc) => (
+            <ShelfCard key={doc.id} doc={doc} onOpen={openDoc} onDelete={setConfirmDelete} />
           ))}
         </div>
       )}
@@ -184,6 +377,29 @@ export function LibraryView({ fetchImpl = fetch, onOpenDoc }: {
         <button disabled={pagination.page >= pagination.totalPages}
                 onClick={() => setFilters((current) => ({ ...current, page: current.page + 1 }))}>下一页 →</button>
       </div>
+
+      {uploadOpen && (
+        <UploadDialog
+          children={kids}
+          onClose={() => setUploadOpen(false)}
+          onDone={() => {
+            setUploadOpen(false);
+            void reload();
+            void reloadSummary();
+          }}
+        />
+      )}
+      {confirmDelete && (
+        <div className="dialog-mask" role="dialog" aria-label="删除资料">
+          <div className="dialog">
+            <p>删除《{confirmDelete.title}》？其页面、条目与索引将一并删除，不可恢复。</p>
+            <div className="dialog-actions">
+              <button className="danger" onClick={() => void doDelete()}>删除</button>
+              <button className="btn-ghost" onClick={() => setConfirmDelete(null)}>取消</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

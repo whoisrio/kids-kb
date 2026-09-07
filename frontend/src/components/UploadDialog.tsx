@@ -63,8 +63,8 @@ export function UploadDialog({ children: kids, onDone, onClose }: UploadDialogPr
         {files.length > 0 && <div className="file-list">{files.map((f) => f.name).join("、")}</div>}
         {error && <div className="form-error">{error}</div>}
         <div className="dialog-actions">
-          <button onClick={onClose}>取消</button>
-          <button className="primary" onClick={() => void submit()} disabled={busy}>提交</button>
+          <button className="btn-ghost" onClick={onClose}>取消</button>
+          <button className="btn-primary" onClick={() => void submit()} disabled={busy}>提交</button>
         </div>
       </div>
     </div>

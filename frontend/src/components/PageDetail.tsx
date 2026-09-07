@@ -60,33 +60,33 @@ export function PageDetail({ pageId, fetchImpl = fetch, onExit, onError }: {
   return (
     <div className="page-detail">
       <div className="pd-head">
-        <button className="ghost" onClick={onExit}>← 返回列表</button>
+        <button className="btn-ghost" onClick={onExit}>← 返回列表</button>
         <span>《{data.doc_title}》第 {data.page_no} 页</span>
         {data.excluded_from_index ? <span className="badge excluded">已排除</span> : <span className={`badge ${data.auto_review_status}`}>{data.auto_review_status}</span>}
         <span className={`badge ${data.manual_review_status}`}>{data.manual_review_status}</span>
         {data.index_status === "stale" && <span className="badge stale">索引已过期</span>}
-        <button className="primary" disabled={busy}
+        <button className="btn-primary" disabled={busy}
                 onClick={() => void act(async () => { await approveReviewPage(pageId, fetchImpl); }, onExit)}>
           ✓ 整页通过
         </button>
-        <button className="ghost" disabled={busy} onClick={() => setRejecting(!rejecting)}>✗ 打回本页</button>
+        <button className="btn-ghost" disabled={busy} onClick={() => setRejecting(!rejecting)}>✗ 打回本页</button>
       </div>
       {data.page_pending.length > 0 && (
         <div className="pd-pending">页级待复核：{data.page_pending.map((r) => r.reason).join("、")}</div>
       )}
       <div className="pd-toolbar">
-        <button className={blockView === "rendered" ? "primary" : "ghost"} onClick={() => setBlockView("rendered")}>Markdown</button>
-        <button className={blockView === "raw" ? "primary" : "ghost"} onClick={() => setBlockView("raw")}>原始文本</button>
+        <button className={blockView === "rendered" ? "btn-primary" : "btn-ghost"} onClick={() => setBlockView("rendered")}>Markdown</button>
+        <button className={blockView === "raw" ? "btn-primary" : "btn-ghost"} onClick={() => setBlockView("raw")}>原始文本</button>
         <span className="sep-v"></span>
-        <button className={rightView === "blocks" ? "primary" : "ghost"} onClick={() => setRightView("blocks")}>块视图</button>
-        <button className={rightView === "items" ? "primary" : "ghost"} onClick={() => setRightView("items")}>条目视图</button>
-        <button className="ghost" onClick={() => void previewIndex()}>预览切分</button>
+        <button className={rightView === "blocks" ? "btn-primary" : "btn-ghost"} onClick={() => setRightView("blocks")}>块视图</button>
+        <button className={rightView === "items" ? "btn-primary" : "btn-ghost"} onClick={() => setRightView("items")}>条目视图</button>
+        <button className="btn-ghost" onClick={() => void previewIndex()}>预览切分</button>
       </div>
       {rejecting && (
         <div className="pd-reject">
           <input aria-label="打回原因" placeholder="打回原因，如「缺题/版面歪斜」"
                  value={rejectReason} onChange={(e) => setRejectReason(e.target.value)} />
-          <button className="primary" disabled={busy || !rejectReason.trim()}
+          <button className="btn-primary" disabled={busy || !rejectReason.trim()}
                   onClick={() => void act(async () => {
                     await rejectReviewPage(pageId, rejectReason.trim(), fetchImpl);
                   }, () => { setRejecting(false); setRejectReason(""); })}>
@@ -125,11 +125,11 @@ export function PageDetail({ pageId, fetchImpl = fetch, onExit, onError }: {
               <div className="page-editor">
                 <textarea aria-label="编辑整页稿" value={pageDraft} onChange={(e) => setPageDraft(e.target.value)} />
                 <div className="row">
-                  <button className="primary" disabled={busy} onClick={() => void act(
+                  <button className="btn-primary" disabled={busy} onClick={() => void act(
                     async () => { await updateReviewPage(pageId, pageDraft, fetchImpl); },
                     () => { setPageEditing(false); void reload(); },
                   )}>保存并过期索引</button>
-                  <button className="ghost" onClick={() => setPageEditing(false)}>取消</button>
+                  <button className="btn-ghost" onClick={() => setPageEditing(false)}>取消</button>
                 </div>
               </div>
             ) : data.page_md ? (
@@ -137,7 +137,7 @@ export function PageDetail({ pageId, fetchImpl = fetch, onExit, onError }: {
                 <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
                   {data.page_md}
                 </ReactMarkdown>
-                <button className="ghost" onClick={() => { setPageDraft(data.page_md ?? ""); setPageEditing(true); }}>✎ 编辑整页稿</button>
+                <button className="btn-ghost" onClick={() => { setPageDraft(data.page_md ?? ""); setPageEditing(true); }}>✎ 编辑整页稿</button>
               </div>
             ) : <div className="hint">本页还没有整页转录。</div>}
             {chunkPreview && (
@@ -151,16 +151,16 @@ export function PageDetail({ pageId, fetchImpl = fetch, onExit, onError }: {
                 ))}
               </ol>
             )}
-            <button className="ghost" disabled={busy}
+            <button className="btn-ghost" disabled={busy}
                     onClick={() => void act(async () => { await pageVlm(pageId, fetchImpl); }, () => void reload())}>
               🔄 {data.page_md ? "重新" : ""}远端整页解析
             </button>
             {data.page_md && (data.adopted_source === "blocks"
-              ? <button className="primary" disabled={busy}
+              ? <button className="btn-primary" disabled={busy}
                   onClick={() => void act(async () => { await adoptReviewPage(pageId, "page_md", fetchImpl); }, () => void reload())}>
                   ✓ 采用整页版
                 </button>
-              : <><button className="ghost" disabled={busy}
+              : <><button className="btn-ghost" disabled={busy}
                   onClick={() => void act(async () => { await adoptReviewPage(pageId, "blocks", fetchImpl); }, () => void reload())}>
                   改用切块版
                 </button><span className="hint">当前采用：整页转录</span></>)}
@@ -175,8 +175,8 @@ export function PageDetail({ pageId, fetchImpl = fetch, onExit, onError }: {
                   <>
                     <textarea aria-label="编辑转录" value={draft} onChange={(e) => setDraft(e.target.value)} />
                     <div className="row">
-                      <button className="primary" disabled={busy} onClick={() => void saveBlock(b.id)}>保存</button>
-                      <button className="ghost" onClick={() => setEditing(null)}>取消</button>
+                      <button className="btn-primary" disabled={busy} onClick={() => void saveBlock(b.id)}>保存</button>
+                      <button className="btn-ghost" onClick={() => setEditing(null)}>取消</button>
                     </div>
                   </>
                 ) : (
@@ -199,7 +199,7 @@ export function PageDetail({ pageId, fetchImpl = fetch, onExit, onError }: {
                 {(b.annotations ?? []).map((a) => (
                   <div key={a.id} className="annotation">
                     <span>{a.author}：</span>{a.body}
-                    <button className="ghost" onClick={(e) => {
+                    <button className="btn-ghost" onClick={(e) => {
                       e.stopPropagation();
                       void act(async () => { await deleteBlockAnnotation(a.id, fetchImpl); }, reload);
                     }}>删除</button>
@@ -208,7 +208,7 @@ export function PageDetail({ pageId, fetchImpl = fetch, onExit, onError }: {
                 <input aria-label={`批注 ${b.id}`} placeholder="添加 OCR 批注" value={annotationDrafts[b.id] ?? ""}
                        onClick={(e) => e.stopPropagation()}
                        onChange={(e) => setAnnotationDrafts((current) => ({ ...current, [b.id]: e.target.value }))} />
-                <button className="ghost" disabled={busy || !(annotationDrafts[b.id] ?? "").trim()}
+                <button className="btn-ghost" disabled={busy || !(annotationDrafts[b.id] ?? "").trim()}
                         onClick={(e) => {
                           e.stopPropagation();
                           void act(async () => {
@@ -218,7 +218,7 @@ export function PageDetail({ pageId, fetchImpl = fetch, onExit, onError }: {
                         }}>添加批注</button>
                 {editing !== b.id && (
                   <div className="row">
-                    <button className="ghost" onClick={(e) => {
+                    <button className="btn-ghost" onClick={(e) => {
                       e.stopPropagation();
                       setDraft(b.content_md ?? "");
                       setEditing(b.id);

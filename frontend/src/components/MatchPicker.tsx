@@ -50,9 +50,9 @@ export function MatchPicker({ question, onMatched }: {
         </div>
         <div className="dialog-actions">
           {question.matched_item_id && (
-            <button onClick={() => void pick(null)}>清除匹配</button>
+            <button className="btn-ghost" onClick={() => void pick(null)}>清除匹配</button>
           )}
-          <button className="primary" onClick={() => onMatched(question)}>关闭</button>
+          <button className="btn-primary" onClick={() => onMatched(question)}>关闭</button>
         </div>
       </div>
     </div>

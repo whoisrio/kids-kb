@@ -97,7 +97,7 @@ export function LibraryDetail({ docId, fetchImpl = fetch, onExit, onError }: {
   return (
     <div className="library-detail">
       <div className="ledger-head">
-        <button className="ghost" onClick={onExit}>← 资料库</button>
+        <button className="btn-ghost" onClick={onExit}>← 资料库</button>
         <h2>{data.title}</h2>
         <span className="ledger-meta">
           {data.file_type.toUpperCase()} · {data.total_units} 单元
@@ -110,9 +110,9 @@ export function LibraryDetail({ docId, fetchImpl = fetch, onExit, onError }: {
         </span>
       </div>
       <div className="detail-tabs">
-        <button className={view === "table" ? "primary" : "ghost"} onClick={() => setView("table")}>页面表</button>
-        <button className={view === "thumbnails" ? "primary" : "ghost"} onClick={() => setView("thumbnails")}>缩略图</button>
-        <button className={view === "chunks" ? "primary" : "ghost"} onClick={() => setView("chunks")}>索引账页</button>
+        <button className={view === "table" ? "btn-primary" : "btn-ghost"} onClick={() => setView("table")}>页面表</button>
+        <button className={view === "thumbnails" ? "btn-primary" : "btn-ghost"} onClick={() => setView("thumbnails")}>缩略图</button>
+        <button className={view === "chunks" ? "btn-primary" : "btn-ghost"} onClick={() => setView("chunks")}>索引账页</button>
       </div>
       {view === "chunks" && <IndexLedger docId={data.id} fetchImpl={fetchImpl} />}
       {view !== "chunks" && (
@@ -141,7 +141,7 @@ export function LibraryDetail({ docId, fetchImpl = fetch, onExit, onError }: {
                       </label>
                     </td>
                     <td>
-                      <button className="ghost" disabled={busy || item.excluded_from_index}
+                      <button className="btn-ghost" disabled={busy || item.excluded_from_index}
                               onClick={() => void reindexPage(item.id)}>重建</button>
                     </td>
                   </tr>

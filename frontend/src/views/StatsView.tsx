@@ -158,7 +158,7 @@ export function StatsView({
                   <span className="src">{entry.source}</span>
                   {entry.errorCause && <span className="badge">{entry.errorCause}</span>}
                   <button
-                    className="primary"
+                    className="btn-primary"
                     disabled={busyId === entry.id}
                     onClick={() => void correct(entry)}
                   >

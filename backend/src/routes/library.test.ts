@@ -9,7 +9,8 @@ const DOC_ID = "11111111-1111-1111-1111-111111111111";
         if (sql.includes("WITH stats AS")) {
           return { rows: [{
             id: DOC_ID, title: "数学练习册", subject: "数学",
-            file_type: "pdf", parse_status: "parsed", review_status: "pending",
+            file_type: "pdf", doc_type: "workbook", cover_url: "/api/review/pages/p1/image",
+            parse_status: "parsed", review_status: "pending",
             uploaded_by: "rio", created_at: "2026-09-06T00:00:00Z",
             total_units: 10, total_pages: 10, total_chapters: 0,
             auto_pending: 2, auto_passed: 8, auto_needs_review: 0, auto_failed: 0,
@@ -38,8 +39,61 @@ describe("GET /api/library", () => {
     expect(data.documents).toHaveLength(1);
     expect(data.documents[0]).toMatchObject({
       title: "数学练习册", file_type: "pdf",
+      doc_type: "workbook", cover_url: "/api/review/pages/p1/image",
       auto_review: { pending: 2, passed: 8 },
       index: { indexed: 8, not_indexed: 2 },
+    });
+  });
+});
+
+describe("GET /api/library doc_type filter", () => {
+  it("passes doc_type to SQL params", async () => {
+    const calls: { sql: string; params?: unknown[] }[] = [];
+    const pool2 = {
+      query: async (sql: string, params?: unknown[]) => {
+        calls.push({ sql, params });
+        return { rows: [] };
+      },
+    } as never;
+    const res = await new Hono().route("/api/library", libraryRoutes(pool2, {
+      pipelineUrl: "http://mock:8766", search: async () => [],
+    } as never, { storageRoot: "/tmp" } as never)).request("/api/library?doc_type=exam");
+    expect(res.status).toBe(200);
+    expect(calls[0]?.params).toContain("exam");
+  });
+
+  it("rejects invalid doc_type with 422", async () => {
+    const res = await app().request("/api/library?doc_type=book");
+    expect(res.status).toBe(422);
+    expect((await res.json()).error).toBe("doc_type 非法");
+  });
+});
+
+describe("GET /api/library/summary", () => {
+  it("returns totals, subject breakdown and review queue counts", async () => {
+    const pool2 = {
+      query: async (sql: string) => {
+        if (sql.includes("GROUP BY subject")) {
+          return { rows: [
+            { subject: "数学", count: 3 },
+            { subject: null, count: 1 },
+          ] };
+        }
+        if (sql.includes("total_docs")) {
+          return { rows: [{ total_docs: 4, indexed_units: 25, pending_review_pages: 6 }] };
+        }
+        return { rows: [] };
+      },
+    } as never;
+    const res = await new Hono().route("/api/library", libraryRoutes(pool2, {
+      pipelineUrl: "http://mock:8766", search: async () => [],
+    } as never, { storageRoot: "/tmp" } as never)).request("/api/library/summary");
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      total_docs: 4,
+      by_subject: [{ subject: "数学", count: 3 }, { subject: null, count: 1 }],
+      indexed_units: 25,
+      pending_review_pages: 6,
     });
   });
 });

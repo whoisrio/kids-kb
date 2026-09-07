@@ -45,11 +45,14 @@ test("library list, detail status, exclusion and DB chunks agree", async ({ page
   );
 
   await page.goto(`/?view=library&index_status=stale`);
-  await expect(page.getByRole("heading", { level: 2, name: "资料库" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "数字书架与资料库" })).toBeVisible();
+  // 默认书架视图，先切到明细表格再断言
+  await page.getByRole("button", { name: "明细表格" }).click();
   await expect(page.locator(".library-table")).toBeVisible();
   await expect(page.getByText(TITLE)).toHaveCount(0);
 
   await page.goto(`/?view=library&q=${encodeURIComponent(TITLE)}`);
+  await page.getByRole("button", { name: "明细表格" }).click();
   await expect(page.getByText(TITLE)).toBeVisible();
   await expect(page.getByText("2 已索引")).toBeVisible();
   await page.getByRole("button", { name: "查看" }).click();

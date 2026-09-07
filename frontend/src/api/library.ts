@@ -10,9 +10,17 @@ export interface Pagination {
 
 export interface LibraryDoc extends LibraryCounts {
   id: string; title: string; subject: string | null; file_type: string;
+  doc_type: string | null; cover_url: string | null;
   parse_status: string; review_status: string; uploaded_by: string | null;
   created_at: string; struct_mode: string | null;
   total_pages: number; total_chapters: number; total_units: number;
+}
+
+export interface LibrarySummary {
+  total_docs: number;
+  by_subject: { subject: string | null; count: number }[];
+  indexed_units: number;
+  pending_review_pages: number;
 }
 
 export interface LibraryPage {
@@ -44,7 +52,7 @@ export interface LibraryChunk {
 }
 
 export interface LibraryListFilters extends Partial<Pick<Pagination, "page" | "pageSize">> {
-  q?: string; subject?: string; fileType?: string;
+  q?: string; subject?: string; fileType?: string; docType?: string;
   autoReview?: string; reviewStatus?: string; indexStatus?: string;
 }
 
@@ -70,10 +78,14 @@ export async function fetchLibraryDocs(
 ): Promise<{ documents: LibraryDoc[]; pagination: Pagination }> {
   return req(`/api/library${params({
     page: filters.page, pageSize: filters.pageSize, q: filters.q,
-    subject: filters.subject, file_type: filters.fileType,
+    subject: filters.subject, file_type: filters.fileType, doc_type: filters.docType,
     auto_review: filters.autoReview, review_status: filters.reviewStatus,
     index_status: filters.indexStatus,
   })}`, fetchImpl);
+}
+
+export async function fetchLibrarySummary(fetchImpl: FetchLike = fetch): Promise<LibrarySummary> {
+  return req("/api/library/summary", fetchImpl);
 }
 
 export async function fetchLibraryDoc(

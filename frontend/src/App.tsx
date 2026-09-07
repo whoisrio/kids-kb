@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { Icon } from "./components/Icon";
 import { ModelPicker } from "./components/ModelPicker";
 import { Rail } from "./components/Rail";
 import { SessionsSidebar } from "./components/SessionsSidebar";
@@ -9,15 +10,12 @@ import { StatsView } from "./views/StatsView";
 import { UsageView } from "./views/UsageView";
 import type { ChatMessage } from "./api/chat";
 
-const WEEKDAYS = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
-
-function today(): string {
-  const date = new Date();
-  const ymd = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(
-    date.getDate(),
-  ).padStart(2, "0")}`;
-  return `${ymd} ${WEEKDAYS[date.getDay()]}`;
-}
+const VIEW_NAMES = {
+  chat: "聊天",
+  library: "资料库",
+  stats: "统计",
+  usage: "用量",
+} as const;
 
 function transcript(messages: ChatMessage[]): string {
   return messages
@@ -97,36 +95,37 @@ export function App() {
         />
       )}
       <main>
-        <div className="topbar">
-          <div>
-            <span className="date">{today()}</span>
-            <h1>{{
-              chat: "聊天",
-              library: "资料库",
-              stats: "统计",
-              usage: "用量",
-            }[view]}</h1>
-          </div>
-          {view === "chat" ? (
-            <>
-              <span className="hint">问孩子学习情况，或找题、看讲解</span>
-              {chat.activeSessionId && (
-                <button className="ghost" onClick={() => void copyAll()}>复制全文</button>
+        {view !== "library" && (
+          <div className="topbar">
+            <div className="topbar-main">
+              <nav className="crumbs" aria-label="面包屑">
+                <span>知库工作台</span>
+                <Icon name="chevron_right" />
+                <span className="cur">{VIEW_NAMES[view]}</span>
+              </nav>
+              <h1>{VIEW_NAMES[view]}</h1>
+            </div>
+            <div className="topbar-side">
+              {view === "chat" ? (
+                <>
+                  <span className="hint">问孩子学习情况，或找题、看讲解</span>
+                  {chat.activeSessionId && (
+                    <button className="btn-ghost" onClick={() => void copyAll()}>复制全文</button>
+                  )}
+                  <ModelPicker models={chat.models} value={chat.model} onChange={chat.selectModel} />
+                  {kidSwitch}
+                </>
+              ) : view === "stats" ? (
+                <>
+                  <span className="hint">错题、错因与订正</span>
+                  {kidSwitch}
+                </>
+              ) : (
+                <span className="hint">模型 token 消耗与调用流水</span>
               )}
-              <ModelPicker models={chat.models} value={chat.model} onChange={chat.selectModel} />
-              {kidSwitch}
-            </>
-          ) : view === "stats" ? (
-            <>
-              <span className="hint">错题、错因与订正</span>
-              {kidSwitch}
-            </>
-          ) : view === "usage" ? (
-            <span className="hint">模型 token 消耗与调用流水</span>
-          ) : (
-            <span className="hint">确认试卷对错与题库匹配</span>
-          )}
-        </div>
+            </div>
+          </div>
+        )}
         {view === "chat"
           ? <ChatView
               messages={chat.messages}
@@ -143,7 +142,7 @@ export function App() {
               onToast={showToast}
             />
           : view === "library"
-            ? <LibraryView />
+            ? <LibraryView kids={children} />
             : view === "stats"
               ? <StatsView childId={childId} onToast={showToast} />
               : <UsageView />}
@@ -158,7 +157,7 @@ export function App() {
                 void chat.deleteSession(confirmDelete);
                 setConfirmDelete(null);
               }}>删除</button>
-              <button className="ghost" onClick={() => setConfirmDelete(null)}>取消</button>
+              <button className="btn-ghost" onClick={() => setConfirmDelete(null)}>取消</button>
             </div>
           </div>
         </div>

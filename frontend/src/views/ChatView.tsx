@@ -125,7 +125,7 @@ export function ChatView(props: ChatViewProps) {
         {rewindTo && (
           <div className="rewind-banner" role="status">
             已回到这条消息——后续内容保留在原分支，下一次发送将从这里开叉。
-            <button className="ghost" onClick={props.onCancelRewind}>取消回退</button>
+            <button className="btn-ghost" onClick={props.onCancelRewind}>取消回退</button>
           </div>
         )}
         <div className="chips">

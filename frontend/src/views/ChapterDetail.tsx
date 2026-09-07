@@ -17,10 +17,10 @@ export function ChapterDetail({ chapters, onExit }: {
   const currentDoc = chapters.find((c) => c.id === selected);
   return (
     <div className="chapter-detail">
-      <button className="ghost" onClick={onExit}>← 返回列表</button>
+      <button className="btn-ghost" onClick={onExit}>← 返回列表</button>
       <div className="cd-toolbar">
-        <button className={view === "rendered" ? "primary" : "ghost"} onClick={() => setView("rendered")}>Markdown 渲染</button>
-        <button className={view === "raw" ? "primary" : "ghost"} onClick={() => setView("raw")}>原始 Markdown</button>
+        <button className={view === "rendered" ? "btn-primary" : "btn-ghost"} onClick={() => setView("rendered")}>Markdown 渲染</button>
+        <button className={view === "raw" ? "btn-primary" : "btn-ghost"} onClick={() => setView("raw")}>原始 Markdown</button>
       </div>
       <div className="cd-body">
         <nav className="cd-toc">
