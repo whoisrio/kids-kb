@@ -4,8 +4,9 @@ import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import {
-  adoptReviewPage, approveReviewPage, fetchReviewPage, pageVlm, rejectReviewPage,
-  updateReviewBlock, type ReviewPageDetail,
+  adoptReviewPage, approveReviewPage, createBlockAnnotation, deleteBlockAnnotation,
+  fetchReviewPage, pageVlm, rejectReviewPage, updateReviewBlock,
+  updateReviewPage, type ReviewPageDetail,
 } from "../api/review";
 
 /** 页详情：页图 + bbox 覆层（按图片自然尺寸百分比定位）+ 块面板（编辑/待复核高亮）
@@ -24,6 +25,10 @@ export function PageDetail({ pageId, fetchImpl = fetch, onExit, onError }: {
   const imgRef = useRef<HTMLImageElement>(null);
   const [blockView, setBlockView] = useState<"rendered" | "raw">("rendered");
   const [rightView, setRightView] = useState<"blocks" | "items">("blocks");
+  const [pageEditing, setPageEditing] = useState(false);
+  const [pageDraft, setPageDraft] = useState("");
+  const [chunkPreview, setChunkPreview] = useState<{ seq: number; content_preview: string; source_block_ids: string[] }[] | null>(null);
+  const [annotationDrafts, setAnnotationDrafts] = useState<Record<string, string>>({});
 
   const reload = async () => {
     try { setData(await fetchReviewPage(pageId, fetchImpl)); }
@@ -42,6 +47,13 @@ export function PageDetail({ pageId, fetchImpl = fetch, onExit, onError }: {
   const saveBlock = (blockId: string) =>
     act(async () => { await updateReviewBlock(blockId, draft, fetchImpl); }, () => { setEditing(null); void reload(); });
 
+  const previewIndex = () => act(async () => {
+    const res = await fetchImpl(`/api/review/pages/${encodeURIComponent(pageId)}/index-preview`, { method: "POST" });
+    if (!res.ok) throw new Error(`${res.status}`);
+    const payload = await res.json() as { chunks: typeof chunkPreview };
+    setChunkPreview(payload.chunks);
+  });
+
   if (!data) return <div className="page-detail"><div className="chat-empty">加载中…</div></div>;
   const pendingBlockIds = new Set(data.blocks.flatMap((b) => b.pending.map(() => b.id)));
 
@@ -50,6 +62,8 @@ export function PageDetail({ pageId, fetchImpl = fetch, onExit, onError }: {
       <div className="pd-head">
         <button className="ghost" onClick={onExit}>← 返回列表</button>
         <span>《{data.doc_title}》第 {data.page_no} 页</span>
+        {data.excluded_from_index ? <span className="badge excluded">已排除</span> : <span className={`badge ${data.auto_review_status}`}>{data.auto_review_status}</span>}
+        <span className={`badge ${data.manual_review_status}`}>{data.manual_review_status}</span>
         {data.index_status === "stale" && <span className="badge stale">索引已过期</span>}
         <button className="primary" disabled={busy}
                 onClick={() => void act(async () => { await approveReviewPage(pageId, fetchImpl); }, onExit)}>
@@ -66,6 +80,7 @@ export function PageDetail({ pageId, fetchImpl = fetch, onExit, onError }: {
         <span className="sep-v"></span>
         <button className={rightView === "blocks" ? "primary" : "ghost"} onClick={() => setRightView("blocks")}>块视图</button>
         <button className={rightView === "items" ? "primary" : "ghost"} onClick={() => setRightView("items")}>条目视图</button>
+        <button className="ghost" onClick={() => void previewIndex()}>预览切分</button>
       </div>
       {rejecting && (
         <div className="pd-reject">
@@ -106,14 +121,36 @@ export function PageDetail({ pageId, fetchImpl = fetch, onExit, onError }: {
         <div className="pd-panel">
           <div className="pd-pagemd">
             <div className="meta">整页转录（{data.page_md_model ?? "-"}）</div>
-            {data.page_md && (
+            {pageEditing ? (
+              <div className="page-editor">
+                <textarea aria-label="编辑整页稿" value={pageDraft} onChange={(e) => setPageDraft(e.target.value)} />
+                <div className="row">
+                  <button className="primary" disabled={busy} onClick={() => void act(
+                    async () => { await updateReviewPage(pageId, pageDraft, fetchImpl); },
+                    () => { setPageEditing(false); void reload(); },
+                  )}>保存并过期索引</button>
+                  <button className="ghost" onClick={() => setPageEditing(false)}>取消</button>
+                </div>
+              </div>
+            ) : data.page_md ? (
               <div className="md">
                 <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
                   {data.page_md}
                 </ReactMarkdown>
+                <button className="ghost" onClick={() => { setPageDraft(data.page_md ?? ""); setPageEditing(true); }}>✎ 编辑整页稿</button>
               </div>
+            ) : <div className="hint">本页还没有整页转录。</div>}
+            {chunkPreview && (
+              <ol className="chunk-line">
+                {chunkPreview.map((chunk) => (
+                  <li key={chunk.seq}>
+                    <span className="chunk-no">{String(chunk.seq).padStart(2, "0")}</span>
+                    <span className="chunk-source">B{chunk.source_block_ids.length || "整页"}</span>
+                    <span className="chunk-text">{chunk.content_preview}</span>
+                  </li>
+                ))}
+              </ol>
             )}
-            {!data.page_md && <div className="hint">本页还没有整页转录。</div>}
             <button className="ghost" disabled={busy}
                     onClick={() => void act(async () => { await pageVlm(pageId, fetchImpl); }, () => void reload())}>
               🔄 {data.page_md ? "重新" : ""}远端整页解析
@@ -159,6 +196,26 @@ export function PageDetail({ pageId, fetchImpl = fetch, onExit, onError }: {
                   </div>
                 )}
                 {b.pending.length > 0 && <div className="badges">{b.pending.map((r) => <span key={r.id} className="badge">{r.reason}</span>)}</div>}
+                {(b.annotations ?? []).map((a) => (
+                  <div key={a.id} className="annotation">
+                    <span>{a.author}：</span>{a.body}
+                    <button className="ghost" onClick={(e) => {
+                      e.stopPropagation();
+                      void act(async () => { await deleteBlockAnnotation(a.id, fetchImpl); }, reload);
+                    }}>删除</button>
+                  </div>
+                ))}
+                <input aria-label={`批注 ${b.id}`} placeholder="添加 OCR 批注" value={annotationDrafts[b.id] ?? ""}
+                       onClick={(e) => e.stopPropagation()}
+                       onChange={(e) => setAnnotationDrafts((current) => ({ ...current, [b.id]: e.target.value }))} />
+                <button className="ghost" disabled={busy || !(annotationDrafts[b.id] ?? "").trim()}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          void act(async () => {
+                            await createBlockAnnotation(b.id, annotationDrafts[b.id].trim(), fetchImpl);
+                            setAnnotationDrafts((current) => ({ ...current, [b.id]: "" }));
+                          }, reload);
+                        }}>添加批注</button>
                 {editing !== b.id && (
                   <div className="row">
                     <button className="ghost" onClick={(e) => {

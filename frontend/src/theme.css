@@ -278,6 +278,47 @@ main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .qcard-paper .stem { font-size: 15px; margin-bottom: 6px; }
 .qcard-paper .muted { color: var(--pencil); font-size: 13px; }
 .qcard-paper .match-line { font-size: 13px; color: var(--teal); margin-top: 6px; }
+
+/* ---------- 资料库账页 ---------- */
+.ledger-head { display: flex; align-items: baseline; gap: 14px; padding-bottom: 12px; }
+.ledger-head h2 { font-family: var(--serif); font-size: 22px; }
+.ledger-meta, .ledger-stats { font-family: var(--mono); font-size: 12px; color: var(--pencil); }
+.ledger-stats { margin-left: auto; }
+.view-toggle, .detail-tabs { display: flex; gap: 8px; margin-bottom: 14px; }
+.library-toolbar, .library-toolbar input, .library-toolbar select { display: flex; gap: 8px; }
+.library-toolbar { flex-wrap: wrap; padding-bottom: 14px; border-bottom: 1px solid var(--hairline); }
+.library-toolbar input, .library-toolbar select {
+  min-width: 120px; border: 1px solid var(--hairline); border-radius: 8px;
+  background: var(--card); color: var(--ink); padding: 7px 10px; font: inherit;
+}
+.library-table table, .page-table table { width: 100%; border-collapse: collapse; }
+.library-table th, .library-table td, .page-table th, .page-table td {
+  border-bottom: 1px solid var(--hairline); padding: 10px 8px; text-align: left; vertical-align: top;
+}
+.library-table th, .page-table th { font-size: 12px; color: var(--pencil); font-weight: 500; }
+.doc-title { display: block; border: 0; background: none; color: var(--ink);
+  font-family: var(--serif); font-size: 16px; font-weight: 600; text-align: left; }
+.mono { display: block; font-family: var(--mono); font-size: 11px; color: var(--pencil); }
+.badge { border-radius: 999px; padding: 2px 8px; font-size: 11px; margin-right: 4px; white-space: nowrap; }
+.badge.auto-passed, .badge.index-indexed, .badge.manual-approved { color: var(--teal); background: var(--teal-soft); }
+.badge.auto-pending, .badge.index-stale, .badge.manual-unreviewed { color: var(--amber); background: var(--amber-soft); }
+.badge.auto-failed, .badge.manual-rejected { color: var(--redpen); background: var(--redpen-soft); }
+.badge.excluded { color: #565E68; background: #EEF0F2; }
+.ledger-pager { display: flex; align-items: center; gap: 14px; padding: 14px 0; font-size: 12.5px; color: var(--pencil); }
+.ledger-pager button:disabled { opacity: .4; cursor: default; }
+.index-ledger { padding: 4px 0 8px; }
+.chunk-line { list-style: none; position: relative; padding-left: 24px; }
+.chunk-line::before { content: ""; position: absolute; left: 8px; top: 8px; bottom: 8px; width: 2px; background: var(--redpen-soft); }
+.chunk-line li { position: relative; border-bottom: 1px solid var(--hairline); padding: 9px 0; }
+.chunk-line li::before { content: ""; position: absolute; left: -18px; top: 18px; width: 14px; height: 2px; background: var(--redpen); }
+.chunk-no, .chunk-source { font-family: var(--mono); font-size: 11px; color: var(--pencil); margin-right: 8px; }
+.chunk-text { display: block; font-size: 13px; }
+.ledger-empty, .page-table .excluded, .page-card.excluded { color: #565E68; }
+.page-table .excluded td { background: #F5F6F7; }
+.switch-label { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; }
+.chapter-row { display: flex; align-items: center; gap: 10px; border-bottom: 1px solid var(--hairline); padding: 10px 0; }
+.annotation { border-left: 2px solid var(--amber); padding-left: 8px; margin: 8px 0; font-size: 12.5px; }
+.page-editor textarea { width: 100%; min-height: 220px; font-family: var(--mono); border: 1px solid var(--hairline); border-radius: 8px; padding: 10px; }
 .verdict { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .verdict .tip { font-family: var(--serif); font-weight: 600; }
 .verdict button.w, .verdict button.r, .verdict button.h {

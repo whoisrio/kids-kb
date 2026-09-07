@@ -20,7 +20,7 @@ def page_contents(cur, doc_id: str) -> list[tuple[int, str]]:
     与 structure._chapter_blocks 同口径；无内容的页不出现。"""
     cur.execute(
         """SELECT page_no, adopted_source, page_md, id FROM pages
-           WHERE document_id=%s ORDER BY page_no""",
+           WHERE document_id=%s AND NOT excluded_from_index ORDER BY page_no""",
         (doc_id,),
     )
     out: list[tuple[int, str]] = []
@@ -37,6 +37,22 @@ def page_contents(cur, doc_id: str) -> list[tuple[int, str]]:
         text = "\n".join(r[0] for r in cur.fetchall())
         if text.strip():
             out.append((page_no, text))
+    return out
+
+
+def page_source_blocks(cur, doc_id: str) -> dict[int, list[str]]:
+    """页内参与 chunk 组装的块 ID（与 page_contents 的跳过口径一致）。"""
+    cur.execute(
+        """SELECT p.page_no, b.id FROM pages p
+           JOIN blocks b ON b.page_id = p.id
+           WHERE p.document_id=%s AND NOT p.excluded_from_index
+             AND NOT (b.block_type = ANY(%s)) AND b.content_md IS NOT NULL
+           ORDER BY p.page_no, b.created_at, b.id""",
+        (doc_id, list(_SKIP_TYPES)),
+    )
+    out: dict[int, list[str]] = {}
+    for page_no, block_id in cur.fetchall():
+        out.setdefault(page_no, []).append(str(block_id))
     return out
 
 
@@ -96,6 +112,7 @@ def embed_flat_pages(conn, cfg: Config, doc_id: str, page_no: int | None = None,
         chapter_id, doc_title, subject, grade = str(ch[0]), ch[1], ch[2], ch[3]
         contents = [pc for pc in page_contents(cur, doc_id)
                     if page_no is None or pc[0] == page_no]
+        source_by_page = page_source_blocks(cur, doc_id)
     label = "全卷"
     payloads: list[tuple[int, int, str]] = []  # (page_no, seg_idx, content)
     for pno, text in contents:
@@ -129,9 +146,11 @@ def embed_flat_pages(conn, cfg: Config, doc_id: str, page_no: int | None = None,
                     "doc_title": doc_title, "subject": subject, "grade": grade, "seg": i,
                 }
                 cur.execute(
-                    """INSERT INTO chunks (chapter_id, document_id, seg_no, content_md, meta, embedding)
-                       VALUES (%s,%s,%s,%s,%s,%s)""",
-                    (chapter_id, doc_id, pno * 1000 + i, content, Jsonb(meta), vec),
+                    """INSERT INTO chunks (chapter_id, document_id, seg_no, content_md, meta,
+                                           embedding, source_block_ids, page_no)
+                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s)""",
+                    (chapter_id, doc_id, pno * 1000 + i, content, Jsonb(meta), vec,
+                     source_by_page.get(pno, []), pno),
                 )
     return len(payloads)
 

@@ -26,6 +26,15 @@ class PageVlmRequest(BaseModel):
     page_id: str
 
 
+class IndexPreviewRequest(BaseModel):
+    page_id: str
+
+
+class PageExclusionRequest(BaseModel):
+    page_id: str
+    excluded: bool
+
+
 class ReindexRequest(BaseModel):
     doc_id: str
     type: str
@@ -165,6 +174,75 @@ def create_internal_app(reranker_factory=None, get_conn=None, cfg=None,
             raise HTTPException(status_code=500, detail=str(e)) from e
         finally:
             conn.close()
+
+    @app.post("/internal/index-preview")
+    def index_preview_ep(body: IndexPreviewRequest):
+        """预览单页 chunk 切分，不调用 embedding。"""
+        from kb.embed import segment_chapter
+        from kb.flat import page_contents, page_source_blocks
+
+        with conn_ctx() as conn, conn.cursor() as cur:
+            cur.execute(
+                """SELECT id, document_id::text, page_no, excluded_from_index
+                   FROM pages WHERE id=%s""", (body.page_id,))
+            page = cur.fetchone()
+            if not page:
+                raise HTTPException(status_code=404, detail="page 不存在")
+            page_id, doc_id, page_no, excluded = page
+            if excluded:
+                raise HTTPException(status_code=409, detail="该页已排除，不参与索引")
+            contents = dict(page_contents(cur, doc_id))
+            if page_no not in contents:
+                return {"page_id": page_id, "page_no": page_no, "chunks": []}
+            sources = page_source_blocks(cur, doc_id).get(page_no, [])
+            chunks = []
+            for seq, seg in enumerate(segment_chapter(contents[page_no]), start=1):
+                chunks.append({
+                    "seq": seq, "page_no": page_no,
+                    "source_block_ids": sources,
+                    "content_preview": seg[:240], "char_count": len(seg),
+                })
+            return {"page_id": page_id, "page_no": page_no, "chunks": chunks}
+
+    @app.post("/internal/page-exclusion")
+    def page_exclusion_ep(body: PageExclusionRequest):
+        """排除/恢复页；flat 模式同步重建合成章并清理页相关 chunk。"""
+        with conn_ctx() as conn:
+            try:
+                with conn.transaction(), conn.cursor() as cur:
+                    cur.execute(
+                        """SELECT p.document_id::text, p.page_no, d.struct_mode
+                           FROM pages p JOIN documents d ON d.id=p.document_id
+                           WHERE p.id=%s FOR UPDATE OF p""", (body.page_id,))
+                    page = cur.fetchone()
+                    if not page:
+                        raise HTTPException(status_code=404, detail="page 不存在")
+                    doc_id, page_no, struct_mode = page
+                    cur.execute(
+                        "UPDATE pages SET excluded_from_index=%s, index_status='not_indexed', index_error=NULL WHERE id=%s",
+                        (body.excluded, body.page_id),
+                    )
+                    cur.execute(
+                        """DELETE FROM chunks WHERE document_id=%s AND (
+                             page_no=%s OR source_block_ids && ARRAY(
+                                 SELECT id FROM blocks WHERE page_id=%s))""",
+                        (doc_id, page_no, body.page_id),
+                    )
+                    deleted_chunks = cur.rowcount
+                    if struct_mode == "flat":
+                        from kb.flat import build_flat_chapter
+                        build_flat_chapter(conn, doc_id)
+                    else:
+                        cur.execute(
+                            "UPDATE chapters SET index_status='not_indexed' WHERE document_id=%s",
+                            (doc_id,),
+                        )
+                return {"page_id": body.page_id, "excluded": body.excluded,
+                        "deleted_chunks": deleted_chunks, "affected_units": []}
+            except HTTPException:
+                raise
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=str(e)) from e
 
     @app.post("/internal/reindex")
     def reindex_ep(body: ReindexRequest):

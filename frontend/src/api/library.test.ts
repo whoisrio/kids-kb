@@ -1,28 +1,49 @@
-import { describe, expect, it } from "vitest";
-import { deleteLibraryDoc, fetchLibraryDocs } from "./library.js";
+import { describe, expect, it, vi } from "vitest";
+import { fetchLibraryChunks, fetchLibraryDoc, fetchLibraryDocs, setPageExclusion } from "./library.js";
 
-const fetchImpl = (async (input: RequestInfo | URL, init?: RequestInit) => {
-  if (String(input).endsWith("/api/library") && !init?.method) {
-    return new Response(JSON.stringify({
-      documents: [{ id: "d1", title: "数学", subject: "数学", file_type: "pdf",
-                    parse_status: "parsed", review_status: "pending",
-                    uploaded_by: null, created_at: "2026-01-01",
-                    pending_pages: 2, total_pages: 10, indexed_pages: 8 }],
-    }), { status: 200 });
+const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+  const url = String(input);
+  if (url.startsWith("/api/library?")) {
+    return Response.json({ documents: [{ id: "d1" }], pagination: { page: 2, pageSize: 10, total: 11, totalPages: 2 } });
   }
-  if (String(input).includes("/api/library/d1") && init?.method === "DELETE") {
-    return new Response(null, { status: 204 });
+  if (url === "/api/library/d1?page=1&pageSize=5") {
+    return Response.json({ id: "d1", unit_type: "pages", pages: [], pagination: { page: 1, pageSize: 5, total: 0, totalPages: 0 } });
+  }
+  if (url === "/api/library/d1/chunks?page=1&pageSize=10") {
+    return Response.json({ chunks: [{ id: "c1" }], pagination: { page: 1, pageSize: 10, total: 1, totalPages: 1 } });
+  }
+  if (url === "/api/library/pages/p1/exclusion" && init?.method === "POST") {
+    return Response.json({ page_id: "p1", excluded: true, deleted_chunks: 2 });
   }
   return new Response("not found", { status: 404 });
-}) as typeof fetch;
+}) as unknown as typeof fetch;
 
 describe("library API", () => {
-  it("fetchLibraryDocs returns documents", async () => {
-    const docs = await fetchLibraryDocs(fetchImpl);
-    expect(docs).toHaveLength(1);
-    expect(docs[0].title).toBe("数学");
+  it("fetchLibraryDocs sends pagination and filters", async () => {
+    const data = await fetchLibraryDocs({
+      page: 2, pageSize: 10, q: "数学", subject: "数学", fileType: "pdf",
+      autoReview: "passed", reviewStatus: "unreviewed", indexStatus: "stale",
+    }, fetchImpl);
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "/api/library?page=2&pageSize=10&q=%E6%95%B0%E5%AD%A6&subject=%E6%95%B0%E5%AD%A6&file_type=pdf&auto_review=passed&review_status=unreviewed&index_status=stale",
+      undefined,
+    );
+    expect(data.pagination.total).toBe(11);
   });
-  it("deleteLibraryDoc calls DELETE", async () => {
-    await expect(deleteLibraryDoc("d1", fetchImpl)).resolves.toBeUndefined();
+
+  it("fetchLibraryDoc and chunks send paging", async () => {
+    const detail = await fetchLibraryDoc("d1", { page: 1, pageSize: 5 }, fetchImpl);
+    const chunks = await fetchLibraryChunks("d1", { page: 1, pageSize: 10 }, fetchImpl);
+    expect(detail.unit_type).toBe("pages");
+    expect(chunks.chunks[0].id).toBe("c1");
+  });
+
+  it("setPageExclusion posts to pipeline-backed API", async () => {
+    const result = await setPageExclusion("p1", true, fetchImpl);
+    expect(result.deleted_chunks).toBe(2);
+    expect(fetchImpl).toHaveBeenCalledWith("/api/library/pages/p1/exclusion", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ excluded: true }),
+    });
   });
 });

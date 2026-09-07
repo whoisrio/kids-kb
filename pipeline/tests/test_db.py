@@ -105,6 +105,88 @@ def test_chapters_content_md_after_0010(conn):
         assert cur.fetchone()[0].startswith("# 一、")
 
 
+def test_library_index_controls_after_0016(clean_db):
+    """0016 后：审核状态、排除页、批注和 chunk 来源可落库。"""
+    import uuid
+    from kb.db import migrate
+    from kb.db import MIGRATIONS_DIR
+
+    with clean_db.cursor() as cur:
+        cur.execute(
+            """CREATE TABLE schema_migrations (
+                   name TEXT PRIMARY KEY,
+                   applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
+               )"""
+        )
+        for path in sorted(p for p in MIGRATIONS_DIR.glob("*.sql") if p.name < "0016"):
+            cur.execute(path.read_text(encoding="utf-8"))
+            cur.execute("INSERT INTO schema_migrations (name) VALUES (%s)", (path.name,))
+
+    with clean_db.cursor() as cur:
+        cur.execute(
+            """INSERT INTO documents (id, title, source_path)
+               VALUES (%s, '数学练习册', '/tmp/library.pdf') RETURNING id""",
+            (str(uuid.uuid4()),),
+        )
+        doc_id = str(cur.fetchone()[0])
+        cur.execute(
+            """INSERT INTO pages (document_id, page_no, image_path, review_status)
+               VALUES (%s, 1, '/tmp/p1.png', 'auto_passed')""",
+            (doc_id,),
+        )
+        cur.execute(
+            """INSERT INTO chapters (document_id, chapter_no, title, review_status)
+               VALUES (%s, 1, '第一章', 'approved')""",
+            (doc_id,),
+        )
+
+    migrate(clean_db)
+
+    with clean_db.cursor() as cur:
+        cur.execute("SELECT id FROM pages")
+        page_id = str(cur.fetchone()[0])
+        cur.execute(
+            """INSERT INTO blocks (page_id, block_type, crop_path, content_md)
+               VALUES (%s, 'text', '/tmp/b1.png', '24 + 37 = 61') RETURNING id""",
+            (page_id,),
+        )
+        block_id = str(cur.fetchone()[0])
+        cur.execute(
+            "UPDATE pages SET excluded_from_index = true, index_error = 'embedding failed' WHERE id = %s",
+            (page_id,),
+        )
+        cur.execute(
+            """SELECT auto_review_status, manual_review_status, excluded_from_index, index_error
+               FROM pages WHERE id = %s""",
+            (page_id,),
+        )
+        assert cur.fetchone() == ("passed", "unreviewed", True, "embedding failed")
+        cur.execute(
+            "SELECT auto_review_status, manual_review_status FROM chapters"
+        )
+        assert cur.fetchone() == ("passed", "approved")
+        cur.execute(
+            "INSERT INTO block_annotations (block_id, body) VALUES (%s, %s) RETURNING id",
+            (block_id, "页眉不进入题目"),
+        )
+        cur.execute("SELECT id FROM chapters WHERE document_id = %s", (doc_id,))
+        chapter_id = str(cur.fetchone()[0])
+        cur.execute(
+            """INSERT INTO chunks (chapter_id, document_id, seg_no, content_md, meta,
+                                   embedding, source_block_ids, page_no)
+               VALUES (%s, %s, 1, '内容', '{}'::jsonb, %s::vector, %s::uuid[], 17)""",
+            (
+                chapter_id,
+                doc_id,
+                "[" + ",".join(["0"] * 1024) + "]",
+                [block_id],
+            ),
+        )
+        cur.execute("SELECT source_block_ids, page_no FROM chunks")
+        source_ids, chunk_page_no = cur.fetchone()
+        assert [str(value) for value in source_ids] == [block_id]
+        assert chunk_page_no == 17
+
 def test_chunks_chapter_ref_after_0013(conn):
     """0013 后:chunks 可挂章节(item_id 空、seg_no 必填);同章同段唯一;不可同时挂条目与章节。"""
     import uuid

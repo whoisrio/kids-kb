@@ -70,7 +70,8 @@ export function reviewRoutes(pool: pg.Pool, deps: ReviewDeps): Hono {
     try {
       const { rows: [page] } = await pool.query(
       `SELECT p.id::text, p.page_no, d.title AS doc_title, p.page_md, p.page_md_model, p.adopted_source,
-              p.review_status, p.index_status
+              p.review_status, p.index_status, p.auto_review_status, p.manual_review_status,
+              p.excluded_from_index, p.index_error
          FROM pages p JOIN documents d ON d.id = p.document_id WHERE p.id = $1`,
         [c.req.param("id")]);
       if (!page) return c.json({ error: "page 不存在" }, 404);
@@ -79,6 +80,9 @@ export function reviewRoutes(pool: pg.Pool, deps: ReviewDeps): Hono {
          FROM blocks WHERE page_id = $1 ORDER BY created_at, id`, [page.id]);
       const blocksWithCrop = blocks.map((b) => ({ ...b, crop_url: `/api/review/blocks/${b.id}/crop` }));
       const blockIds = blocks.map((b) => b.id);
+      const { rows: annotations } = blockIds.length ? await pool.query(
+        `SELECT id::text, block_id::text, author, body, created_at, updated_at
+         FROM block_annotations WHERE block_id = ANY($1::uuid[]) ORDER BY created_at`, [blockIds]) : { rows: [] };
       const { rows: itemMappings } = await pool.query(
         `SELECT ib.block_id::text, i.id::text, i.label, i.content_type, ib.role,
                 i.content_md, i.qc_status
@@ -106,9 +110,18 @@ export function reviewRoutes(pool: pg.Pool, deps: ReviewDeps): Hono {
         image_url: `/api/review/pages/${page.id}/image`,
         page_md: page.page_md, page_md_model: page.page_md_model,
         adopted_source: page.adopted_source,
-        blocks: blocksWithCrop.map((b) => ({ ...b, pending: byBlock.get(b.id) ?? [], items: itemsByBlock.get(b.id) ?? [] })),
+        blocks: blocksWithCrop.map((b) => ({
+          ...b,
+          pending: byBlock.get(b.id) ?? [],
+          items: itemsByBlock.get(b.id) ?? [],
+          annotations: annotations.filter((a) => a.block_id === b.id),
+        })),
         review_status: page.review_status,
+        auto_review_status: page.auto_review_status,
+        manual_review_status: page.manual_review_status,
+        excluded_from_index: page.excluded_from_index,
         index_status: page.index_status,
+        index_error: page.index_error,
         page_pending: pagePending,
         items: [...new Map(itemMappings.map((m) => [m.id, { id: m.id, label: m.label, content_type: m.content_type, content_md: m.content_md, qc_status: m.qc_status, block_ids: itemMappings.filter((x) => x.id === m.id).map((x) => x.block_id), block_crops: itemMappings.filter((x) => x.id === m.id).map((x) => `/api/review/blocks/${x.block_id}/crop`) }])).values()],
       });
@@ -239,10 +252,80 @@ export function reviewRoutes(pool: pg.Pool, deps: ReviewDeps): Hono {
         "UPDATE blocks SET content_md=$2 WHERE id=$1 RETURNING id::text, content_md",
         [c.req.param("id"), body.content_md]);
       if (!b) return c.json({ error: "block 不存在" }, 404);
-      await pool.query(
-        "UPDATE pages SET index_status='stale' WHERE id=(SELECT page_id FROM blocks WHERE id=$1)",
-        [c.req.param("id")]);
+      const { rows: [page] } = await pool.query(
+        `SELECT p.id::text, p.document_id::text, p.page_no
+         FROM pages p WHERE p.id=(SELECT page_id FROM blocks WHERE id=$1)`, [c.req.param("id")]);
+      if (page) {
+        await pool.query("UPDATE pages SET index_status='stale', index_error=NULL WHERE id=$1", [page.id]);
+        await pool.query(
+          `DELETE FROM chunks WHERE document_id=$1 AND (
+             source_block_ids && ARRAY[$2::uuid] OR page_no=$3)`,
+          [page.document_id, c.req.param("id"), page.page_no]);
+      }
       return c.json(b);
+    } catch (err) {
+      return invalidId(c, err) ?? (() => { throw err; })();
+    }
+  });
+
+  app.patch("/pages/:id", async (c) => {
+    const body = await readJson(c);
+    if (body === null) return c.json({ error: "请求体不是合法 JSON" }, 400);
+    if (typeof body.page_md !== "string") return c.json({ error: "page_md 必填" }, 422);
+    try {
+      const { rows: [page] } = await pool.query(
+        `UPDATE pages SET page_md=$2, index_status='stale', index_error=NULL
+         WHERE id=$1 RETURNING id::text, page_no, document_id::text, page_md, index_status`,
+        [c.req.param("id"), body.page_md]);
+      if (!page) return c.json({ error: "page 不存在" }, 404);
+      await pool.query(
+        `DELETE FROM chunks WHERE document_id=$1 AND (
+           page_no=$2 OR source_block_ids && ARRAY(
+             SELECT id FROM blocks WHERE page_id=$3))`,
+        [page.document_id, page.page_no, page.id]);
+      return c.json(page);
+    } catch (err) {
+      return invalidId(c, err) ?? (() => { throw err; })();
+    }
+  });
+
+  app.post("/blocks/:id/annotations", async (c) => {
+    const body = await readJson(c);
+    if (body === null) return c.json({ error: "请求体不是合法 JSON" }, 400);
+    if (typeof body.body !== "string" || !body.body.trim()) return c.json({ error: "body 必填" }, 422);
+    try {
+      const { rows: [annotation] } = await pool.query(
+        `INSERT INTO block_annotations (block_id, author, body)
+         VALUES ($1, $2, $3) RETURNING id::text, block_id::text, author, body, created_at, updated_at`,
+        [c.req.param("id"), typeof body.author === "string" && body.author.trim() ? body.author.trim() : "admin", body.body.trim()]);
+      if (!annotation) return c.json({ error: "block 不存在" }, 404);
+      return c.json(annotation, 201);
+    } catch (err) {
+      return invalidId(c, err) ?? (() => { throw err; })();
+    }
+  });
+
+  app.patch("/block-annotations/:id", async (c) => {
+    const body = await readJson(c);
+    if (body === null) return c.json({ error: "请求体不是合法 JSON" }, 400);
+    if (typeof body.body !== "string" || !body.body.trim()) return c.json({ error: "body 必填" }, 422);
+    try {
+      const { rows: [annotation] } = await pool.query(
+        `UPDATE block_annotations SET body=$2, updated_at=now()
+         WHERE id=$1 RETURNING id::text, block_id::text, author, body, created_at, updated_at`,
+        [c.req.param("id"), body.body.trim()]);
+      if (!annotation) return c.json({ error: "批注不存在" }, 404);
+      return c.json(annotation);
+    } catch (err) {
+      return invalidId(c, err) ?? (() => { throw err; })();
+    }
+  });
+
+  app.delete("/block-annotations/:id", async (c) => {
+    try {
+      const { rowCount } = await pool.query("DELETE FROM block_annotations WHERE id=$1", [c.req.param("id")]);
+      if (!rowCount) return c.json({ error: "批注不存在" }, 404);
+      return c.body(null, 204);
     } catch (err) {
       return invalidId(c, err) ?? (() => { throw err; })();
     }
@@ -385,6 +468,17 @@ export function reviewRoutes(pool: pg.Pool, deps: ReviewDeps): Hono {
         "SELECT id::text FROM pages WHERE id=$1", [c.req.param("id")]);
       if (!page) return c.json({ error: "page 不存在" }, 404);
       return forwardInternal(c, "/internal/page-vlm", { page_id: page.id });
+    } catch (err) {
+      return invalidId(c, err) ?? (() => { throw err; })();
+    }
+  });
+
+  app.post("/pages/:id/index-preview", async (c) => {
+    try {
+      const { rows: [page] } = await pool.query(
+        "SELECT id::text FROM pages WHERE id=$1", [c.req.param("id")]);
+      if (!page) return c.json({ error: "page 不存在" }, 404);
+      return forwardInternal(c, "/internal/index-preview", { page_id: page.id });
     } catch (err) {
       return invalidId(c, err) ?? (() => { throw err; })();
     }

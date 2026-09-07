@@ -26,7 +26,10 @@ function transcript(messages: ChatMessage[]): string {
 }
 
 export function App() {
-  const [view, setView] = useState<"chat" | "library" | "stats" | "usage">("chat");
+  const [view, setView] = useState<"chat" | "library" | "stats" | "usage">(() => {
+    const value = typeof window === "undefined" ? "" : new URLSearchParams(window.location.search).get("view");
+    return value === "library" || value === "stats" || value === "usage" ? value : "chat";
+  });
   const [children, setChildren] = useState<{ id: string; name: string; grade: string | null }[]>([]);
   const [childId, setChildId] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);

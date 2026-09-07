@@ -21,6 +21,7 @@ def clean_db():
     c = psycopg.connect(url, autocommit=True)
     with c.cursor() as cur:
         cur.execute("DROP SCHEMA public CASCADE")
+        cur.execute("DROP EXTENSION IF EXISTS vector CASCADE")
         cur.execute("CREATE SCHEMA public")
     yield c
     c.close()

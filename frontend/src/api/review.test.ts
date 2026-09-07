@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import { fetchRouter, jsonResponse } from "../test/support";
 import {
   adoptReviewPage, approveReviewItem, approveReviewPage, fetchReviewDocs, fetchReviewItems,
-  fetchReviewPage, fetchReviewPages, pageVlm, rejectReviewPage, reviewSearch, updateReviewBlock,
+  createBlockAnnotation, deleteBlockAnnotation, fetchReviewPage, fetchReviewPages, pageVlm,
+  rejectReviewPage, reviewSearch, updateBlockAnnotation, updateReviewBlock, updateReviewPage,
   updateReviewItem,
 } from "./review";
 
@@ -27,6 +28,10 @@ describe("api/review", () => {
       return jsonResponse({});
     };
     await updateReviewBlock("b1", "改", fetchImpl);
+    await updateReviewPage("p1", "新稿", fetchImpl);
+    await createBlockAnnotation("b1", "页眉不进题", fetchImpl);
+    await updateBlockAnnotation("a1", "改批注", fetchImpl);
+    await deleteBlockAnnotation("a1", fetchImpl);
     await updateReviewItem("i1", "改", fetchImpl);
     await rejectReviewPage("p1", "缺题", fetchImpl);
     await adoptReviewPage("p1", "page_md", fetchImpl);
@@ -35,6 +40,10 @@ describe("api/review", () => {
     await pageVlm("p1", fetchImpl);
     expect(calls.map((c) => `${c.method} ${c.url}`)).toEqual([
       "PATCH /api/review/blocks/b1",
+      "PATCH /api/review/pages/p1",
+      "POST /api/review/blocks/b1/annotations",
+      "PATCH /api/review/block-annotations/a1",
+      "DELETE /api/review/block-annotations/a1",
       "PATCH /api/review/items/i1",
       "POST /api/review/pages/p1/reject",
       "POST /api/review/pages/p1/adopt",
@@ -43,8 +52,8 @@ describe("api/review", () => {
       "POST /api/review/pages/p1/page-vlm",
     ]);
     expect(calls[0].body).toEqual({ content_md: "改" });
-    expect(calls[2].body).toEqual({ reason: "缺题" });
-    expect(calls[3].body).toEqual({ source: "page_md" });
+    expect(calls[6].body).toEqual({ reason: "缺题" });
+    expect(calls[7].body).toEqual({ source: "page_md" });
   });
 
   it("reviewSearch：q/subject 拼装；空 q 由调用方拦", async () => {

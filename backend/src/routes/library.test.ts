@@ -1,18 +1,22 @@
 import { Hono } from "hono";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { libraryRoutes } from "./library.js";
 
 const DOC_ID = "11111111-1111-1111-1111-111111111111";
 
-const pool = {
-  query: async (sql: string, _params?: unknown[]) => {
-    if (sql.includes("SELECT d.id") && sql.includes("GROUP BY")) {
-      return { rows: [{
-        id: DOC_ID, title: "数学练习册", subject: "数学",
-        file_type: "pdf", parse_status: "parsed", review_status: "pending",
-        uploaded_by: "rio", created_at: "2026-09-06T00:00:00Z",
-        pending_pages: 2, total_pages: 10, indexed_pages: 8,
-      }] };
+    const pool = {
+      query: async (sql: string, _params?: unknown[]) => {
+        if (sql.includes("WITH stats AS")) {
+          return { rows: [{
+            id: DOC_ID, title: "数学练习册", subject: "数学",
+            file_type: "pdf", parse_status: "parsed", review_status: "pending",
+            uploaded_by: "rio", created_at: "2026-09-06T00:00:00Z",
+            total_units: 10, total_pages: 10, total_chapters: 0,
+            auto_pending: 2, auto_passed: 8, auto_needs_review: 0, auto_failed: 0,
+            manual_unreviewed: 2, manual_approved: 8, manual_rejected: 0,
+            index_indexed: 8, index_stale: 0, index_not_indexed: 2, index_excluded: 0,
+            total_count: 1,
+          }] };
     }
     if (sql.startsWith("DELETE FROM documents")) {
       return { rowCount: 1 };
@@ -34,8 +38,42 @@ describe("GET /api/library", () => {
     expect(data.documents).toHaveLength(1);
     expect(data.documents[0]).toMatchObject({
       title: "数学练习册", file_type: "pdf",
-      review_status: "pending", pending_pages: 2,
+      auto_review: { pending: 2, passed: 8 },
+      index: { indexed: 8, not_indexed: 2 },
     });
+  });
+});
+
+describe("GET /api/library pagination", () => {
+  it("passes pagination and normalized filters to SQL", async () => {
+    const calls: { sql: string; params?: unknown[] }[] = [];
+    const pool2 = {
+      query: async (sql: string, params?: unknown[]) => {
+        calls.push({ sql, params });
+        return { rows: [] };
+      },
+    } as never;
+    const res = await new Hono().route("/api/library", libraryRoutes(pool2, {
+      pipelineUrl: "http://mock:8766", search: async () => [],
+    } as never, { storageRoot: "/tmp" } as never)).request(
+      "/api/library?page=2&pageSize=10&q=数学&subject=数学&file_type=pdf" +
+      "&auto_review=passed&review_status=unreviewed&index_status=stale",
+    );
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      documents: [],
+      pagination: { page: 2, pageSize: 10, total: 0, totalPages: 0 },
+    });
+    expect(calls[0]?.sql).toContain("LIMIT");
+    expect(calls[0]?.sql).toContain("OFFSET");
+    expect(calls[0]?.params).toContain(10);
+    expect(calls[0]?.params).toContain("数学");
+  });
+
+  it("rejects invalid pagination", async () => {
+    const res = await app().request("/api/library?page=0");
+    expect(res.status).toBe(422);
+    expect((await res.json()).error).toBe("page 须为正整数");
   });
 });
 
@@ -102,5 +140,84 @@ describe("GET /api/library/:id", () => {
     expect(data.chapters[0]).toMatchObject({
       title: "第一章", review_status: "auto_passed", index_status: "indexed",
     });
+  });
+});
+
+describe("GET /api/library/:id pagination", () => {
+  it("returns paginated PDF pages with block and chunk counts", async () => {
+    const pool2 = {
+      query: async (sql: string) => {
+        if (sql.includes("FROM documents d")) {
+          return { rows: [{ id: DOC_ID, title: "数学练习册", subject: "数学",
+            parse_status: "parsed", struct_mode: "flat", file_type: "pdf",
+            page_count: 2, total_pages: 2, auto_review_passed: 1,
+            auto_review_pending: 1, auto_review_failed: 0,
+            manual_review_unreviewed: 2, manual_review_approved: 0,
+            manual_review_rejected: 0, index_indexed: 1, index_stale: 0,
+            index_not_indexed: 0, index_excluded: 0 }] };
+        }
+        if (sql.includes("FROM pages p")) {
+          return { rows: [{
+            id: "p1", page_no: 1, parse_status: "parsed",
+            auto_review_status: "passed", manual_review_status: "unreviewed",
+            index_status: "indexed", excluded_from_index: false,
+            block_count: 6, chunk_count: 3, thumbnail_url: "/api/review/pages/p1/image",
+          }] };
+        }
+        return { rows: [] };
+      },
+    } as never;
+    const res = await new Hono().route("/api/library", libraryRoutes(pool2, {
+      pipelineUrl: "http://mock:8766", search: async () => [],
+    } as never, { storageRoot: "/tmp" } as never)).request(`/api/library/${DOC_ID}?page=1&pageSize=1`);
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.unit_type).toBe("pages");
+    expect(data.pages).toHaveLength(1);
+    expect(data.pagination).toEqual({ page: 1, pageSize: 1, total: 2, totalPages: 2 });
+    expect(data.aggregates.index.indexed).toBe(1);
+  });
+});
+
+describe("library index controls", () => {
+  it("returns a paginated chunk ledger", async () => {
+    const pool2 = {
+      query: async (sql: string) => {
+        if (sql.includes("FROM chunks c")) {
+          return { rows: [{
+            id: "chunk1", seq: 1, page_no: 17, content_preview: "例 1",
+            source_block_ids: ["block2", "block3"], created_at: "2026-09-06T10:00:00Z",
+            total_count: 1,
+          }] };
+        }
+        return { rows: [] };
+      },
+    } as never;
+    const res = await new Hono().route("/api/library", libraryRoutes(pool2, {
+      pipelineUrl: "http://mock:8766", search: async () => [],
+    } as never, { storageRoot: "/tmp" } as never)).request(`/api/library/${DOC_ID}/chunks?page=1&pageSize=1`);
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.chunks[0]).toMatchObject({ id: "chunk1", page_no: 17 });
+    expect(data.pagination.totalPages).toBe(1);
+  });
+
+  it("posts page exclusion to pipeline", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(
+      JSON.stringify({ page_id: "p1", excluded: true, deleted_chunks: 2, affected_units: [] }),
+      { status: 200, headers: { "Content-Type": "application/json" } },
+    ));
+    vi.stubGlobal("fetch", fetchMock);
+    const pool2 = { query: async () => ({ rows: [] }) } as never;
+    const res = await new Hono().route("/api/library", libraryRoutes(pool2, {
+      pipelineUrl: "http://mock:8766", search: async () => [],
+    } as never, { storageRoot: "/tmp" } as never)).request("/api/library/pages/p1/exclusion", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ excluded: true }),
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ deleted_chunks: 2 });
+    expect(fetchMock).toHaveBeenCalledWith("http://mock:8766/internal/page-exclusion", expect.anything());
+    vi.unstubAllGlobals();
   });
 });

@@ -14,6 +14,7 @@ export interface ReviewBlock {
   source_model: string | null; pending: { id: string; reason: string }[];
   crop_url?: string;
   items?: { id: string; label: string | null; content_type: string; role: string }[];
+  annotations: { id: string; block_id: string; author: string; body: string; created_at: string; updated_at: string }[];
 }
 
 export interface ReviewPageDetail {
@@ -24,6 +25,10 @@ export interface ReviewPageDetail {
   page_pending: { id: string; reason: string }[];
   items?: ReviewPageItem[];
   review_status: string;
+  auto_review_status: string;
+  manual_review_status: string;
+  excluded_from_index: boolean;
+  index_error: string | null;
   index_status: string;
 }
 
@@ -115,6 +120,22 @@ export function fetchReviewItem(id: string, fetchImpl: FetchLike = fetch): Promi
 
 export function updateReviewBlock(id: string, contentMd: string, fetchImpl: FetchLike = fetch) {
   return req(`/api/review/blocks/${encodeURIComponent(id)}`, fetchImpl, json("PATCH", { content_md: contentMd }));
+}
+
+export function updateReviewPage(id: string, pageMd: string, fetchImpl: FetchLike = fetch) {
+  return req(`/api/review/pages/${encodeURIComponent(id)}`, fetchImpl, json("PATCH", { page_md: pageMd }));
+}
+
+export function createBlockAnnotation(blockId: string, body: string, fetchImpl: FetchLike = fetch) {
+  return req(`/api/review/blocks/${encodeURIComponent(blockId)}/annotations`, fetchImpl, json("POST", { body }));
+}
+
+export function updateBlockAnnotation(id: string, body: string, fetchImpl: FetchLike = fetch) {
+  return req(`/api/review/block-annotations/${encodeURIComponent(id)}`, fetchImpl, json("PATCH", { body }));
+}
+
+export function deleteBlockAnnotation(id: string, fetchImpl: FetchLike = fetch) {
+  return req(`/api/review/block-annotations/${encodeURIComponent(id)}`, fetchImpl, { method: "DELETE" });
 }
 
 export function updateReviewItem(id: string, contentMd: string, fetchImpl: FetchLike = fetch) {

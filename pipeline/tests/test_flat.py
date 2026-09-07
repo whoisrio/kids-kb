@@ -78,6 +78,16 @@ def test_page_contents_adopts_and_skips(conn, flat_doc):
     ]  # 页 3 无内容，不出现
 
 
+def test_page_contents_skips_excluded_pages(conn, flat_doc):
+    from kb.flat import page_contents
+
+    doc_id, _cfg = flat_doc
+    with conn.cursor() as cur:
+        cur.execute("UPDATE pages SET excluded_from_index=true WHERE document_id=%s AND page_no=1", (doc_id,))
+        contents = page_contents(cur, doc_id)
+    assert [page_no for page_no, _text in contents] == [2]
+
+
 def test_page_contents_orders_blocks_with_equal_created_at(conn):
     """同页块 created_at 相同时按 id 排序，避免 PostgreSQL 返回不确定顺序。"""
     from kb.flat import page_contents
@@ -243,6 +253,29 @@ def test_embed_flat_pages_removes_emptied_page(conn, flat_doc):
     with conn.cursor() as cur:
         cur.execute("SELECT meta->>'page_no' FROM chunks WHERE chapter_id IS NOT NULL")
         assert [row[0] for row in cur.fetchall()] == ["1"]
+
+
+def test_embed_flat_pages_writes_page_no_and_sources(conn, flat_doc):
+    from kb.flat import build_flat_chapter, embed_flat_pages
+
+    doc_id, cfg = flat_doc
+    build_flat_chapter(conn, doc_id)
+    assert embed_flat_pages(conn, cfg, doc_id, client=_FakeEmbed()) == 2
+    with conn.cursor() as cur:
+        cur.execute(
+            """SELECT page_no, source_block_ids
+               FROM chunks WHERE chapter_id IS NOT NULL AND page_no = 1"""
+        )
+        page_no, source_ids = cur.fetchone()
+        assert page_no == 1
+        cur.execute(
+            """SELECT id FROM blocks
+               WHERE page_id=(SELECT id FROM pages WHERE document_id=%s AND page_no=1)
+                 AND block_type <> 'header'""",
+            (doc_id,),
+        )
+        expected = {str(row[0]) for row in cur.fetchall()}
+        assert {str(value) for value in source_ids} == expected
 
 
 def test_embed_flat_pages_full_rebuild_removes_emptied_page(conn, flat_doc):

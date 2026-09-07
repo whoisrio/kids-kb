@@ -9,12 +9,11 @@ export interface ChapterSummary {
   review_status: string; index_status: string;
 }
 
-export function ChapterDetail({ docId, chapters, onExit }: {
-  docId: string; chapters: ChapterSummary[]; onExit: () => void;
+export function ChapterDetail({ chapters, onExit }: {
+  docId?: string; chapters: ChapterSummary[]; onExit: () => void;
 }) {
   const [selected, setSelected] = useState(chapters[0]?.id ?? "");
   const [view, setView] = useState<"rendered" | "raw">("rendered");
-  const current = chapters.find((c) => c.id === selected);
   const currentDoc = chapters.find((c) => c.id === selected);
   return (
     <div className="chapter-detail">

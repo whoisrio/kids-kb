@@ -251,6 +251,41 @@ maybe("review API（真库）", () => {
       .toBe(0);
   });
 
+  it("PATCH /pages/:id：编辑整页稿并删除相关页 chunk", async () => {
+    const vec = `[${Array.from({ length: 1024 }, () => 1.0).join(",")}]`;
+    await pool.query(
+      `INSERT INTO chunks (chapter_id, document_id, seg_no, content_md, meta, embedding, page_no)
+       SELECT ch.id, ch.document_id, 1, '旧整页稿', '{}'::jsonb, $1::vector, 1
+       FROM chapters ch WHERE ch.document_id=$2`,
+      [vec, docId]);
+    const res = await app.request(`/api/review/pages/${page1}`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ page_md: "# 第 1 页\n新整页稿" }),
+    });
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data).toMatchObject({ id: page1, page_md: "# 第 1 页\n新整页稿", index_status: "stale" });
+    expect((await pool.query("SELECT count(*)::int AS n FROM chunks WHERE document_id=$1", [docId])).rows[0].n).toBe(0);
+  });
+
+  it("POST /blocks/:id/annotations 与 PATCH/DELETE：管理 OCR 批注", async () => {
+    const created = await app.request(`/api/review/blocks/${block11}/annotations`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ body: "先检查进位" }),
+    });
+    expect(created.status).toBe(201);
+    const annotation = (await created.json()) as { id: string };
+    const updated = await app.request(`/api/review/block-annotations/${annotation.id}`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ body: "先检查括号" }),
+    });
+    expect(updated.status).toBe(200);
+    expect((await pool.query("SELECT body FROM block_annotations WHERE id=$1", [annotation.id])).rows[0].body).toBe("先检查括号");
+    const removed = await app.request(`/api/review/block-annotations/${annotation.id}`, { method: "DELETE" });
+    expect(removed.status).toBe(204);
+    expect((await pool.query("SELECT count(*)::int AS n FROM block_annotations WHERE id=$1", [annotation.id])).rows[0].n).toBe(0);
+  });
+
   it("POST /pages/:id/reject 与 /items/:id/reject：建 pending 复核行（body.reason 必填）", async () => {
     const r1 = await app.request(`/api/review/pages/${page2}/reject`, {
       method: "POST", headers: { "Content-Type": "application/json" },
@@ -272,18 +307,18 @@ maybe("review API（真库）", () => {
   });
 
   it("POST /pages/:id/adopt：采用版本切换（page_md 需已有整页转录）", async () => {
-    const bad = await app.request(`/api/review/pages/${page1}/adopt`, {
+    const bad = await app.request(`/api/review/pages/${page2}/adopt`, {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ source: "page_md" }),
     });
     expect(bad.status).toBe(409);
-    await pool.query("UPDATE pages SET page_md='整页稿', page_md_model='qwen' WHERE id=$1", [page1]);
-    const ok = await app.request(`/api/review/pages/${page1}/adopt`, {
+    await pool.query("UPDATE pages SET page_md='整页稿', page_md_model='qwen' WHERE id=$1", [page2]);
+    const ok = await app.request(`/api/review/pages/${page2}/adopt`, {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ source: "page_md" }),
     });
     expect(ok.status).toBe(200);
-    expect((await pool.query("SELECT adopted_source FROM pages WHERE id=$1", [page1])).rows[0].adopted_source)
+    expect((await pool.query("SELECT adopted_source FROM pages WHERE id=$1", [page2])).rows[0].adopted_source)
       .toBe("page_md");
   });
 
@@ -365,5 +400,22 @@ maybe("review API（真库）", () => {
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+
+  it("GET /pages/:id/index-preview：转发 pipeline 切分预览", async () => {
+    const { vi } = await import("vitest");
+    const fetchMock = vi.fn().mockResolvedValue(new Response(
+      JSON.stringify({ page_id: page1, chunks: [{ seq: 1, content_preview: "例 1" }] }),
+      { status: 200, headers: { "Content-Type": "application/json" } },
+    ));
+    vi.stubGlobal("fetch", fetchMock);
+    const res = await app.request(`/api/review/pages/${page1}/index-preview`, { method: "POST" });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ page_id: page1, chunks: [{ seq: 1 }] });
+    expect(fetchMock).toHaveBeenCalledWith("http://127.0.0.1:8766/internal/index-preview", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ page_id: page1 }),
+    });
+    vi.unstubAllGlobals();
   });
 });

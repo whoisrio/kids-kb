@@ -164,6 +164,49 @@ class TestEmbedFlatPage:
         assert "flat" in resp.json()["detail"]
 
 
+class TestIndexPreviewAndExclusion:
+    def test_index_preview_does_not_embed(self, conn, flat_doc):
+        from kb.flat import build_flat_chapter
+
+        doc_id, cfg = flat_doc
+        build_flat_chapter(conn, doc_id)
+        client = TestClient(create_internal_app(get_conn=lambda: conn, cfg=cfg))
+        resp = client.post("/internal/index-preview", json={"page_id": None})
+        assert resp.status_code == 422
+
+        with conn.cursor() as cur:
+            cur.execute("SELECT id FROM pages WHERE document_id=%s AND page_no=1", (doc_id,))
+            page_id = str(cur.fetchone()[0])
+        resp = client.post("/internal/index-preview", json={"page_id": page_id})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["page_id"] == page_id
+        assert data["chunks"][0]["content_preview"].startswith("一、口算")
+
+    def test_page_exclusion_removes_flat_chunks_and_rebuilds_chapter(self, conn, flat_doc):
+        from kb.flat import build_flat_chapter, embed_flat_pages
+
+        doc_id, cfg = flat_doc
+        build_flat_chapter(conn, doc_id)
+        assert embed_flat_pages(conn, cfg, doc_id, client=_FakeEmbed()) == 2
+        client = TestClient(create_internal_app(get_conn=lambda: conn, cfg=cfg))
+        with conn.cursor() as cur:
+            cur.execute("SELECT id FROM pages WHERE document_id=%s AND page_no=1", (doc_id,))
+            page_id = str(cur.fetchone()[0])
+        resp = client.post("/internal/page-exclusion", json={"page_id": page_id, "excluded": True})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["excluded"] is True
+        assert data["deleted_chunks"] == 1
+        with conn.cursor() as cur:
+            cur.execute("SELECT excluded_from_index FROM pages WHERE id=%s", (page_id,))
+            assert cur.fetchone()[0] is True
+            cur.execute("SELECT count(*)::int FROM chunks WHERE document_id=%s", (doc_id,))
+            assert cur.fetchone()[0] == 1
+            cur.execute("SELECT content_md FROM chapters WHERE document_id=%s", (doc_id,))
+            assert "口算" not in cur.fetchone()[0]
+
+
 class _ConnSpy:
     """包裹真连接,数 close 调用次数。"""
 
