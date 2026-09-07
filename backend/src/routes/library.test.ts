@@ -203,7 +203,7 @@ describe("POST /api/library/:id/reindex", () => {
       libraryRoutes({
         query: async () => ({ rows: [] }),
       } as never, {
-        pipelineUrl: "http://mock:8766",
+        pipelineUrl: "http://127.0.0.1:9",
       } as never, { storageRoot: "/tmp" } as never));
     const res = await app2.request(`/api/library/${DOC_ID}/reindex`, {
       method: "POST", body: JSON.stringify({ type: "page", id: "p1" }),
