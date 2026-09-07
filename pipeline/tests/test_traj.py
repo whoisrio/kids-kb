@@ -99,3 +99,35 @@ def test_start_end_duration(conn, tmp_path):
             (doc_id,),
         )
         assert cur.fetchone()[0] is not None
+
+
+def test_record_llm_call_forwards_to_recorder(conn, tmp_path):
+    from kb.metering import record_llm_call
+
+    with conn.cursor() as cur:
+        doc_id = _mk_doc(cur)
+    rec = Recorder(conn, _cfg(tmp_path, "verbose"), doc_id)
+    record_llm_call(conn, doc_id, "transcribe", "qwen3:4b", (10, 20),
+                    recorder=rec, stage="parse", page_id=None,
+                    duration_ms=123, prompt="p", output="o")
+    with conn.cursor() as cur:
+        cur.execute("SELECT count(*) FROM llm_calls WHERE document_id=%s", (doc_id,))
+        assert cur.fetchone()[0] == 1
+    rows = _events(conn, doc_id)
+    assert len(rows) == 1
+    assert rows[0][0] == "parse" and rows[0][1] == "llm_call"
+    assert rows[0][3] == {"prompt": "p", "output": "o"}
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT model, prompt_tokens, completion_tokens, duration_ms"
+            " FROM pipeline_events WHERE document_id=%s", (doc_id,))
+        assert cur.fetchone() == ("qwen3:4b", 10, 20, 123)
+
+
+def test_record_llm_call_without_recorder_unchanged(conn):
+    from kb.metering import record_llm_call
+
+    with conn.cursor() as cur:
+        doc_id = _mk_doc(cur)
+    record_llm_call(conn, doc_id, "transcribe", "qwen3:4b", (1, 2))
+    assert _events(conn, doc_id) == []
