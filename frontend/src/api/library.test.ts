@@ -11,6 +11,7 @@ const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => 
   if (url === "/api/library/summary") {
     return Response.json({
       total_docs: 3, by_subject: [{ subject: "数学", count: 2 }, { subject: "语文", count: 1 }],
+      by_doc_type: [{ doc_type: "workbook", count: 2 }, { doc_type: "exam", count: 1 }],
       indexed_units: 42, pending_review_pages: 1,
     });
   }
@@ -43,6 +44,14 @@ describe("library API", () => {
     const summary = await fetchLibrarySummary(fetchImpl);
     expect(fetchImpl).toHaveBeenCalledWith("/api/library/summary", undefined);
     expect(summary.total_docs).toBe(3);
+    expect(summary.by_doc_type).toEqual([
+      { doc_type: "workbook", count: 2 }, { doc_type: "exam", count: 1 },
+    ]);
+  });
+
+  it("fetchLibraryDocs sends sort", async () => {
+    await fetchLibraryDocs({ sort: "units" }, fetchImpl);
+    expect(fetchImpl).toHaveBeenCalledWith("/api/library?sort=units", undefined);
   });
 
   it("fetchLibraryDoc and chunks send paging", async () => {

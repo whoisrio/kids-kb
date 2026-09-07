@@ -32,6 +32,7 @@ describe("LibraryView", () => {
     fetchLibraryDocs.mockResolvedValue({ documents: [doc], pagination: { page: 1, pageSize: 20, total: 1, totalPages: 1 } });
     fetchLibrarySummary.mockResolvedValue({
       total_docs: 3, by_subject: [{ subject: "数学", count: 2 }, { subject: "语文", count: 1 }],
+      by_doc_type: [{ doc_type: "workbook", count: 2 }, { doc_type: "exam", count: 1 }],
       indexed_units: 42, pending_review_pages: 2,
     });
     fetchLibraryDoc.mockResolvedValue({
@@ -70,15 +71,49 @@ describe("LibraryView", () => {
     expect(screen.getByText("全部就绪")).toBeInTheDocument();
   });
 
-  it("doc_type tab 切换携带过滤参数并显示计数", async () => {
+  it("doc_type tab 计数来自 summary.by_doc_type，切换携带过滤参数", async () => {
     const user = userEvent.setup();
     render(<LibraryView />);
     await waitFor(() => expect(screen.getByText("数学练习册")).toBeInTheDocument());
-    expect(screen.getByRole("button", { name: /全部资料 \(1\)/ })).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "试卷" }));
+    // 计数是全量统计（summary），不随当前筛选/分页变化
+    expect(screen.getByRole("button", { name: "全部资料 (3)" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "同步教辅 (2)" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "试卷 (1)" }));
     await waitFor(() => expect(fetchLibraryDocs).toHaveBeenCalledWith(
       expect.objectContaining({ docType: "exam", page: 1 }), expect.anything(),
     ));
+  });
+
+  it("排序下拉走后端 sort 参数", async () => {
+    const user = userEvent.setup();
+    render(<LibraryView />);
+    await waitFor(() => expect(screen.getByText("数学练习册")).toBeInTheDocument());
+    await user.selectOptions(screen.getByLabelText("排序"), "units");
+    await waitFor(() => expect(fetchLibraryDocs).toHaveBeenCalledWith(
+      expect.objectContaining({ sort: "units" }), expect.anything(),
+    ));
+    await user.selectOptions(screen.getByLabelText("排序"), "name");
+    await waitFor(() => expect(fetchLibraryDocs).toHaveBeenCalledWith(
+      expect.objectContaining({ sort: "name" }), expect.anything(),
+    ));
+  });
+
+  it("有 onOpenReview 时「前往复核」跳入复核而非详情", async () => {
+    const user = userEvent.setup();
+    const onOpenReview = vi.fn();
+    render(<LibraryView onOpenReview={onOpenReview} />);
+    await waitFor(() => expect(screen.getByText("数学练习册")).toBeInTheDocument());
+    await user.click(screen.getByRole("button", { name: /前往复核 \(2\)/ }));
+    expect(onOpenReview).toHaveBeenCalledWith("d1");
+    expect(fetchLibraryDoc).not.toHaveBeenCalled();
+  });
+
+  it("无 onOpenReview 时「前往复核」维持打开详情", async () => {
+    const user = userEvent.setup();
+    render(<LibraryView />);
+    await waitFor(() => expect(screen.getByText("数学练习册")).toBeInTheDocument());
+    await user.click(screen.getByRole("button", { name: /前往复核 \(2\)/ }));
+    await waitFor(() => expect(fetchLibraryDoc).toHaveBeenCalledWith("d1", { page: 1, pageSize: 10 }, expect.anything()));
   });
 
   it("待复核指标卡点击后按 needs_review 过滤", async () => {

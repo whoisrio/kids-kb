@@ -6,6 +6,7 @@ import { SessionsSidebar } from "./components/SessionsSidebar";
 import { useChat } from "./hooks/useChat";
 import { ChatView } from "./views/ChatView";
 import { LibraryView } from "./views/LibraryView";
+import { ReviewView } from "./views/ReviewView";
 import { StatsView } from "./views/StatsView";
 import { UsageView } from "./views/UsageView";
 import type { ChatMessage } from "./api/chat";
@@ -13,9 +14,12 @@ import type { ChatMessage } from "./api/chat";
 const VIEW_NAMES = {
   chat: "聊天",
   library: "资料库",
+  review: "复核",
   stats: "统计",
   usage: "用量",
 } as const;
+
+type ViewName = keyof typeof VIEW_NAMES;
 
 function transcript(messages: ChatMessage[]): string {
   return messages
@@ -24,10 +28,12 @@ function transcript(messages: ChatMessage[]): string {
 }
 
 export function App() {
-  const [view, setView] = useState<"chat" | "library" | "stats" | "usage">(() => {
+  const [view, setView] = useState<ViewName>(() => {
     const value = typeof window === "undefined" ? "" : new URLSearchParams(window.location.search).get("view");
-    return value === "library" || value === "stats" || value === "usage" ? value : "chat";
+    return value && value in VIEW_NAMES ? (value as ViewName) : "chat";
   });
+  // 从资料库「前往复核」跳入复核视图时锁定的文档；切走即清空
+  const [reviewDocId, setReviewDocId] = useState<string | null>(null);
   const [children, setChildren] = useState<{ id: string; name: string; grade: string | null }[]>([]);
   const [childId, setChildId] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -82,7 +88,7 @@ export function App() {
     <div className="app">
       <Rail
         activeView={view}
-        onSelect={setView}
+        onSelect={(next) => { if (next !== "review") setReviewDocId(null); setView(next); }}
         kidChip={selectedChild ? `${selectedChild.name} · ${selectedChild.grade ?? ""}` : undefined}
       />
       {view === "chat" && (
@@ -115,6 +121,8 @@ export function App() {
                   <ModelPicker models={chat.models} value={chat.model} onChange={chat.selectModel} />
                   {kidSwitch}
                 </>
+              ) : view === "review" ? (
+                <span className="hint">确认试卷对错与题库匹配</span>
               ) : view === "stats" ? (
                 <>
                   <span className="hint">错题、错因与订正</span>
@@ -142,10 +150,12 @@ export function App() {
               onToast={showToast}
             />
           : view === "library"
-            ? <LibraryView kids={children} />
-            : view === "stats"
-              ? <StatsView childId={childId} onToast={showToast} />
-              : <UsageView />}
+            ? <LibraryView kids={children} onOpenReview={(id) => { setReviewDocId(id); setView("review"); }} />
+            : view === "review"
+              ? <ReviewView initialDocId={reviewDocId ?? undefined} />
+              : view === "stats"
+                ? <StatsView childId={childId} onToast={showToast} />
+                : <UsageView />}
       </main>
       {toast && <div className="toast" role="status">{toast}</div>}
       {confirmDelete && (

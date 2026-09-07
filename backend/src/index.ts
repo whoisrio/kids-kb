@@ -63,7 +63,7 @@ export function createApp(
   app.route("/api/review", reviewRoutes(pool, {
     search, pipelineUrl: cfg.pipelineUrl, storageRoot: cfg.storageRoot,
   }));
-  app.route("/api/library", libraryRoutes(pool, { pipelineUrl: cfg.pipelineUrl }, cfg));
+  app.route("/api/library", libraryRoutes(pool, { pipelineUrl: cfg.pipelineUrl, search }, cfg));
   return app;
 }
 

@@ -270,4 +270,24 @@ describe("ReviewView", () => {
     fireEvent.click(screen.getByRole("button", { name: "重试" }));  // 队列项上的真按钮
     await waitFor(() => expect(retries).toEqual(["p1"]));
   });
+
+  it("initialDocId:默认落到「资料」tab 并预选该文档", async () => {
+    stub({
+      "/api/children": () => jsonResponse(CHILDREN_RES),
+      "/api/papers": () => jsonResponse({ papers: [] }),
+      "/api/review/docs": () => jsonResponse([
+        { id: "d9", title: "口算天天练", subject: "数学", doc_type: "workbook", status: "parsed", struct_mode: null, pending_pages: 1 },
+      ]),
+      "/api/review/pages?status=pending&doc_id=d9": () => jsonResponse({
+        pages: [{ id: "p9", page_no: 1, doc_title: "口算天天练", pending_reasons: ["empty"] }],
+      }),
+    });
+    render(<ReviewView initialDocId="d9" />);
+    // 「资料」tab 为激活态,文档下拉已预选 initialDocId
+    const tabs = await screen.findByRole("button", { name: "资料" });
+    expect(tabs.className).toContain("active");
+    await waitFor(() =>
+      expect(screen.getByRole("combobox", { name: "选择文档" })).toHaveValue("d9"));
+    expect(await screen.findByText(/第 1 页/)).toBeInTheDocument();
+  });
 });

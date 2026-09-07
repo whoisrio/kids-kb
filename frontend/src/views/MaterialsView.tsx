@@ -13,10 +13,10 @@ const BLOCKS: [Block, string][] = [
   ["pending", "待复核页"], ["approved", "已通过页"], ["chapters", "章节"], ["items", "条目"], ["search", "试搜"],
 ];
 
-/** 资料 tab：文档下拉（待复核徽标）+ 四块（对应旧静态页）。 */
-export function MaterialsView({ fetchImpl = fetch }: { fetchImpl?: typeof fetch }) {
+/** 资料 tab：文档下拉（待复核徽标）+ 四块（对应旧静态页）。initialDocId 用于外部跳入时预选文档。 */
+export function MaterialsView({ fetchImpl = fetch, initialDocId }: { fetchImpl?: typeof fetch; initialDocId?: string }) {
   const [docs, setDocs] = useState<ReviewDoc[]>([]);
-  const [docId, setDocId] = useState("");
+  const [docId, setDocId] = useState(initialDocId ?? "");
   const [block, setBlock] = useState<Block>("pending");
   const [pages, setPages] = useState<ReviewPageSummary[]>([]);
   const [chapters, setChapters] = useState<ReviewChapter[]>([]);

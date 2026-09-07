@@ -1,8 +1,8 @@
 import { Icon } from "./Icon";
 
 interface RailProps {
-  activeView: "chat" | "library" | "stats" | "usage";
-  onSelect: (view: "chat" | "library" | "stats" | "usage") => void;
+  activeView: "chat" | "library" | "review" | "stats" | "usage";
+  onSelect: (view: "chat" | "library" | "review" | "stats" | "usage") => void;
   kidChip?: string;
 }
 
@@ -35,6 +35,7 @@ export function Rail({ activeView, onSelect, kidChip }: RailProps) {
         <div className="sep">学习工作区</div>
         {nav(activeView, onSelect, "chat", "聊天", "forum")}
         {nav(activeView, onSelect, "library", "资料库", "menu_book")}
+        {nav(activeView, onSelect, "review", "复核", "fact_check")}
         {nav(activeView, onSelect, "stats", "统计", "analytics")}
         <div className="sep">系统</div>
         {nav(activeView, onSelect, "usage", "用量", "monitoring")}

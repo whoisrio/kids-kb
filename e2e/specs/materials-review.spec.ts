@@ -32,7 +32,7 @@ let itemId = "";
 
 test.beforeAll(async () => {
   const { rows: [doc] } = await pool.query(
-    `INSERT INTO documents (title, subject, doc_type, source_path, status)
+    `INSERT INTO documents (title, subject, doc_type, source_path, parse_status)
      VALUES ($1,'数学','workbook',$2,'parsed') RETURNING id::text`,
     [TITLE, `/tmp/e2e-${RUN}-a.pdf`]);
   docId = doc.id;
@@ -41,7 +41,7 @@ test.beforeAll(async () => {
   for (const [no, content] of [[1, `${KEYWORD} 24+37=`], [2, "第二页内容"]] as [number, string][]) {
     writeFileSync(path.join(pagesDir, `p${String(no).padStart(4, "0")}.png`), PNG_1PX);
     const { rows: [page] } = await pool.query(
-      `INSERT INTO pages (document_id, page_no, image_path, status)
+      `INSERT INTO pages (document_id, page_no, image_path, parse_status)
        VALUES ($1,$2,$3,'parsed') RETURNING id::text`,
       [docId, no, `storage/${docId}/pages/p${String(no).padStart(4, "0")}.png`]);
     if (no === 1) {
@@ -64,7 +64,7 @@ test.beforeAll(async () => {
   await pool.query("INSERT INTO item_blocks (item_id, block_id, role) VALUES ($1,$2,'stem')", [itemId, blockId]);
 
   const { rows: [flatDoc] } = await pool.query(
-    `INSERT INTO documents (title, subject, doc_type, source_path, status, struct_mode)
+    `INSERT INTO documents (title, subject, doc_type, source_path, parse_status, struct_mode)
      VALUES ($1,'数学','exam',$2,'parsed','flat') RETURNING id::text`,
     [FLAT_TITLE, `/tmp/e2e-${RUN}-b.pdf`]);
   flatDocId = flatDoc.id;
@@ -72,7 +72,7 @@ test.beforeAll(async () => {
   mkdirSync(fDir, { recursive: true });
   writeFileSync(path.join(fDir, "p0001.png"), PNG_1PX);
   const { rows: [fp] } = await pool.query(
-    `INSERT INTO pages (document_id, page_no, image_path, status, adopted_source, page_md)
+    `INSERT INTO pages (document_id, page_no, image_path, parse_status, adopted_source, page_md)
      VALUES ($1,1,$2,'parsed','page_md',$3) RETURNING id::text`,
     [flatDocId, `storage/${flatDocId}/pages/p0001.png`, `${KEYWORD} 退位减法专项卷`]);
   await pool.query(
@@ -82,7 +82,7 @@ test.beforeAll(async () => {
 
 test("t1 页复核：页卡/页图 bbox/块编辑/整页通过（flat 页级向量化）", async ({ page }) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "资料库" }).click();
+  await page.getByRole("button", { name: "复核", exact: true }).click();
   await page.getByRole("button", { name: "资料", exact: true }).click();
   const docSelect = page.getByRole("combobox", { name: "选择文档" });
   await expect(docSelect).toContainText(TITLE);
@@ -118,7 +118,7 @@ test("t1 页复核：页卡/页图 bbox/块编辑/整页通过（flat 页级向�
 
 test("t2 条目 approve 即时可检索 + 试搜", async ({ page }) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "资料库" }).click();
+  await page.getByRole("button", { name: "复核", exact: true }).click();
   await page.getByRole("button", { name: "资料", exact: true }).click();
   await page.getByRole("combobox", { name: "选择文档" }).selectOption(docId);
   await page.getByRole("button", { name: "条目" }).click();

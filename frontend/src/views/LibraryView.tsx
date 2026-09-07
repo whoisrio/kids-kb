@@ -34,8 +34,9 @@ function subjectMeta(subject: string | null): { cls: string; icon: string } {
   return { cls: "subj-other", icon: "menu_book" };
 }
 
-function ShelfCard({ doc, onOpen, onDelete }: {
-  doc: LibraryDoc; onOpen: (doc: LibraryDoc) => void; onDelete: (doc: LibraryDoc) => void;
+function ShelfCard({ doc, onOpen, onReview, onDelete }: {
+  doc: LibraryDoc; onOpen: (doc: LibraryDoc) => void;
+  onReview?: (doc: LibraryDoc) => void; onDelete: (doc: LibraryDoc) => void;
 }) {
   const [coverFailed, setCoverFailed] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -81,7 +82,7 @@ function ShelfCard({ doc, onOpen, onDelete }: {
           <Icon name="list_alt" />查看清单
         </button>
         {pending > 0 && (
-          <button className="btn-accent grow" onClick={() => onOpen(doc)}>
+          <button className="btn-accent grow" onClick={() => (onReview ?? onOpen)(doc)}>
             <Icon name="fact_check" />前往复核 ({pending})
           </button>
         )}
@@ -103,9 +104,10 @@ function ShelfCard({ doc, onOpen, onDelete }: {
   );
 }
 
-export function LibraryView({ fetchImpl = fetch, onOpenDoc, kids = [] }: {
+export function LibraryView({ fetchImpl = fetch, onOpenDoc, onOpenReview, kids = [] }: {
   fetchImpl?: typeof fetch;
   onOpenDoc?: (doc: LibraryDoc) => void;
+  onOpenReview?: (docId: string) => void;
   kids?: { id: string; name: string }[];
 }) {
   const initialQuery = typeof window === "undefined" ? "" : window.location.search.replace(/^\?/, "");
@@ -120,7 +122,7 @@ export function LibraryView({ fetchImpl = fetch, onOpenDoc, kids = [] }: {
     page: Number(queryValue(initialQuery, "page")) || 1,
   });
   const [searchDraft, setSearchDraft] = useState(filters.q);
-  const [sort, setSort] = useState<"updated" | "name">("updated");
+  const [sort, setSort] = useState<"updated" | "name" | "units">("updated");
   const [viewMode, setViewMode] = useState<"cards" | "table">("cards");
   const [docs, setDocs] = useState<LibraryDoc[]>([]);
   const [pagination, setPagination] = useState<Pagination>({ page: 1, pageSize: 20, total: 0, totalPages: 0 });
@@ -143,13 +145,13 @@ export function LibraryView({ fetchImpl = fetch, onOpenDoc, kids = [] }: {
         page: filters.page, pageSize: 20, q: filters.q,
         subject: filters.subject, fileType: filters.fileType, docType: filters.docType,
         autoReview: filters.autoReview, reviewStatus: filters.reviewStatus,
-        indexStatus: filters.indexStatus,
+        indexStatus: filters.indexStatus, sort,
       }, fetchImpl);
       setDocs(data.documents);
       setPagination(data.pagination);
       setError("");
     } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
-  }, [filters, fetchImpl]);
+  }, [filters, sort, fetchImpl]);
   useEffect(() => { void reload(); }, [reload]);
 
   // 后端未提供 summary（旧版本）时指标卡降级为「—」，不阻塞列表
@@ -173,10 +175,12 @@ export function LibraryView({ fetchImpl = fetch, onOpenDoc, kids = [] }: {
     [docs],
   );
 
-  const sortedDocs = useMemo(
-    () => sort === "name" ? [...docs].sort((a, b) => a.title.localeCompare(b.title, "zh")) : docs,
-    [docs, sort],
-  );
+  // 类型 tab 计数来自 summary.by_doc_type（全量统计，不随筛选/分页变化）
+  const docTypeCount = (value: string): number | null => {
+    if (!summary?.by_doc_type) return null;
+    if (!value) return summary.total_docs;
+    return summary.by_doc_type.find((entry) => entry.doc_type === value)?.count ?? 0;
+  };
 
   if (openDocId) {
     return <LibraryDetail docId={openDocId} fetchImpl={fetchImpl} onError={setError}
@@ -262,12 +266,15 @@ export function LibraryView({ fetchImpl = fetch, onOpenDoc, kids = [] }: {
 
       <div className="lib-filterbar">
         <div className="lib-tabs" role="group" aria-label="资料类型">
-          {DOC_TYPE_TABS.map(([value, label]) => (
-            <button key={value} className={filters.docType === value ? "active" : ""}
-                    onClick={() => update({ docType: value })}>
-              {label}{filters.docType === value ? ` (${pagination.total})` : ""}
-            </button>
-          ))}
+          {DOC_TYPE_TABS.map(([value, label]) => {
+            const count = docTypeCount(value);
+            return (
+              <button key={value} className={filters.docType === value ? "active" : ""}
+                      onClick={() => update({ docType: value })}>
+                {label}{count !== null ? ` (${count})` : ""}
+              </button>
+            );
+          })}
         </div>
         <div className="lib-filter-right">
           <select aria-label="科目" value={filters.subject} onChange={(e) => update({ subject: e.target.value })}>
@@ -275,9 +282,10 @@ export function LibraryView({ fetchImpl = fetch, onOpenDoc, kids = [] }: {
             {subjects.map((subject) => <option key={subject} value={subject}>{subject}</option>)}
           </select>
           <select aria-label="排序" value={sort}
-                  onChange={(e) => setSort(e.target.value as "updated" | "name")}>
+                  onChange={(e) => setSort(e.target.value as "updated" | "name" | "units")}>
             <option value="updated">最新更新</option>
             <option value="name">资料名称</option>
+            <option value="units">单元最多</option>
           </select>
           <div className="seg" role="group" aria-label="呈现方式">
             <button className={viewMode === "cards" ? "active" : ""} onClick={() => setViewMode("cards")}>
@@ -326,7 +334,7 @@ export function LibraryView({ fetchImpl = fetch, onOpenDoc, kids = [] }: {
               <tr><th>资料</th><th>类型</th><th>自动审核</th><th>人工复核</th><th>索引</th><th>操作</th></tr>
             </thead>
             <tbody>
-              {sortedDocs.map((doc) => (
+              {docs.map((doc) => (
                 <tr key={doc.id}>
                   <td>
                     <button className="doc-title" onClick={() => openDoc(doc)}>
@@ -362,8 +370,9 @@ export function LibraryView({ fetchImpl = fetch, onOpenDoc, kids = [] }: {
         </div>
       ) : (
         <div className="shelf-grid">
-          {sortedDocs.map((doc) => (
-            <ShelfCard key={doc.id} doc={doc} onOpen={openDoc} onDelete={setConfirmDelete} />
+          {docs.map((doc) => (
+            <ShelfCard key={doc.id} doc={doc} onOpen={openDoc} onDelete={setConfirmDelete}
+                       onReview={onOpenReview ? (d) => onOpenReview(d.id) : undefined} />
           ))}
         </div>
       )}

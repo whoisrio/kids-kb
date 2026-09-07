@@ -92,7 +92,7 @@ export function reviewRoutes(pool: pg.Pool, deps: ReviewDeps): Hono {
       const itemsByBlock = new Map<string, { id: string; label: string | null; content_type: string; role: string; content_md: string | null; qc_status: string }[]>();
       for (const m of itemMappings) {
         if (!itemsByBlock.has(m.block_id)) itemsByBlock.set(m.block_id, []);
-        itemsByBlock.get(m.block_id)!.push({ id: m.id, label: m.label, content_type: m.content_type, role: m.role });
+        itemsByBlock.get(m.block_id)!.push({ id: m.id, label: m.label, content_type: m.content_type, role: m.role, content_md: m.content_md, qc_status: m.qc_status });
       }
       const { rows: pendingRows } = await pool.query(
         `SELECT r.id::text, r.reason, r.block_id::text

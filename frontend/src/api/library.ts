@@ -19,6 +19,7 @@ export interface LibraryDoc extends LibraryCounts {
 export interface LibrarySummary {
   total_docs: number;
   by_subject: { subject: string | null; count: number }[];
+  by_doc_type: { doc_type: string | null; count: number }[];
   indexed_units: number;
   pending_review_pages: number;
 }
@@ -54,6 +55,7 @@ export interface LibraryChunk {
 export interface LibraryListFilters extends Partial<Pick<Pagination, "page" | "pageSize">> {
   q?: string; subject?: string; fileType?: string; docType?: string;
   autoReview?: string; reviewStatus?: string; indexStatus?: string;
+  sort?: "updated" | "name" | "units";
 }
 
 type FetchLike = typeof fetch;
@@ -80,7 +82,7 @@ export async function fetchLibraryDocs(
     page: filters.page, pageSize: filters.pageSize, q: filters.q,
     subject: filters.subject, file_type: filters.fileType, doc_type: filters.docType,
     auto_review: filters.autoReview, review_status: filters.reviewStatus,
-    index_status: filters.indexStatus,
+    index_status: filters.indexStatus, sort: filters.sort,
   })}`, fetchImpl);
 }
 

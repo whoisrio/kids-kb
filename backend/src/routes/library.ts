@@ -2,12 +2,11 @@
 import { Hono } from "hono";
 import type pg from "pg";
 import type { BackendConfig } from "../config.js";
+import type { SearchHit } from "../retrieval/search.js";
 
 export interface LibraryDeps {
   pipelineUrl: string;
-  search: (q: string, filters?: Record<string, string>) => Promise<{
-    doc_id: string; doc_title: string; content_md: string; page_no?: number; chapter_no?: number;
-  }[]>;
+  search: (q: string, filters?: Record<string, string>) => Promise<SearchHit[]>;
 }
 
 const DOCUMENT_STATS_SQL = `
@@ -81,6 +80,13 @@ const DOCUMENT_STATS_SQL = `
 
 type Pagination = { page: number; pageSize: number; offset: number };
 
+/** 排序白名单：ORDER BY 只允许从这里取片段拼接，禁止用户输入直接进 SQL。 */
+const SORT_SQL: Record<string, string> = {
+  updated: "created_at DESC",
+  name: "title ASC",
+  units: "total_units DESC",
+};
+
 function pagination(query: Record<string, string>): Pagination {
   const page = Number(query.page ?? 1);
   const pageSize = Number(query.pageSize ?? 20);
@@ -121,6 +127,8 @@ export function libraryRoutes(pool: pg.Pool, deps: LibraryDeps, cfg: BackendConf
       const autoReview = c.req.query("auto_review");
       const reviewStatus = c.req.query("review_status");
       const indexStatus = c.req.query("index_status");
+      const sort = c.req.query("sort") ?? "updated";
+      if (!SORT_SQL[sort]) return c.json({ error: "sort 非法" }, 422);
       if (fileType) {
         if (!["pdf", "docx", "md"].includes(fileType)) return c.json({ error: "file_type 非法" }, 422);
       }
@@ -176,7 +184,7 @@ export function libraryRoutes(pool: pg.Pool, deps: LibraryDeps, cfg: BackendConf
              ($7::text = 'not_indexed' AND index_not_indexed > 0) OR
              ($7::text = 'excluded' AND index_excluded > 0)
            )
-         ORDER BY created_at DESC
+         ORDER BY ${SORT_SQL[sort]}
          LIMIT $8::int OFFSET $9::int`,
         params,
       );
@@ -213,9 +221,13 @@ export function libraryRoutes(pool: pg.Pool, deps: LibraryDeps, cfg: BackendConf
     const { rows: bySubject } = await pool.query(
       `SELECT subject, count(*)::int AS count
        FROM documents GROUP BY subject ORDER BY count DESC, subject`);
+    const { rows: byDocType } = await pool.query(
+      `SELECT doc_type, count(*)::int AS count
+       FROM documents GROUP BY doc_type ORDER BY count DESC, doc_type`);
     return c.json({
       total_docs: Number(totals.total_docs),
       by_subject: bySubject.map((r) => ({ subject: r.subject, count: Number(r.count) })),
+      by_doc_type: byDocType.map((r) => ({ doc_type: r.doc_type, count: Number(r.count) })),
       indexed_units: Number(totals.indexed_units),
       pending_review_pages: Number(totals.pending_review_pages),
     });

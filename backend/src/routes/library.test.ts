@@ -79,6 +79,12 @@ describe("GET /api/library/summary", () => {
             { subject: null, count: 1 },
           ] };
         }
+        if (sql.includes("GROUP BY doc_type")) {
+          return { rows: [
+            { doc_type: "workbook", count: 3 },
+            { doc_type: "exam", count: 1 },
+          ] };
+        }
         if (sql.includes("total_docs")) {
           return { rows: [{ total_docs: 4, indexed_units: 25, pending_review_pages: 6 }] };
         }
@@ -92,9 +98,46 @@ describe("GET /api/library/summary", () => {
     expect(await res.json()).toEqual({
       total_docs: 4,
       by_subject: [{ subject: "数学", count: 3 }, { subject: null, count: 1 }],
+      by_doc_type: [{ doc_type: "workbook", count: 3 }, { doc_type: "exam", count: 1 }],
       indexed_units: 25,
       pending_review_pages: 6,
     });
+  });
+});
+
+describe("GET /api/library sort", () => {
+  function recordingApp() {
+    const calls: { sql: string; params?: unknown[] }[] = [];
+    const pool2 = {
+      query: async (sql: string, params?: unknown[]) => {
+        calls.push({ sql, params });
+        return { rows: [] };
+      },
+    } as never;
+    const instance = new Hono().route("/api/library", libraryRoutes(pool2, {
+      pipelineUrl: "http://mock:8766", search: async () => [],
+    } as never, { storageRoot: "/tmp" } as never));
+    return { instance, calls };
+  }
+
+  it("默认按 created_at DESC，name/units 走白名单 ORDER BY", async () => {
+    const { instance, calls } = recordingApp();
+    expect((await instance.request("/api/library")).status).toBe(200);
+    expect(calls[0]?.sql).toContain("ORDER BY created_at DESC");
+    calls.length = 0;
+    await instance.request("/api/library?sort=name");
+    expect(calls[0]?.sql).toContain("ORDER BY title ASC");
+    calls.length = 0;
+    await instance.request("/api/library?sort=units");
+    expect(calls[0]?.sql).toContain("ORDER BY total_units DESC");
+  });
+
+  it("非法 sort 值 422，且不进 SQL", async () => {
+    const { instance, calls } = recordingApp();
+    const res = await instance.request("/api/library?sort=title;DROP TABLE documents");
+    expect(res.status).toBe(422);
+    expect((await res.json()).error).toBe("sort 非法");
+    expect(calls).toHaveLength(0);
   });
 });
 

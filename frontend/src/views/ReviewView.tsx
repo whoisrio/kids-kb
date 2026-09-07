@@ -12,9 +12,10 @@ import { MaterialsView } from "./MaterialsView";
 
 const CAUSES = ["粗心", "概念不清", "方法不会", "计算错"];
 
-/** 复核视图:左列试卷队列 + 右侧当前题确认流(键盘 1/2/3 + Enter)。 */
-export function ReviewView() {
-  const [tab, setTab] = useState<"papers" | "materials">("papers");
+/** 复核视图:左列试卷队列 + 右侧当前题确认流(键盘 1/2/3 + Enter)。
+    initialDocId 传入时默认落到「资料」tab 并预选该文档。 */
+export function ReviewView({ initialDocId }: { initialDocId?: string }) {
+  const [tab, setTab] = useState<"papers" | "materials">(initialDocId ? "materials" : "papers");
   const [papers, setPapers] = useState<PaperSummary[]>([]);
   const [kids, setKids] = useState<{ id: string; name: string }[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -129,7 +130,7 @@ export function ReviewView() {
           <button onClick={() => setTab("papers")}>试卷</button>
           <button className="active">资料</button>
         </div>
-        <MaterialsView />
+        <MaterialsView initialDocId={initialDocId} />
       </div>
     );
   }
@@ -152,6 +153,7 @@ export function ReviewView() {
           }).catch((err) => console.error("重试失败", err));
         }}
       />
+      <div className="review-main">
       <div className="child-filter">
         <select aria-label="孩子" value={childFilter}
                 onChange={(e) => setChildFilter(e.target.value)}>
@@ -235,6 +237,7 @@ export function ReviewView() {
             )}
           </>
         )}
+      </div>
       </div>
       {uploadOpen && (
         <UploadDialog

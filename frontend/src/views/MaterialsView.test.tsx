@@ -23,6 +23,17 @@ function stub(over: Record<string, (init?: RequestInit) => Response> = {}) {
 }
 
 describe("MaterialsView", () => {
+  it("initialDocId 预选文档并直接拉该文档待复核页", async () => {
+    render(<MaterialsView initialDocId="d1" fetchImpl={stub({
+      "/api/review/pages?status=pending&doc_id=d1": () => jsonResponse({
+        pages: [{ id: "p2", page_no: 5, doc_title: "口算天天练", pending_reasons: ["empty"] }],
+      }),
+    })} />);
+    await waitFor(() =>
+      expect(screen.getByRole("combobox", { name: "选择文档" })).toHaveValue("d1"));
+    expect(await screen.findByText(/第 5 页/)).toBeInTheDocument();
+  });
+
   it("挂载加载文档下拉（含待复核徽标），默认待复核页块列出页卡", async () => {
     render(<MaterialsView fetchImpl={stub()} />);
     const select = await screen.findByRole("combobox", { name: "选择文档" });
