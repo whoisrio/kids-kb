@@ -166,7 +166,15 @@ def create_internal_app(reranker_factory=None, get_conn=None, cfg=None,
                 cur.execute("SELECT 1 FROM pages WHERE id=%s", (body.page_id,))
                 if not cur.fetchone():
                     raise HTTPException(status_code=404, detail="page 不存在")
-            md = transcribe_page(conn, cfg, body.page_id, client=vlm_client)
+            from kb.traj import Recorder
+            with conn.cursor() as cur:
+                cur.execute("SELECT document_id FROM pages WHERE id=%s", (body.page_id,))
+                doc_id = str(cur.fetchone()[0])
+            rec = Recorder(conn, cfg, doc_id)
+            rec.start("page_vlm", "手动整页 VLM 重跑", page_id=body.page_id)
+            md = transcribe_page(conn, cfg, body.page_id, client=vlm_client,
+                                 recorder=rec)
+            rec.end("page_vlm", "手动整页 VLM 完成", page_id=body.page_id)
             return {"page_id": body.page_id, "page_md_len": len(md)}
         except HTTPException:
             raise

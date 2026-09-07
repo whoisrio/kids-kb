@@ -27,7 +27,7 @@ def embed_texts(cfg: Config, texts: list[str], client=None) -> list[list[float]]
 
 
 def embed_approved_items(conn, cfg: Config, doc_id: str | None = None,
-                         client=None) -> int:
+                         client=None, recorder=None) -> int:
     """approved 且无 chunk 的条目向量化。返回新增 chunk 数（幂等）。"""
     where, params = ("AND i.document_id=%s", [doc_id]) if doc_id else ("", [])
     with conn.cursor() as cur:
@@ -57,6 +57,8 @@ def embed_approved_items(conn, cfg: Config, doc_id: str | None = None,
                    VALUES (%s,%s,%s,%s,%s) ON CONFLICT (item_id) DO NOTHING""",
                 (str(r[0]), str(r[1]), r[2], Jsonb(meta), vec),
             )
+    if recorder is not None:
+        recorder.decision("embed", f"条目向量化新增 {len(rows)} 条 chunk")
     return len(rows)
 
 
@@ -81,7 +83,7 @@ def segment_chapter(content_md: str, max_chars: int = 1600) -> list[str]:
 
 
 def embed_chapters(conn, cfg: Config, doc_id: str | None = None,
-                   client=None) -> int:
+                   client=None, recorder=None) -> int:
     """有 content_md 且无 chunk 的章节 -> 分段向量化(未拆条也可见的检索底座)。幂等。"""
     where, params = ("AND ch.document_id=%s", [doc_id]) if doc_id else ("", [])
     with conn.cursor() as cur:
@@ -116,6 +118,8 @@ def embed_chapters(conn, cfg: Config, doc_id: str | None = None,
                    ON CONFLICT (chapter_id, seg_no) WHERE chapter_id IS NOT NULL DO NOTHING""",
                 (str(r[0]), str(r[1]), i, f"{label}\n\n{seg}", Jsonb(meta), vec),
             )
+    if recorder is not None:
+        recorder.decision("embed", f"章节向量化新增 {len(payloads)} 条 chunk")
     return len(payloads)
 
 
@@ -123,6 +127,11 @@ def approve_items(conn, cfg: Config, doc_id: str, chapter_no: int | None = None,
                   client=None) -> dict:
     """批量通过一个文档(可限章)的条目:非 approved/rejected 一律 approved,
     关闭其 pending 复核行,并立即向量化(条目 + 章节)。88 页练习册不该逐条点 approve。"""
+    from kb.traj import Recorder
+
+    rec = Recorder(conn, cfg, doc_id)
+    rec.start("approve", f"批量通过（chapter_no={chapter_no}）",
+              payload={"chapter_no": chapter_no})
     label = None
     if chapter_no is not None:
         with conn.cursor() as cur:
@@ -150,8 +159,10 @@ def approve_items(conn, cfg: Config, doc_id: str, chapter_no: int | None = None,
                 "UPDATE review_queue SET status='approved' WHERE item_id = ANY(%s) AND status='pending'",
                 (ids,),
             )
-    n = embed_approved_items(conn, cfg, doc_id, client=client)
-    n += embed_chapters(conn, cfg, doc_id, client=client)
+    rec.decision("approve", f"通过 {len(ids)} 条", payload={"approved": len(ids)})
+    n = embed_approved_items(conn, cfg, doc_id, client=client, recorder=rec)
+    n += embed_chapters(conn, cfg, doc_id, client=client, recorder=rec)
+    rec.end("approve", f"通过 {len(ids)} 条，新增向量 {n} 条")
     return {"approved": len(ids), "embedded": n}
 
 

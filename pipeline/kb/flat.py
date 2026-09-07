@@ -158,6 +158,10 @@ def embed_flat_pages(conn, cfg: Config, doc_id: str, page_no: int | None = None,
 def approve_flat_pages(conn, cfg: Config, doc_id: str, client=None) -> dict:
     """flat 文档批量通过：关闭该文档全部 pending 复核行 + 全页向量化（重建式幂等）。
     返回 {pages: 有内容的页数, chunks: 新增 chunk 数, resolved: 关闭的复核行数}。"""
+    from kb.traj import Recorder
+
+    rec = Recorder(conn, cfg, doc_id)
+    rec.start("approve", "flat 整卷通过")
     with conn.transaction():
         with conn.cursor() as cur:
             cur.execute("SELECT struct_mode FROM documents WHERE id=%s", (doc_id,))
@@ -186,6 +190,9 @@ def approve_flat_pages(conn, cfg: Config, doc_id: str, client=None) -> dict:
                 (doc_id,))
     with conn.cursor() as cur:
         n_pages = len(page_contents(cur, doc_id))
+    rec.decision("approve", f"关闭 {resolved} 条复核行")
+    rec.decision("embed", f"页级向量化新增 {chunks} 条 chunk")
+    rec.end("approve", f"通过 {n_pages} 页，新增向量 {chunks} 条")
     return {"pages": n_pages, "chunks": chunks, "resolved": resolved}
 
 
