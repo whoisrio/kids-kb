@@ -8,6 +8,7 @@ import {
   fetchReviewPage, pageVlm, rejectReviewPage, updateReviewBlock,
   updateReviewPage, type ReviewPageDetail,
 } from "../api/review";
+import { PageTrajectory } from "./TrajectoryPanel";
 
 /** 页详情：页图 + bbox 覆层（按图片自然尺寸百分比定位）+ 块面板（编辑/待复核高亮）
     + 整页通过/打回/远端整页解析/采用版本。 */
@@ -29,6 +30,7 @@ export function PageDetail({ pageId, fetchImpl = fetch, onExit, onError }: {
   const [pageDraft, setPageDraft] = useState("");
   const [chunkPreview, setChunkPreview] = useState<{ seq: number; content_preview: string; source_block_ids: string[] }[] | null>(null);
   const [annotationDrafts, setAnnotationDrafts] = useState<Record<string, string>>({});
+  const [showTrajectory, setShowTrajectory] = useState(false);
 
   const reload = async () => {
     try { setData(await fetchReviewPage(pageId, fetchImpl)); }
@@ -81,7 +83,10 @@ export function PageDetail({ pageId, fetchImpl = fetch, onExit, onError }: {
         <button className={rightView === "blocks" ? "btn-primary" : "btn-ghost"} onClick={() => setRightView("blocks")}>块视图</button>
         <button className={rightView === "items" ? "btn-primary" : "btn-ghost"} onClick={() => setRightView("items")}>条目视图</button>
         <button className="btn-ghost" onClick={() => void previewIndex()}>预览切分</button>
+        <button className={showTrajectory ? "btn-primary" : "btn-ghost"}
+                onClick={() => setShowTrajectory(!showTrajectory)}>本页日志</button>
       </div>
+      {showTrajectory && <PageTrajectory pageId={pageId} fetchImpl={fetchImpl} />}
       {rejecting && (
         <div className="pd-reject">
           <input aria-label="打回原因" placeholder="打回原因，如「缺题/版面歪斜」"
