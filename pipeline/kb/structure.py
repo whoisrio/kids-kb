@@ -55,7 +55,8 @@ def _chapter_blocks(cur, doc_id: str, page_start: int, page_end: int) -> list[tu
     return rows
 
 
-def structure_chapter(conn, cfg: Config, doc_id: str, chapter_no: int, client=None) -> int:
+def structure_chapter(conn, cfg: Config, doc_id: str, chapter_no: int, client=None,
+                      recorder=None) -> int:
     """拆分一章。返回新增 item 数。"""
     base_url, api_key, model = cfg.doc_ognize_endpoint()
     client = client or OpenAI(base_url=base_url, api_key=api_key)
@@ -106,7 +107,9 @@ def structure_chapter(conn, cfg: Config, doc_id: str, chapter_no: int, client=No
                 if attempt == 2:
                     raise
                 time.sleep(3)
-        record_llm_call(conn, doc_id, "structure", model, extract_usage(resp))
+        record_llm_call(conn, doc_id, "structure", model, extract_usage(resp),
+                        recorder=recorder, stage="structure",
+                        prompt=prompt, output=resp.choices[0].message.content)
         entries = _parse_json_array(resp.choices[0].message.content)
         n = 0
         for entry in entries:
@@ -170,9 +173,14 @@ def run_structure(conn, cfg: Config, doc_id: str, toc_pages: list[int] | None = 
     from kb.grounding import run_grounding
     from kb.qc import check_label_continuity
     from kb.toc import calibrate_pages, extract_toc
+    from kb.traj import Recorder
 
+    rec = Recorder(conn, cfg, doc_id)
+    rec.start("structure", "结构化拆条开始",
+              payload={"flat": flat, "toc_pages": toc_pages})
     with conn.cursor() as cur:
         mode = resolve_mode(cur, doc_id, flat=flat, toc_pages=toc_pages)
+    rec.decision("structure", f"模式判定: {mode}", payload={"mode": mode})
     if mode == "flat":
         if not flat:
             print("未找到目录页，回退整卷按页模式（--toc-pages 可显式指定目录页）")
@@ -180,6 +188,7 @@ def run_structure(conn, cfg: Config, doc_id: str, toc_pages: list[int] | None = 
         print(f"整卷按页模式: 合成 1 章（不拆条,页级通过后按页向量化）; "
               f"落盘 {export_page_mds(conn, cfg, doc_id)} 页 md, "
               f"{export_chapter_mds(conn, cfg, doc_id)} 章 md")
+        rec.end("structure", "整卷按页模式完成")
         return {"mode": "flat", "chapters": 1, "items": 0}
 
     with conn.transaction(), conn.cursor() as cur:
@@ -204,9 +213,11 @@ def run_structure(conn, cfg: Config, doc_id: str, toc_pages: list[int] | None = 
                     (doc_id,),
                 )
 
-    n_toc = extract_toc(conn, cfg, doc_id, client=client, toc_pages=toc_pages)
+    n_toc = extract_toc(conn, cfg, doc_id, client=client, toc_pages=toc_pages,
+                        recorder=rec)
     n_cal = calibrate_pages(conn, doc_id)
     print(f"目录: {n_toc} 章入库, {n_cal} 章完成页码校准")
+    rec.decision("structure", f"目录: {n_toc} 章入库, {n_cal} 章完成页码校准")
     with conn.cursor() as cur:
         cur.execute(
             "SELECT chapter_no FROM chapters WHERE document_id=%s ORDER BY chapter_no",
@@ -216,14 +227,18 @@ def run_structure(conn, cfg: Config, doc_id: str, toc_pages: list[int] | None = 
     total = 0
     for no in chapters:
         try:
-            total += structure_chapter(conn, cfg, doc_id, no, client=client)
+            total += structure_chapter(conn, cfg, doc_id, no, client=client,
+                                       recorder=rec)
         except SystemExit as e:
+            rec.error("structure", f"第 {no} 章跳过: {e}")
             print(f"第 {no} 章跳过: {e}")
     print(f"条目: {total} 条入库; 配对 {pair_items(conn, doc_id)} 处; "
           f"题号质检新增 {check_label_continuity(conn, doc_id)} 条; "
           f"接地检查新增 {run_grounding(conn, doc_id)} 条")
+    rec.decision("structure", f"条目: {total} 条入库")
     with conn.cursor() as cur:
         cur.execute("UPDATE documents SET struct_mode='toc' WHERE id=%s", (doc_id,))
     print(f"落盘: {export_page_mds(conn, cfg, doc_id)} 页 md, "
           f"{export_chapter_mds(conn, cfg, doc_id)} 章 md")
+    rec.end("structure", f"拆条完成，{len(chapters)} 章 {total} 条")
     return {"mode": "toc", "chapters": len(chapters), "items": total}

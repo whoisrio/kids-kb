@@ -88,7 +88,7 @@ def detect_toc_pages(cur, doc_id: str) -> list[int]:
 
 
 def extract_toc(conn, cfg: Config, doc_id: str, client=None,
-                toc_pages: list[int] | None = None) -> int:
+                toc_pages: list[int] | None = None, recorder=None) -> int:
     """解析目录页写入 chapters。返回新增章节数。"""
     base_url, api_key, model = cfg.doc_ognize_endpoint()
     client = client or OpenAI(base_url=base_url, api_key=api_key)
@@ -109,7 +109,9 @@ def extract_toc(conn, cfg: Config, doc_id: str, client=None,
             if not row:
                 continue
             text, usage = transcribe_image(client, model, row[0], prompt=TOC_PROMPT)
-            record_llm_call(conn, doc_id, "toc", model, usage)
+            record_llm_call(conn, doc_id, "toc", model, usage,
+                            recorder=recorder, stage="structure",
+                            prompt=TOC_PROMPT, output=text)
             for entry in normalize_toc_entries(_parse_json_array(text)):
                 cur.execute(
                     """INSERT INTO chapters (id, document_id, chapter_no, title,
