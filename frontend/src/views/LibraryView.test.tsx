@@ -2,16 +2,17 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { fetchLibraryDocs, fetchLibraryDoc, fetchLibrarySummary, deleteLibraryDoc } = vi.hoisted(() => ({
+const { fetchLibraryDocs, fetchLibraryDoc, fetchLibrarySummary, deleteLibraryDoc, approveLibraryDoc } = vi.hoisted(() => ({
   fetchLibraryDocs: vi.fn(),
   fetchLibraryDoc: vi.fn(),
   fetchLibrarySummary: vi.fn(),
   deleteLibraryDoc: vi.fn(),
+  approveLibraryDoc: vi.fn(),
 }));
 
 vi.mock("../api/library", async () => {
   const actual = await vi.importActual("../api/library") as Record<string, unknown>;
-  return { ...actual, fetchLibraryDocs, fetchLibraryDoc, fetchLibrarySummary, deleteLibraryDoc };
+  return { ...actual, fetchLibraryDocs, fetchLibraryDoc, fetchLibrarySummary, deleteLibraryDoc, approveLibraryDoc };
 });
 
 import { LibraryView } from "./LibraryView";
@@ -183,5 +184,17 @@ describe("LibraryView", () => {
     expect(screen.getByRole("dialog", { name: "删除资料" })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "删除" }));
     await waitFor(() => expect(deleteLibraryDoc).toHaveBeenCalledWith("d1", expect.anything()));
+  });
+
+  it("整本入库后刷新资料状态", async () => {
+    const user = userEvent.setup();
+    approveLibraryDoc.mockResolvedValue({ approved: 2, embedded: 4 });
+    render(<LibraryView />);
+    await waitFor(() => expect(screen.getByText("数学练习册")).toBeInTheDocument());
+    await user.click(screen.getByRole("button", { name: "更多操作 数学练习册" }));
+    await user.click(screen.getByRole("button", { name: /整本入库/ }));
+
+    await waitFor(() => expect(approveLibraryDoc).toHaveBeenCalledWith("d1", expect.anything()));
+    await waitFor(() => expect(fetchLibraryDocs).toHaveBeenCalledTimes(2));
   });
 });

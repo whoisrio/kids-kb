@@ -213,6 +213,40 @@ describe("POST /api/library/:id/reindex", () => {
   });
 });
 
+describe("POST /api/library/:id/approve", () => {
+  it("proxies whole-document approval to pipeline", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(
+      JSON.stringify({ doc_id: DOC_ID, approved: 3, embedded: 5 }),
+      { status: 200, headers: { "Content-Type": "application/json" } },
+    ));
+    vi.stubGlobal("fetch", fetchMock);
+    const pool2 = { query: async () => ({ rows: [] }) } as never;
+    const res = await new Hono().route("/api/library", libraryRoutes(pool2, {
+      pipelineUrl: "http://mock:8766", search: async () => [],
+    } as never, { storageRoot: "/tmp" } as never)).request(`/api/library/${DOC_ID}/approve`, { method: "POST" });
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ approved: 3, embedded: 5 });
+    expect(fetchMock).toHaveBeenCalledWith("http://mock:8766/internal/approve-doc", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ doc_id: DOC_ID }),
+    });
+    vi.unstubAllGlobals();
+  });
+
+  it("maps pipeline unreachable to 502", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("offline")));
+    const pool2 = { query: async () => ({ rows: [] }) } as never;
+    const res = await new Hono().route("/api/library", libraryRoutes(pool2, {
+      pipelineUrl: "http://mock:8766", search: async () => [],
+    } as never, { storageRoot: "/tmp" } as never)).request(`/api/library/${DOC_ID}/approve`, { method: "POST" });
+
+    expect(res.status).toBe(502);
+    expect(await res.json()).toEqual({ error: "pipeline 不可达" });
+    vi.unstubAllGlobals();
+  });
+});
+
 describe("GET /api/library/:id", () => {
   it("returns chapters with status for non-pdf doc", async () => {
     const pool2 = {

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  deleteLibraryDoc, fetchLibraryDocs, fetchLibrarySummary,
+  approveLibraryDoc, deleteLibraryDoc, fetchLibraryDocs, fetchLibrarySummary,
   type LibraryDoc, type LibrarySummary, type Pagination,
 } from "../api/library";
 import { Icon } from "../components/Icon";
@@ -34,9 +34,10 @@ function subjectMeta(subject: string | null): { cls: string; icon: string } {
   return { cls: "subj-other", icon: "menu_book" };
 }
 
-function ShelfCard({ doc, onOpen, onReview, onDelete }: {
+function ShelfCard({ doc, onOpen, onReview, onDelete, onApprove, approving }: {
   doc: LibraryDoc; onOpen: (doc: LibraryDoc) => void;
   onReview?: (doc: LibraryDoc) => void; onDelete: (doc: LibraryDoc) => void;
+  onApprove: (doc: LibraryDoc) => void; approving: boolean;
 }) {
   const [coverFailed, setCoverFailed] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -93,6 +94,10 @@ function ShelfCard({ doc, onOpen, onReview, onDelete }: {
           </button>
           {menuOpen && (
             <div className="sc-menu">
+              <button disabled={approving}
+                      onClick={() => { setMenuOpen(false); onApprove(doc); }}>
+                <Icon name="playlist_add_check" />{approving ? "入库中…" : "整本入库"}
+              </button>
               <button className="danger" onClick={() => { setMenuOpen(false); onDelete(doc); }}>
                 <Icon name="delete" />删除资料
               </button>
@@ -131,6 +136,7 @@ export function LibraryView({ fetchImpl = fetch, onOpenDoc, onOpenReview, kids =
   const [openDocId, setOpenDocId] = useState<string | null>(null);
   const [uploadOpen, setUploadOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<LibraryDoc | null>(null);
+  const [approvingId, setApprovingId] = useState<string | null>(null);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -201,6 +207,19 @@ export function LibraryView({ fetchImpl = fetch, onOpenDoc, onOpenReview, kids =
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
       setConfirmDelete(null);
+    }
+  };
+
+  const doApprove = async (doc: LibraryDoc) => {
+    setApprovingId(doc.id);
+    try {
+      await approveLibraryDoc(doc.id, fetchImpl);
+      void reload();
+      void reloadSummary();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setApprovingId(null);
     }
   };
 
@@ -372,7 +391,8 @@ export function LibraryView({ fetchImpl = fetch, onOpenDoc, onOpenReview, kids =
         <div className="shelf-grid">
           {docs.map((doc) => (
             <ShelfCard key={doc.id} doc={doc} onOpen={openDoc} onDelete={setConfirmDelete}
-                       onReview={onOpenReview ? (d) => onOpenReview(d.id) : undefined} />
+                       onReview={onOpenReview ? (d) => onOpenReview(d.id) : undefined}
+                       onApprove={(d) => void doApprove(d)} approving={approvingId === doc.id} />
           ))}
         </div>
       )}

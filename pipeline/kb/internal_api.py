@@ -35,6 +35,10 @@ class PageExclusionRequest(BaseModel):
     excluded: bool
 
 
+class ApproveDocRequest(BaseModel):
+    doc_id: str
+
+
 class ReindexRequest(BaseModel):
     doc_id: str
     type: str
@@ -154,6 +158,53 @@ def create_internal_app(reranker_factory=None, get_conn=None, cfg=None,
             raise HTTPException(status_code=500, detail=str(e)) from e
         finally:
             conn.close()
+
+    @app.post("/internal/approve-doc")
+    def approve_doc_ep(body: ApproveDocRequest):
+        """整本文档准备结构、人工批准并即时向量化；flat 与结构化文档共用 CLI 的实现。"""
+        with conn_ctx() as conn:
+            try:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        """SELECT struct_mode,
+                                  EXISTS (SELECT 1 FROM chapters WHERE document_id=%s)
+                           FROM documents WHERE id=%s""",
+                        (body.doc_id, body.doc_id),
+                    )
+                    row = cur.fetchone()
+                if not row:
+                    raise HTTPException(status_code=404, detail="文档不存在")
+                struct_mode, has_chapter = row
+                if struct_mode is None:
+                    from kb.structure import run_structure
+                    struct_mode = run_structure(conn, _cfg(), body.doc_id)["mode"]
+                if struct_mode == "flat" and not has_chapter:
+                    from kb.flat import build_flat_chapter
+                    build_flat_chapter(conn, body.doc_id)
+                if struct_mode == "flat":
+                    from kb.flat import approve_flat_pages
+                    out = approve_flat_pages(conn, _cfg(), body.doc_id, client=embed_client)
+                elif struct_mode == "toc":
+                    from kb.embed import approve_items
+                    out = approve_items(conn, _cfg(), body.doc_id, client=embed_client)
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            """UPDATE chapters
+                               SET review_status='approved', manual_review_status='approved'
+                               WHERE document_id=%s""",
+                            (body.doc_id,),
+                        )
+                else:
+                    raise HTTPException(status_code=422, detail="未知文档结构模式")
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "UPDATE documents SET review_status='approved' WHERE id=%s",
+                        (body.doc_id,))
+                return {"doc_id": body.doc_id, **out}
+            except HTTPException:
+                raise
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=str(e)) from e
 
     @app.post("/internal/page-vlm")
     def page_vlm_ep(body: PageVlmRequest):

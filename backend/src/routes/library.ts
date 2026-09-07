@@ -267,6 +267,18 @@ export function libraryRoutes(pool: pg.Pool, deps: LibraryDeps, cfg: BackendConf
     }
   });
 
+  app.post("/:id/approve", async (c) => {
+    try {
+      const resp = await fetch(`${deps.pipelineUrl}/internal/approve-doc`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ doc_id: c.req.param("id") }),
+      });
+      return c.json(await resp.json(), resp.status as 200);
+    } catch {
+      return c.json({ error: "pipeline 不可达" }, 502);
+    }
+  });
+
   app.post("/pages/:pageId/exclusion", async (c) => {
     const body = await c.req.json().catch(() => null);
     if (typeof body?.excluded !== "boolean") return c.json({ error: "excluded 必须为 boolean" }, 422);

@@ -124,3 +124,9 @@ export async function reindexLibraryUnit(
     body: JSON.stringify({ type, id }),
   });
 }
+
+export async function approveLibraryDoc(
+  docId: string, fetchImpl: FetchLike = fetch,
+): Promise<{ approved?: number; embedded?: number; pages?: number; chunks?: number; resolved?: number }> {
+  return req(`/api/library/${encodeURIComponent(docId)}/approve`, fetchImpl, { method: "POST" });
+}

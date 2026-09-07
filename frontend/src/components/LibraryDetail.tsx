@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import {
-  fetchLibraryDoc, fetchLibraryChunks, reindexLibraryUnit, setPageExclusion,
+  approveLibraryDoc, fetchLibraryDoc, fetchLibraryChunks, reindexLibraryUnit, setPageExclusion,
   type LibraryChunk, type LibraryDetail as LibraryDetailData, type Pagination,
 } from "../api/library";
 
@@ -93,6 +93,14 @@ export function LibraryDetail({ docId, fetchImpl = fetch, onExit, onError }: {
     finally { setBusy(false); }
   };
 
+  const approveDoc = async () => {
+    if (!data) return;
+    setBusy(true);
+    try { await approveLibraryDoc(data.id, fetchImpl); await reload(); }
+    catch (e) { onError(e instanceof Error ? e.message : String(e)); }
+    finally { setBusy(false); }
+  };
+
   if (!data) return <div className="library-detail"><div className="chat-empty">加载中…</div></div>;
   return (
     <div className="library-detail">
@@ -108,6 +116,9 @@ export function LibraryDetail({ docId, fetchImpl = fetch, onExit, onError }: {
           索引 {data.aggregates.index.indexed}/{data.total_units} ·
           排除 {data.aggregates.index.excluded}
         </span>
+        <button className="btn-primary" disabled={busy} onClick={() => void approveDoc()}>
+          {busy ? "入库中…" : "整本入库"}
+        </button>
       </div>
       <div className="detail-tabs">
         <button className={view === "table" ? "btn-primary" : "btn-ghost"} onClick={() => setView("table")}>页面表</button>
