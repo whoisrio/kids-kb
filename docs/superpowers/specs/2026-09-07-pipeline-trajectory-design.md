@@ -82,9 +82,10 @@ pipeline_events
 
 ### JSONL 镜像
 
-`storage/docs/<doc_id>/trajectory/<run_id>.jsonl`，每条事件一行，内容与 DB 行一致。
+`storage/<doc_id>/trajectory/<run_id>.jsonl`（与现有 `storage/<doc_id>/{pages,chapters,media}` 镜像布局一致），每条事件一行。
 与项目「DB 事实来源、storage 只写镜像」约定一致：查询只读 DB，JSONL 仅作原始归档。
 写文件失败同样只警告不阻塞。
+JSONL 镜像只覆盖 pipeline 侧事件；backend 的 `user_edit` 只写 DB（量小，不镜像）。
 
 ## 查询 API（backend，`backend/src/routes/trajectory.ts`）
 
@@ -109,5 +110,5 @@ pipeline_events
 ## 测试
 
 - pipeline（pytest）：各级别下事件写入/裁剪行为；记录失败不阻塞主链路；删文档级联删事件。
-- backend（jest）：三个查询端点的过滤与分页；`PATCH /items/:id` 产生 `user_edit` 事件且 diff 正确。
+- backend（vitest）：三个查询端点的过滤与分页；`PATCH /items/:id` 产生 `user_edit` 事件且 diff 正确。
 - e2e（Playwright）：走 ingest → structure → approve → 编辑 → embed 全链路，断言 UI 日志 tab 展示完整 trajectory、by 页过滤正确、JSONL 文件存在；新增 spec 进 e2e/。
