@@ -268,6 +268,47 @@ maybe("review API（真库）", () => {
     expect((await pool.query("SELECT count(*)::int AS n FROM chunks WHERE document_id=$1", [docId])).rows[0].n).toBe(0);
   });
 
+  it("PATCH /items/:id 记录 user_edit 事件（含 diff）", async () => {
+    const resp = await app.request(`/api/review/items/${itemId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content_md: "人工修正后的内容" }),
+    });
+    expect(resp.status).toBe(200);
+    const { rows: events } = await pool.query(
+      `SELECT stage, event_type, actor, item_id::text, payload
+       FROM pipeline_events WHERE document_id=$1 AND item_id=$2
+         AND stage='user_edit'`,
+      [docId, itemId]);
+    const event = events.at(-1)!;
+    expect(events.length).toBeGreaterThan(0);
+    expect(event.event_type).toBe("edit");
+    expect(event.actor).toBe("user");
+    expect(event.item_id).toBe(itemId);
+    expect(event.payload).toEqual({
+      field: "content_md", old: "24+37=61（条目改）", new: "人工修正后的内容",
+    });
+  });
+
+  it("PATCH /pages/:id 记录 user_edit 事件（带 page_id）", async () => {
+    const resp = await app.request(`/api/review/pages/${page1}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ page_md: "人工修正的整页稿" }),
+    });
+    expect(resp.status).toBe(200);
+    const { rows: events } = await pool.query(
+      `SELECT page_id::text, payload FROM pipeline_events
+       WHERE document_id=$1 AND page_id=$2 AND stage='user_edit'`,
+      [docId, page1]);
+    const event = events.at(-1)!;
+    expect(events.length).toBeGreaterThan(0);
+    expect(event.page_id).toBe(page1);
+    expect(event.payload).toEqual({
+      field: "page_md", old: "# 第 1 页\n新整页稿", new: "人工修正的整页稿",
+    });
+  });
+
   it("POST /blocks/:id/annotations 与 PATCH/DELETE：管理 OCR 批注", async () => {
     const created = await app.request(`/api/review/blocks/${block11}/annotations`, {
       method: "POST", headers: { "Content-Type": "application/json" },

@@ -243,11 +243,14 @@ export function reviewRoutes(pool: pg.Pool, deps: ReviewDeps): Hono {
     try { return await c.req.json(); } catch { return null; }
   }
 
-  app.patch("/blocks/:id", async (c) => {
+app.patch("/blocks/:id", async (c) => {
     const body = await readJson(c);
     if (body === null) return c.json({ error: "请求体不是合法 JSON" }, 400);
     if (typeof body.content_md !== "string") return c.json({ error: "content_md 必填" }, 422);
     try {
+      const { rows: [before] } = await pool.query(
+        "SELECT content_md FROM blocks WHERE id=$1", [c.req.param("id")]);
+      if (!before) return c.json({ error: "block 不存在" }, 404);
       const { rows: [b] } = await pool.query(
         "UPDATE blocks SET content_md=$2 WHERE id=$1 RETURNING id::text, content_md",
         [c.req.param("id"), body.content_md]);
@@ -258,9 +261,15 @@ export function reviewRoutes(pool: pg.Pool, deps: ReviewDeps): Hono {
       if (page) {
         await pool.query("UPDATE pages SET index_status='stale', index_error=NULL WHERE id=$1", [page.id]);
         await pool.query(
-          `DELETE FROM chunks WHERE document_id=$1 AND (
-             source_block_ids && ARRAY[$2::uuid] OR page_no=$3)`,
+        `DELETE FROM chunks WHERE document_id=$1 AND (
+           source_block_ids && ARRAY[$2::uuid] OR page_no=$3)`,
           [page.document_id, c.req.param("id"), page.page_no]);
+        await pool.query(
+          `INSERT INTO pipeline_events
+             (run_id, document_id, page_id, stage, event_type, summary, payload, actor)
+           VALUES (gen_random_uuid(), $1, $2, 'user_edit', 'edit', $3, $4, 'user')`,
+          [page.document_id, page.id, "编辑块内容",
+           JSON.stringify({ field: "content_md", old: before.content_md, new: body.content_md })]);
       }
       return c.json(b);
     } catch (err) {
@@ -273,6 +282,9 @@ export function reviewRoutes(pool: pg.Pool, deps: ReviewDeps): Hono {
     if (body === null) return c.json({ error: "请求体不是合法 JSON" }, 400);
     if (typeof body.page_md !== "string") return c.json({ error: "page_md 必填" }, 422);
     try {
+      const { rows: [before] } = await pool.query(
+        "SELECT page_md FROM pages WHERE id=$1", [c.req.param("id")]);
+      if (!before) return c.json({ error: "page 不存在" }, 404);
       const { rows: [page] } = await pool.query(
         `UPDATE pages SET page_md=$2, index_status='stale', index_error=NULL
          WHERE id=$1 RETURNING id::text, page_no, document_id::text, page_md, index_status`,
@@ -283,6 +295,12 @@ export function reviewRoutes(pool: pg.Pool, deps: ReviewDeps): Hono {
            page_no=$2 OR source_block_ids && ARRAY(
              SELECT id FROM blocks WHERE page_id=$3))`,
         [page.document_id, page.page_no, page.id]);
+      await pool.query(
+        `INSERT INTO pipeline_events
+           (run_id, document_id, page_id, stage, event_type, summary, payload, actor)
+         VALUES (gen_random_uuid(), $1, $2, 'user_edit', 'edit', $3, $4, 'user')`,
+        [page.document_id, page.id, "编辑整页稿",
+         JSON.stringify({ field: "page_md", old: before.page_md, new: body.page_md })]);
       return c.json(page);
     } catch (err) {
       return invalidId(c, err) ?? (() => { throw err; })();
@@ -337,11 +355,19 @@ export function reviewRoutes(pool: pg.Pool, deps: ReviewDeps): Hono {
     if (typeof body.content_md !== "string") return c.json({ error: "content_md 必填" }, 422);
     const id = c.req.param("id");
     try {
+      const { rows: [before] } = await pool.query(
+        "SELECT content_md, document_id::text FROM items WHERE id=$1", [id]);
+      if (!before) return c.json({ error: "item 不存在" }, 404);
       const { rows: [item] } = await pool.query(
         "UPDATE items SET content_md=$2, updated_at=now() WHERE id=$1 RETURNING id::text, content_md",
         [id, body.content_md]);
-      if (!item) return c.json({ error: "item 不存在" }, 404);
       await pool.query("DELETE FROM chunks WHERE item_id=$1", [id]);
+      await pool.query(
+        `INSERT INTO pipeline_events
+           (run_id, document_id, item_id, stage, event_type, summary, payload, actor)
+         VALUES (gen_random_uuid(), $1, $2, 'user_edit', 'edit', $3, $4, 'user')`,
+        [before.document_id, id, "编辑条目内容",
+         JSON.stringify({ field: "content_md", old: before.content_md, new: body.content_md })]);
       return c.json(item);
     } catch (err) {
       return invalidId(c, err) ?? (() => { throw err; })();
