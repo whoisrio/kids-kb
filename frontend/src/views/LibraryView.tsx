@@ -137,6 +137,9 @@ export function LibraryView({ fetchImpl = fetch, onOpenDoc, onOpenReview, kids =
   const [uploadOpen, setUploadOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<LibraryDoc | null>(null);
   const [approvingId, setApprovingId] = useState<string | null>(null);
+  const [approveFeedback, setApproveFeedback] = useState<
+    { tone: "success" | "error"; message: string } | null
+  >(null);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -212,12 +215,19 @@ export function LibraryView({ fetchImpl = fetch, onOpenDoc, onOpenReview, kids =
 
   const doApprove = async (doc: LibraryDoc) => {
     setApprovingId(doc.id);
+    setApproveFeedback({ tone: "success", message: "正在整本入库…" });
     try {
-      await approveLibraryDoc(doc.id, fetchImpl);
+      const result = await approveLibraryDoc(doc.id, fetchImpl);
       void reload();
       void reloadSummary();
+      const embedded = result.embedded ?? result.chunks ?? 0;
+      setApproveFeedback({
+        tone: "success",
+        message: embedded > 0 ? `整本入库完成，新增 ${embedded} 条向量` : "整本入库完成",
+      });
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      const message = e instanceof Error ? e.message : String(e);
+      setApproveFeedback({ tone: "error", message: `整本入库失败：${message}` });
     } finally {
       setApprovingId(null);
     }
@@ -344,6 +354,14 @@ export function LibraryView({ fetchImpl = fetch, onOpenDoc, onOpenReview, kids =
         </select>
       </div>
 
+      {approveFeedback && (
+        <div
+          className={approveFeedback.tone === "success" ? "form-success" : "form-error"}
+          role={approveFeedback.tone === "success" ? "status" : "alert"}
+        >
+          {approveFeedback.message}
+        </div>
+      )}
       {error && <div className="form-error" role="alert">{error}</div>}
 
       {viewMode === "table" ? (

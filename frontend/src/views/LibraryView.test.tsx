@@ -197,4 +197,28 @@ describe("LibraryView", () => {
     await waitFor(() => expect(approveLibraryDoc).toHaveBeenCalledWith("d1", expect.anything()));
     await waitFor(() => expect(fetchLibraryDocs).toHaveBeenCalledTimes(2));
   });
+
+  it("shows card ingestion success feedback", async () => {
+    const user = userEvent.setup();
+    approveLibraryDoc.mockResolvedValue({ pages: 2, chunks: 4, resolved: 0 });
+    render(<LibraryView />);
+    await waitFor(() => expect(screen.getByText("数学练习册")).toBeInTheDocument());
+    await user.click(screen.getByRole("button", { name: "更多操作 数学练习册" }));
+    await user.click(screen.getByRole("button", { name: /整本入库/ }));
+
+    await waitFor(() => expect(screen.getByRole("status"))
+      .toHaveTextContent("整本入库完成，新增 4 条向量"));
+  });
+
+  it("shows card ingestion error feedback", async () => {
+    const user = userEvent.setup();
+    approveLibraryDoc.mockRejectedValue(new Error("pipeline 不可达"));
+    render(<LibraryView />);
+    await waitFor(() => expect(screen.getByText("数学练习册")).toBeInTheDocument());
+    await user.click(screen.getByRole("button", { name: "更多操作 数学练习册" }));
+    await user.click(screen.getByRole("button", { name: /整本入库/ }));
+
+    await waitFor(() => expect(screen.getByRole("alert"))
+      .toHaveTextContent("整本入库失败：pipeline 不可达"));
+  });
 });

@@ -43,6 +43,8 @@ test("library UI approves a flat document and indexes every page", async ({ page
   await approveButton.click();
   const response = await approveResponse;
   expect(response.status(), await response.text()).toBe(200);
+  await expect(page.getByRole("status"))
+    .toHaveText("整本入库完成，新增 2 条向量");
   await expect(page.getByRole("button", { name: "整本入库" })).toBeVisible({
     timeout: 120_000,
   });
