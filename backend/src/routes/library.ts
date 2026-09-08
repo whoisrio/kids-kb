@@ -322,6 +322,47 @@ export function libraryRoutes(pool: pg.Pool, deps: LibraryDeps, cfg: BackendConf
     }
   });
 
+  app.get("/:id/content", async (c) => {
+    try {
+      const { rows: [doc] } = await pool.query(
+        `SELECT id::text, title,
+                CASE WHEN lower(source_path) LIKE '%.pdf' THEN 'pdf' ELSE 'text' END AS kind
+         FROM documents WHERE id=$1`, [c.req.param("id")]);
+      if (!doc) return c.json({ error: "文档不存在" }, 404);
+      if (doc.kind === "pdf") {
+        const { rows } = await pool.query(
+          `SELECT p.page_no, p.adopted_source, p.page_md,
+                  (SELECT string_agg(b.content_md, E'\n\n' ORDER BY b.created_at)
+                   FROM blocks b
+                   WHERE b.page_id = p.id AND b.content_md IS NOT NULL
+                     AND b.block_type NOT IN ('header','footer')) AS blocks_md
+           FROM pages p WHERE p.document_id=$1 ORDER BY p.page_no`, [doc.id]);
+        return c.json({
+          id: doc.id, title: doc.title, unit_type: "pages",
+          sections: rows.map((row) => ({
+            page_no: row.page_no,
+            content_md: (row.adopted_source === "page_md" && row.page_md)
+              ? row.page_md : (row.blocks_md ?? ""),
+          })),
+        });
+      }
+      const { rows } = await pool.query(
+        `SELECT chapter_no, title, content_md FROM chapters
+         WHERE document_id=$1 ORDER BY chapter_no`, [doc.id]);
+      return c.json({
+        id: doc.id, title: doc.title, unit_type: "chapters",
+        sections: rows.map((row) => ({
+          chapter_no: row.chapter_no, title: row.title, content_md: row.content_md ?? "",
+        })),
+      });
+    } catch (err) {
+      if ((err as { code?: string }).code === "22P02") {
+        return c.json({ error: "id 格式非法" }, 422);
+      }
+      throw err;
+    }
+  });
+
   app.get("/:id", async (c) => {
     try {
       const p = pagination(c.req.query());

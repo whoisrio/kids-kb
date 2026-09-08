@@ -352,3 +352,66 @@ describe("library index controls", () => {
     vi.unstubAllGlobals();
   });
 });
+
+describe("GET /api/library/:id/content", () => {
+  it("PDF 文档按页返回采用稿（page_md 优先，否则块拼接）", async () => {
+    const pool2 = {
+      query: async (sql: string) => {
+        if (sql.includes("FROM documents")) {
+          return { rows: [{ id: DOC_ID, title: "卷", kind: "pdf" }] };
+        }
+        if (sql.includes("FROM pages")) {
+          return { rows: [
+            { page_no: 1, adopted_source: "page_md", page_md: "第一页稿", blocks_md: "块稿" },
+            { page_no: 2, adopted_source: "blocks", page_md: null, blocks_md: "第二页块稿" },
+          ] };
+        }
+        return { rows: [] };
+      },
+    } as never;
+    const res = await new Hono().route("/api/library", libraryRoutes(pool2, {
+      pipelineUrl: "http://mock:8766", search: async () => [],
+    } as never, { storageRoot: "/tmp" } as never)).request(`/api/library/${DOC_ID}/content`);
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.unit_type).toBe("pages");
+    expect(data.sections).toEqual([
+      { page_no: 1, content_md: "第一页稿" },
+      { page_no: 2, content_md: "第二页块稿" },
+    ]);
+  });
+
+  it("docx/md 文档按章返回 content_md", async () => {
+    const pool2 = {
+      query: async (sql: string) => {
+        if (sql.includes("FROM documents")) {
+          return { rows: [{ id: DOC_ID, title: "书", kind: "text" }] };
+        }
+        if (sql.includes("FROM chapters")) {
+          return { rows: [
+            { chapter_no: 1, title: "第一讲", content_md: "第一章内容" },
+            { chapter_no: 2, title: "第二讲", content_md: null },
+          ] };
+        }
+        return { rows: [] };
+      },
+    } as never;
+    const res = await new Hono().route("/api/library", libraryRoutes(pool2, {
+      pipelineUrl: "http://mock:8766", search: async () => [],
+    } as never, { storageRoot: "/tmp" } as never)).request(`/api/library/${DOC_ID}/content`);
+    const data = await res.json();
+    expect(data.unit_type).toBe("chapters");
+    expect(data.sections).toEqual([
+      { chapter_no: 1, title: "第一讲", content_md: "第一章内容" },
+      { chapter_no: 2, title: "第二讲", content_md: "" },
+    ]);
+  });
+
+  it("文档不存在返回 404", async () => {
+    const pool2 = { query: async () => ({ rows: [] }) } as never;
+    const res = await new Hono().route("/api/library", libraryRoutes(pool2, {
+      pipelineUrl: "http://mock:8766", search: async () => [],
+    } as never, { storageRoot: "/tmp" } as never)).request(`/api/library/${DOC_ID}/content`);
+    expect(res.status).toBe(404);
+  });
+});
