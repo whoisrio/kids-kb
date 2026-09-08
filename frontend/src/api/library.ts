@@ -52,6 +52,15 @@ export interface LibraryChunk {
   item_id: string | null; chapter_id: string | null; created_at: string;
 }
 
+export interface LibraryContentSection {
+  page_no?: number; chapter_no?: number; title?: string | null; content_md: string;
+}
+
+export interface LibraryContent {
+  id: string; title: string; unit_type: "pages" | "chapters";
+  sections: LibraryContentSection[];
+}
+
 export interface LibraryListFilters extends Partial<Pick<Pagination, "page" | "pageSize">> {
   q?: string; subject?: string; fileType?: string; docType?: string;
   autoReview?: string; reviewStatus?: string; indexStatus?: string;
@@ -100,6 +109,12 @@ export async function fetchLibraryChunks(
   id: string, filters: Pick<LibraryListFilters, "page" | "pageSize"> = {}, fetchImpl: FetchLike = fetch,
 ): Promise<{ chunks: LibraryChunk[]; pagination: Pagination }> {
   return req(`/api/library/${encodeURIComponent(id)}/chunks${params(filters)}`, fetchImpl);
+}
+
+export async function fetchLibraryContent(
+  id: string, fetchImpl: FetchLike = fetch,
+): Promise<LibraryContent> {
+  return req(`/api/library/${encodeURIComponent(id)}/content`, fetchImpl);
 }
 
 export async function setPageExclusion(

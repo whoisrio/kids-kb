@@ -1,8 +1,15 @@
 import { useCallback, useEffect, useState } from "react";
+import ReactMarkdown from "react-markdown";
+import rehypeKatex from "rehype-katex";
+import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
 import {
-  approveLibraryDoc, fetchLibraryDoc, fetchLibraryChunks, reindexLibraryUnit, setPageExclusion,
-  type LibraryChunk, type LibraryDetail as LibraryDetailData, type Pagination,
+  approveLibraryDoc, fetchLibraryContent, fetchLibraryDoc, fetchLibraryChunks,
+  reindexLibraryUnit, setPageExclusion,
+  type LibraryChunk, type LibraryContent, type LibraryDetail as LibraryDetailData,
+  type Pagination,
 } from "../api/library";
+import { PageDetail } from "./PageDetail";
 
 const AUTO_LABELS: Record<string, string> = {
   pending: "自动未审核", passed: "自动通过", needs_review: "自动需复核", failed: "自动失败",
@@ -64,13 +71,45 @@ export function IndexLedger({ docId, fetchImpl = fetch }: {
   );
 }
 
+export function FullContent({ docId, fetchImpl = fetch }: {
+  docId: string; fetchImpl?: typeof fetch;
+}) {
+  const [data, setData] = useState<LibraryContent | null>(null);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    fetchLibraryContent(docId, fetchImpl)
+      .then(setData)
+      .catch((e) => setError(e instanceof Error ? e.message : String(e)));
+  }, [docId, fetchImpl]);
+
+  if (error) return <div className="form-error" role="alert">{error}</div>;
+  if (!data) return <div className="chat-empty">加载中…</div>;
+  return (
+    <div className="full-content">
+      {data.sections.map((section, index) => (
+        <section key={index} className="content-section">
+          <h3>{section.title ?? `第 ${section.page_no} 页`}</h3>
+          <div className="md">
+            <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
+              {section.content_md || "（空）"}
+            </ReactMarkdown>
+          </div>
+        </section>
+      ))}
+    </div>
+  );
+}
+
 export function LibraryDetail({ docId, fetchImpl = fetch, onExit, onError }: {
   docId: string; fetchImpl?: typeof fetch; onExit: () => void; onError: (error: string) => void;
 }) {
   const [data, setData] = useState<LibraryDetailData | null>(null);
   const [page, setPage] = useState(1);
-  const [view, setView] = useState<"table" | "thumbnails" | "chunks">("table");
+  const [view, setView] = useState<"content" | "table" | "thumbnails" | "chunks">("content");
   const [busy, setBusy] = useState(false);
+  const [pageId, setPageId] = useState<string | null>(null);
+  const [feedback, setFeedback] = useState<{ tone: "success" | "error"; message: string } | null>(null);
 
   const reload = useCallback(async () => {
     try { setData(await fetchLibraryDoc(docId, { page, pageSize: 10 }, fetchImpl)); }
@@ -96,12 +135,30 @@ export function LibraryDetail({ docId, fetchImpl = fetch, onExit, onError }: {
   const approveDoc = async () => {
     if (!data) return;
     setBusy(true);
-    try { await approveLibraryDoc(data.id, fetchImpl); await reload(); }
-    catch (e) { onError(e instanceof Error ? e.message : String(e)); }
+    setFeedback({ tone: "success", message: "正在整本入库…" });
+    try {
+      const result = await approveLibraryDoc(data.id, fetchImpl);
+      await reload();
+      const embedded = result.embedded ?? result.chunks ?? 0;
+      setFeedback({
+        tone: "success",
+        message: embedded > 0 ? `整本入库完成，新增 ${embedded} 条向量` : "整本入库完成",
+      });
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      setFeedback({ tone: "error", message: `整本入库失败：${message}` });
+      onError(message);
+    }
     finally { setBusy(false); }
   };
 
   if (!data) return <div className="library-detail"><div className="chat-empty">加载中…</div></div>;
+  if (pageId) {
+    return (
+      <PageDetail pageId={pageId} fetchImpl={fetchImpl}
+                  onExit={() => { setPageId(null); void reload(); }} onError={onError} />
+    );
+  }
   return (
     <div className="library-detail">
       <div className="ledger-head">
@@ -120,13 +177,23 @@ export function LibraryDetail({ docId, fetchImpl = fetch, onExit, onError }: {
           {busy ? "入库中…" : "整本入库"}
         </button>
       </div>
+      {feedback && (
+        <div
+          className={feedback.tone === "success" ? "form-success" : "form-error"}
+          role={feedback.tone === "success" ? "status" : "alert"}
+        >
+          {feedback.message}
+        </div>
+      )}
       <div className="detail-tabs">
+        <button className={view === "content" ? "btn-primary" : "btn-ghost"} onClick={() => setView("content")}>全文</button>
         <button className={view === "table" ? "btn-primary" : "btn-ghost"} onClick={() => setView("table")}>页面表</button>
         <button className={view === "thumbnails" ? "btn-primary" : "btn-ghost"} onClick={() => setView("thumbnails")}>缩略图</button>
         <button className={view === "chunks" ? "btn-primary" : "btn-ghost"} onClick={() => setView("chunks")}>索引账页</button>
       </div>
       {view === "chunks" && <IndexLedger docId={data.id} fetchImpl={fetchImpl} />}
-      {view !== "chunks" && (
+      {view === "content" && <FullContent docId={data.id} fetchImpl={fetchImpl} />}
+      {view !== "chunks" && view !== "content" && (
         <div className={view === "table" ? "page-table" : "page-cards"}>
           {view === "table" ? (
             <table>
@@ -152,6 +219,7 @@ export function LibraryDetail({ docId, fetchImpl = fetch, onExit, onError }: {
                       </label>
                     </td>
                     <td>
+                      <button className="btn-ghost" onClick={() => setPageId(item.id)}>查看</button>
                       <button className="btn-ghost" disabled={busy || item.excluded_from_index}
                               onClick={() => void reindexPage(item.id)}>重建</button>
                     </td>
@@ -160,7 +228,8 @@ export function LibraryDetail({ docId, fetchImpl = fetch, onExit, onError }: {
               </tbody>
             </table>
           ) : data.pages?.map((item) => (
-            <div key={item.id} className={`page-card${item.excluded_from_index ? " excluded" : ""}`}>
+            <div key={item.id} className={`page-card${item.excluded_from_index ? " excluded" : ""}`}
+                 onClick={() => setPageId(item.id)}>
               <img src={item.thumbnail_url} alt={`第 ${item.page_no} 页`} loading="lazy" />
               <div className="meta">
                 <span>第 {item.page_no} 页</span>
