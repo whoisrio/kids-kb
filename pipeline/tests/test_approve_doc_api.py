@@ -9,13 +9,15 @@ from kb.internal_api import create_internal_app
 class FakeCursor:
     def __init__(self, struct_mode: str | None, has_chapter: bool = False,
                  has_content: bool = False, has_pages: bool = False,
-                 source_path: str = "/tmp/source.pdf", title: str = "文档"):
+                 source_path: str = "/tmp/source.pdf", title: str = "文档",
+                 doc_type: str = "workbook"):
         self.struct_mode = struct_mode
         self.has_chapter = has_chapter
         self.has_content = has_content
         self.has_pages = has_pages
         self.source_path = source_path
         self.title = title
+        self.doc_type = doc_type
         self.doc_exists = struct_mode is not None or has_chapter
 
     def execute(self, _sql, _params=None):
@@ -24,7 +26,7 @@ class FakeCursor:
     def fetchone(self):
         if not self.doc_exists:
             return None
-        return (self.title, self.source_path, self.struct_mode,
+        return (self.title, self.source_path, self.struct_mode, self.doc_type,
                 self.has_content, self.has_chapter, self.has_pages)
 
     def __enter__(self):
@@ -37,18 +39,20 @@ class FakeCursor:
 class FakeConn:
     def __init__(self, struct_mode: str | None, has_chapter: bool = False,
                  has_content: bool = False, has_pages: bool = False,
-                 source_path: str = "/tmp/source.pdf", title: str = "文档"):
+                 source_path: str = "/tmp/source.pdf", title: str = "文档",
+                 doc_type: str = "workbook"):
         self.struct_mode = struct_mode
         self.has_chapter = has_chapter
         self.has_content = has_content
         self.has_pages = has_pages
         self.source_path = source_path
         self.title = title
+        self.doc_type = doc_type
         self.doc_exists = struct_mode is not None or has_chapter
 
     def cursor(self):
         return FakeCursor(self.struct_mode, self.has_chapter, self.has_content,
-                          self.has_pages, self.source_path, self.title)
+                          self.has_pages, self.source_path, self.title, self.doc_type)
 
     @contextmanager
     def transaction(self):
@@ -187,6 +191,32 @@ def test_approve_doc_uses_chapter_flow_for_text_documents(monkeypatch):
     assert resp.status_code == 200
     assert resp.json() == {"doc_id": "doc1", "approved": 0, "embedded": 0}
     assert approve_calls[0][1:] == ("doc1", None, "embed")
+
+
+def test_approve_doc_routes_exam_text_document_to_structure(monkeypatch):
+    """doc_type=exam 的 docx/md 试卷走 run_structure 拆题，不直接批准章节。"""
+    structure_calls = []
+    approve_calls = []
+
+    def fake_structure(conn, _cfg, doc_id):
+        structure_calls.append(doc_id)
+        return {"mode": "exam"}
+
+    def fake_approve(conn, _cfg, doc_id, chapter_no=None, client=None):
+        approve_calls.append((doc_id, chapter_no, client))
+        return {"approved": 2, "embedded": 4}
+
+    monkeypatch.setattr("kb.structure.run_structure", fake_structure)
+    monkeypatch.setattr("kb.embed.approve_items", fake_approve)
+    client = TestClient(create_internal_app(get_conn=lambda: FakeConn(
+        None, True, True, False, "/tmp/source.docx", "语法期末卷", doc_type="exam"
+    ), cfg=object(), embed_client="embed"))
+    resp = client.post("/internal/approve-doc", json={"doc_id": "doc1"})
+
+    assert resp.status_code == 200
+    assert resp.json() == {"doc_id": "doc1", "approved": 2, "embedded": 4}
+    assert structure_calls == ["doc1"]
+    assert approve_calls[0][1:] == (None, "embed")
 
 
 def test_approve_doc_rejects_document_without_ingestable_content(monkeypatch):

@@ -166,7 +166,7 @@ def create_internal_app(reranker_factory=None, get_conn=None, cfg=None,
             try:
                 with conn.cursor() as cur:
                     cur.execute(
-                        """SELECT d.title, d.source_path, d.struct_mode,
+                        """SELECT d.title, d.source_path, d.struct_mode, d.doc_type,
                                   EXISTS (
                                       SELECT 1 FROM chapters ch
                                       WHERE ch.document_id=d.id
@@ -180,7 +180,7 @@ def create_internal_app(reranker_factory=None, get_conn=None, cfg=None,
                     row = cur.fetchone()
                 if not row:
                     raise HTTPException(status_code=404, detail="文档不存在")
-                title, source_path, struct_mode, has_content, has_chapter, has_pages = row
+                title, source_path, struct_mode, doc_type, has_content, has_chapter, has_pages = row
                 lower_source = str(source_path or "").lower()
                 if lower_source.endswith((".docx", ".md")):
                     if not has_content and not has_pages:
@@ -190,37 +190,38 @@ def create_internal_app(reranker_factory=None, get_conn=None, cfg=None,
                         else:
                             from kb.text_ingest import ingest_md
                             ingest_md(conn, _cfg(), source_path, title, client=embed_client)
-                    with conn.cursor() as cur:
-                        cur.execute(
-                            """SELECT EXISTS (
-                                   SELECT 1 FROM chapters
-                                   WHERE document_id=%s
-                                     AND coalesce(trim(content_md), '') <> ''
-                               )""",
-                            (body.doc_id,),
-                        )
-                        if not cur.fetchone()[0]:
-                            raise HTTPException(
-                                status_code=409,
-                                detail="文档没有可入库内容，请重新上传或检查源文件",
+                    if doc_type != "exam":  # 试卷走下方 run_structure 拆题，不直接批准章节
+                        with conn.cursor() as cur:
+                            cur.execute(
+                                """SELECT EXISTS (
+                                       SELECT 1 FROM chapters
+                                       WHERE document_id=%s
+                                         AND coalesce(trim(content_md), '') <> ''
+                                   )""",
+                                (body.doc_id,),
                             )
-                    from kb.embed import approve_items
-                    out = approve_items(conn, _cfg(), body.doc_id, client=embed_client)
-                    with conn.cursor() as cur:
-                        cur.execute(
-                            """UPDATE chapters
-                               SET review_status='approved', manual_review_status='approved'
-                               WHERE document_id=%s""",
-                            (body.doc_id,),
-                        )
-                    with conn.cursor() as cur:
-                        cur.execute(
-                            """UPDATE documents
-                               SET review_status='approved', struct_mode=NULL
-                               WHERE id=%s""",
-                            (body.doc_id,),
-                        )
-                    return {"doc_id": body.doc_id, **out}
+                            if not cur.fetchone()[0]:
+                                raise HTTPException(
+                                    status_code=409,
+                                    detail="文档没有可入库内容，请重新上传或检查源文件",
+                                )
+                        from kb.embed import approve_items
+                        out = approve_items(conn, _cfg(), body.doc_id, client=embed_client)
+                        with conn.cursor() as cur:
+                            cur.execute(
+                                """UPDATE chapters
+                                   SET review_status='approved', manual_review_status='approved'
+                                   WHERE document_id=%s""",
+                                (body.doc_id,),
+                            )
+                        with conn.cursor() as cur:
+                            cur.execute(
+                                """UPDATE documents
+                                   SET review_status='approved', struct_mode=NULL
+                                   WHERE id=%s""",
+                                (body.doc_id,),
+                            )
+                        return {"doc_id": body.doc_id, **out}
                 if struct_mode is None:
                     from kb.structure import run_structure
                     struct_mode = run_structure(conn, _cfg(), body.doc_id)["mode"]
