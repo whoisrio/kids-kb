@@ -191,6 +191,62 @@ def test_run_exam_structure_section_failure_continues(conn, cfg):
         assert cur.fetchone()[0] == 1
 
 
+def test_run_exam_structure_rerun_heals_failed_section(conn, cfg):
+    """部分失败后重跑自愈：已完成 section 幂等跳过，失败的 section 补上。"""
+    with conn.cursor() as cur:
+        cur.execute(
+            "INSERT INTO documents (id, title, doc_type, source_path, parse_status)"
+            " VALUES (%s,'语法卷','exam','/tmp/x.docx','parsed') RETURNING id",
+            (str(uuid.uuid4()),),
+        )
+        doc_id = str(cur.fetchone()[0])
+        for no, title in [(1, "一、选择题"), (2, "二、填空题")]:
+            cur.execute(
+                "INSERT INTO chapters (id, document_id, chapter_no, title, content_md)"
+                " VALUES (%s,%s,%s,%s,'内容')",
+                (str(uuid.uuid4()), doc_id, no, title),
+            )
+
+    class Chat:
+        class completions:
+            calls = []
+
+            @staticmethod
+            def create(model, messages, max_tokens):
+                Chat.completions.calls.append(1)
+                if len(Chat.completions.calls) <= 2:
+                    raise ConnectionError("Server disconnected")  # 第一个 section 重试后仍失败
+
+                class M:
+                    content = EXAM_JSON
+
+                class C:
+                    message = M()
+
+                class R:
+                    choices = [C()]
+
+                return R()
+
+    class Client:
+        chat = Chat()
+
+    from kb.structure_exam import run_exam_structure
+
+    out1 = run_exam_structure(conn, cfg, doc_id, client=Client())
+    assert out1["items"] == 2  # 只有「二、填空题」入库
+    out2 = run_exam_structure(conn, cfg, doc_id, client=_client_seq([EXAM_JSON]))
+    assert out2["items"] == 2  # 重跑把「一、选择题」补上
+    with conn.cursor() as cur:
+        cur.execute("SELECT count(*) FROM items WHERE document_id=%s", (doc_id,))
+        assert cur.fetchone()[0] == 4
+        cur.execute(
+            "SELECT DISTINCT chapter FROM items WHERE document_id=%s ORDER BY chapter",
+            (doc_id,),
+        )
+        assert [row[0] for row in cur.fetchall()] == ["一、选择题", "二、填空题"]
+
+
 def test_run_exam_structure_zero_questions_fails(conn, cfg, pdf_exam):
     from kb.structure_exam import run_exam_structure
 

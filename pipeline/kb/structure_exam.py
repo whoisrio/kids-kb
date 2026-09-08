@@ -1,4 +1,8 @@
-"""试卷（--type exam）结构化：整卷转录文本 -> LLM 按题拆分 -> items + 答案配对。"""
+"""试卷（--type exam）结构化：整卷转录文本 -> LLM 按题拆分 -> items + 答案配对。
+
+不走目录/章节窗口：PDF 拼各页采用稿（【页N】标记溯源页码），docx/md 以现有章节为大题单元。
+模式判定见 structure.run_structure：--flat > --exam > doc_type='exam' > 自动 toc/flat。
+"""
 from __future__ import annotations
 
 import re
@@ -74,8 +78,9 @@ def _as_page(value) -> int | None:
 
 
 def extract_section(conn, cfg: Config, doc_id: str, section: dict, model: str,
-                    client, recorder=None) -> int:
-    """一个大题 section 的 LLM 拆题。断连/JSON 解析失败重试一次。"""
+                    client, recorder=None) -> int | None:
+    """一个大题 section 的 LLM 拆题。断连/JSON 解析失败重试一次。
+    幂等：该大题已有 items 时跳过并返回 None（与"提取了 0 条"区分）。"""
     chapter_label = section["title"]
     with conn.cursor() as cur:
         cur.execute(
@@ -83,7 +88,7 @@ def extract_section(conn, cfg: Config, doc_id: str, section: dict, model: str,
             (doc_id, chapter_label),
         )
         if cur.fetchone():
-            return 0
+            return None
         if section["write_chapter"]:
             cur.execute(
                 """INSERT INTO chapters (id, document_id, chapter_no, title, content_md)
@@ -149,7 +154,8 @@ def extract_section(conn, cfg: Config, doc_id: str, section: dict, model: str,
 
 
 def run_exam_structure(conn, cfg: Config, doc_id: str, client=None, recorder=None) -> dict:
-    """试卷拆题编排：大题 section 逐个 LLM 提取，失败记日志继续；整卷 0 题判失败。"""
+    """试卷拆题编排：大题 section 逐个 LLM 提取，失败记日志继续；整卷 0 题判失败。
+    幂等在 section 粒度：已有条目的大题跳过，因此上次部分失败的重跑会自动补齐。"""
     from kb.export_md import export_chapter_mds, export_page_mds
     from kb.structure import pair_items
     from kb.traj import Recorder
@@ -157,11 +163,6 @@ def run_exam_structure(conn, cfg: Config, doc_id: str, client=None, recorder=Non
     recorder = recorder or Recorder(conn, cfg, doc_id)
     base_url, api_key, model = cfg.doc_ognize_endpoint()
     client = client or OpenAI(base_url=base_url, api_key=api_key)
-    with conn.cursor() as cur:
-        cur.execute("SELECT 1 FROM items WHERE document_id=%s LIMIT 1", (doc_id,))
-        if cur.fetchone():
-            recorder.decision("structure", "试卷已有条目，跳过（幂等）")
-            return {"mode": "exam", "sections": 0, "items": 0}
     sections = [section for section in exam_sections(conn, doc_id)
                 if section["text"].strip()]
     if not sections:
@@ -170,17 +171,22 @@ def run_exam_structure(conn, cfg: Config, doc_id: str, client=None, recorder=Non
         "structure", f"试卷拆题: {len(sections)} 个大题单元",
         payload={"sections": [section["title"] for section in sections]},
     )
-    total, failed = 0, []
+    total, skipped, failed = 0, 0, []
     for section in sections:
         try:
-            total += extract_section(conn, cfg, doc_id, section, model, client,
-                                     recorder=recorder)
+            count = extract_section(conn, cfg, doc_id, section, model, client,
+                                    recorder=recorder)
         except Exception as exc:
             failed.append(section["title"])
             recorder.error("structure", f"大题「{section['title']}」拆题失败: {exc}",
                            exc=exc)
             print(f"大题「{section['title']}」拆题失败: {exc}")
-    if total == 0:
+            continue
+        if count is None:
+            skipped += 1
+        else:
+            total += count
+    if total == 0 and skipped == 0:
         recorder.end("structure", "试卷拆题失败：0 题", status="error")
         raise SystemExit("试卷拆题结果为 0 题，请检查转录质量或换更强的 DOC_OGNIZE 模型")
     paired = pair_items(conn, doc_id)
