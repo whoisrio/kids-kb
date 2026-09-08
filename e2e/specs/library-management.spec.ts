@@ -18,7 +18,7 @@ test.describe.configure({ mode: "serial" });
 test.beforeAll(async () => {
   const { rows: [doc] } = await pool.query(
     `INSERT INTO documents (title, subject, doc_type, source_path, parse_status, struct_mode)
-     VALUES ($1,'数学','exam',$2,'parsed','flat') RETURNING id::text`,
+     VALUES ($1,'数学','workbook',$2,'parsed','flat') RETURNING id::text`,
     [TITLE, `/tmp/e2e-library-${RUN}.pdf`],
   );
   docId = doc.id;

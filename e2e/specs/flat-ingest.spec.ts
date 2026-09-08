@@ -24,7 +24,7 @@ test.beforeAll(async () => {
   // 1) 种子:1 文档 2 页块文本(无「目录」字样),页 1 带唯一关键词
   const { rows: [doc] } = await pool.query(
     `INSERT INTO documents (title, subject, doc_type, source_path)
-     VALUES ($1,'数学','exam',$2) RETURNING id::text`,
+    VALUES ($1,'数学','workbook',$2) RETURNING id::text`,
     [TITLE, `/tmp/e2e-flat-${RUN}.pdf`],
   );
   docId = doc.id;

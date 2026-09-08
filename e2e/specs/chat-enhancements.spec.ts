@@ -10,7 +10,7 @@ const SESSIONS_ROOT =
   process.env.KB_SESSIONS_ROOT ??
   path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../backend/storage/sessions");
 
-const Q1 = `E2E-${RUN}-不要使用工具，请只原样输出这一行：$998001$。`;
+const Q1 = `E2E-${RUN}-不要使用工具，请先思考一遍，然后只原样输出这一行：$998001$。`;
 const Q1_EDIT = `E2E-${RUN}-不要使用工具，请只原样输出这一行：$888888$。`;
 const Q2 = `E2E-${RUN}-不要使用工具，请再用 markdown 无序列表给我三个预习建议`;
 
