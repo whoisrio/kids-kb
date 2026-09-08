@@ -167,7 +167,7 @@ def pair_items(conn, doc_id: str) -> int:
 def run_structure(conn, cfg: Config, doc_id: str, toc_pages: list[int] | None = None,
                   flat: bool = False, exam: bool = False, client=None) -> dict:
     """structure 编排（CLI 同款流程，可直接测试）。
-    模式判定：--flat 显式 / --toc-pages 显式 / 自动探测目录页，探测不到回退 flat。"""
+    模式判定：--flat > --exam / doc_type='exam'（试卷拆题）> --toc-pages > 自动探测目录页，探测不到回退 flat。"""
     from kb.export_md import export_chapter_mds, export_page_mds
     from kb.flat import build_flat_chapter, resolve_mode
     from kb.grounding import run_grounding

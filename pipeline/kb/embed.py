@@ -64,7 +64,8 @@ def embed_approved_items(conn, cfg: Config, doc_id: str | None = None,
 
 def segment_chapter(content_md: str, max_chars: int = 1600,
                     overlap_chars: int = 0) -> list[str]:
-    """章稿分段:空行分段落,聚合成 ≤max_chars 的段;超长单段硬切。bge-m3 上下文 8k,留足余量。"""
+    """章稿分段:空行分段落,聚合成 ≤max_chars 的段;超长单段硬切。bge-m3 上下文 8k,留足余量。
+    overlap_chars>0 时相邻段携带上一段尾部重叠（章节向量化用；flat 页路径默认无重叠）。"""
     paras = [p.strip() for p in re.split(r"\n\s*\n", content_md or "") if p.strip()]
     segs: list[str] = []
     buf = ""
