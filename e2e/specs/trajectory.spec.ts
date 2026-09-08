@@ -109,7 +109,13 @@ test("t3 用户编辑条目产生 user_edit 事件并在 UI 可见", async ({ pa
   await page.getByRole("button", { name: /1\+1=\?/ }).click();
   await page.getByRole("button", { name: /编辑/ }).click();
   await page.getByLabel("编辑条目").fill("1+1=2（人工修正）");
+  const updateResponse = page.waitForResponse(
+    (response) => response.request().method() === "PATCH" &&
+      response.url().includes(`/api/review/items/${itemId}`),
+  );
   await page.getByRole("button", { name: "保存" }).click();
+  const response = await updateResponse;
+  expect(response.status()).toBe(200);
   await page.getByRole("button", { name: "← 返回条目" }).click();
 
   const { rows } = await pool.query(

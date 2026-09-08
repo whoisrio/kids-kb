@@ -44,6 +44,7 @@ test("md 入库即向量化,聊天能检索到章节内容", async ({ page }) =>
   await page.goto("/");
   await page.getByPlaceholder(/问点什么/).fill(`${KEYWORD} 讲的是什么?请先搜题库再回答。`);
   await page.getByRole("button", { name: "发送" }).click();
+  await expect(page.locator(".msg.user .bubble")).toContainText(KEYWORD);
   await expect(page.locator(".chat-wrap")).toHaveAttribute("data-streaming", "false", {
     timeout: 240_000,
   });
