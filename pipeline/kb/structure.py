@@ -165,7 +165,7 @@ def pair_items(conn, doc_id: str) -> int:
 
 
 def run_structure(conn, cfg: Config, doc_id: str, toc_pages: list[int] | None = None,
-                  flat: bool = False, client=None) -> dict:
+                  flat: bool = False, exam: bool = False, client=None) -> dict:
     """structure 编排（CLI 同款流程，可直接测试）。
     模式判定：--flat 显式 / --toc-pages 显式 / 自动探测目录页，探测不到回退 flat。"""
     from kb.export_md import export_chapter_mds, export_page_mds
@@ -177,10 +177,23 @@ def run_structure(conn, cfg: Config, doc_id: str, toc_pages: list[int] | None = 
 
     rec = Recorder(conn, cfg, doc_id)
     rec.start("structure", "结构化拆条开始",
-              payload={"flat": flat, "toc_pages": toc_pages})
+              payload={"flat": flat, "exam": exam, "toc_pages": toc_pages})
     with conn.cursor() as cur:
-        mode = resolve_mode(cur, doc_id, flat=flat, toc_pages=toc_pages)
+        cur.execute("SELECT doc_type FROM documents WHERE id=%s", (doc_id,))
+        row = cur.fetchone()
+        if not row:
+            raise SystemExit(f"文档不存在: {doc_id}")
+        if flat:
+            mode = "flat"
+        elif exam or row[0] == "exam":
+            mode = "exam"
+        else:
+            mode = resolve_mode(cur, doc_id, flat=False, toc_pages=toc_pages)
     rec.decision("structure", f"模式判定: {mode}", payload={"mode": mode})
+    if mode == "exam":
+        from kb.structure_exam import run_exam_structure
+
+        return run_exam_structure(conn, cfg, doc_id, client=client, recorder=rec)
     if mode == "flat":
         if not flat:
             print("未找到目录页，回退整卷按页模式（--toc-pages 可显式指定目录页）")

@@ -204,3 +204,26 @@ def test_run_exam_structure_idempotent(conn, cfg, pdf_exam):
     run_exam_structure(conn, cfg, pdf_exam, client=_client_seq([EXAM_JSON]))
     out = run_exam_structure(conn, cfg, pdf_exam, client=_client_seq([EXAM_JSON]))
     assert out["items"] == 0
+
+
+def test_run_structure_routes_exam_by_doc_type(conn, cfg, pdf_exam):
+    """doc_type='exam' 的文档跑 structure 自动走试卷拆题（无需 --exam）。"""
+    from kb.structure import run_structure
+
+    out = run_structure(conn, cfg, pdf_exam, client=_client_seq([EXAM_JSON]))
+    assert out["mode"] == "exam"
+    with conn.cursor() as cur:
+        cur.execute("SELECT count(*) FROM items WHERE document_id=%s", (pdf_exam,))
+        assert cur.fetchone()[0] == 2
+
+
+def test_run_structure_flat_flag_wins_over_exam(conn, cfg, pdf_exam):
+    """显式 --flat 优先于 doc_type=exam（逃生门）。"""
+    from kb.structure import run_structure
+
+    out = run_structure(conn, cfg, pdf_exam, flat=True,
+                        client=_client_seq([EXAM_JSON]))
+    assert out["mode"] == "flat"
+    with conn.cursor() as cur:
+        cur.execute("SELECT count(*) FROM items WHERE document_id=%s", (pdf_exam,))
+        assert cur.fetchone()[0] == 0

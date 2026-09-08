@@ -61,6 +61,8 @@ def main() -> None:
                           help="目录物理页码，逗号分隔，如 5,6；不给则自动探测")
     p_struct.add_argument("--flat", action="store_true",
                           help="整卷按页模式：不抽目录不拆条，页级通过后按页向量化（无目录页的试卷集合）")
+    p_struct.add_argument("--exam", action="store_true",
+                          help="试卷拆题模式：LLM 按题提取成条目（doc_type=exam 时自动启用）")
     p_repro = sub.add_parser("reprocess",
                              help="PaddleOCR-VL 整管线重处理指定页（破坏性：删旧块+相交章节 items）")
     p_repro.add_argument("doc_id")
@@ -127,7 +129,8 @@ def main() -> None:
         from kb.structure import run_structure
 
         toc_pages = [int(x) for x in args.toc_pages.split(",")] if args.toc_pages else None
-        run_structure(conn, cfg, args.doc_id, toc_pages=toc_pages, flat=args.flat)
+        run_structure(conn, cfg, args.doc_id, toc_pages=toc_pages, flat=args.flat,
+                      exam=args.exam)
     elif args.cmd == "reprocess":
         from kb.reprocess import reprocess_pages_paddleocr
 
