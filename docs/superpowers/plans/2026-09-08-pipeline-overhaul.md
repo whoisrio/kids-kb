@@ -28,7 +28,7 @@
 - Modify: `pipeline/.env`（本机配置，bash 追加）
 - Test: `pipeline/tests/test_config.py`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 在 `pipeline/tests/test_config.py` 末尾追加：
 
@@ -48,12 +48,12 @@ def test_load_config_chunk_defaults(tmp_path, monkeypatch):
     assert cfg.chunk_overlap_ratio == 0.2
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `cd pipeline && uv run pytest tests/test_config.py::test_load_config_chunk_defaults -q`
 Expected: FAIL（`AttributeError: 'Config' object has no attribute 'chunk_max_chars'`）
 
-- [ ] **Step 3: 实现**
+- [x] **Step 3: 实现**
 
 `pipeline/kb/config.py`：dataclass 加两个字段（放在 `trajectory_level` 之前）：
 
@@ -72,12 +72,12 @@ Expected: FAIL（`AttributeError: 'Config' object has no attribute 'chunk_max_ch
         chunk_overlap_ratio=float(os.environ.get("KB_CHUNK_OVERLAP_RATIO", "0.1")),
 ```
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
 Run: `cd pipeline && uv run pytest tests/test_config.py -q`
 Expected: 全部 PASS
 
-- [ ] **Step 5: 更新 .env.example 和本机 .env**
+- [x] **Step 5: 更新 .env.example 和本机 .env**
 
 `pipeline/.env.example` 末尾追加：
 
@@ -98,7 +98,7 @@ grep -n '^KB_LAYOUT_ENGINE' pipeline/.env
 
 Expected: 输出 `KB_LAYOUT_ENGINE=paddleocr` 所在行。
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add pipeline/kb/config.py pipeline/tests/test_config.py pipeline/.env.example
@@ -115,7 +115,7 @@ git commit -m "feat(pipeline): 章节 chunk 粒度配置化（KB_CHUNK_MAX_CHARS
 - Modify: `pipeline/kb/embed.py`（`segment_chapter` 65-82 行、`embed_chapters` 105 行附近）
 - Test: `pipeline/tests/test_embed.py`（追加纯函数测试，不需要 DB）
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 在 `pipeline/tests/test_embed.py` 末尾追加：
 
@@ -199,12 +199,12 @@ def test_embed_chapters_uses_chunk_config(conn, tmp_path):
     assert seen == [(300, 60)]
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `cd pipeline && uv run pytest tests/test_embed.py -q`
 Expected: `test_segment_chapter_overlap` FAIL（segment_chapter 没有 overlap_chars 参数）；`test_embed_chapters_uses_chunk_config` FAIL（传参是 1600/0）
 
-- [ ] **Step 3: 实现**
+- [x] **Step 3: 实现**
 
 `pipeline/kb/embed.py` 替换 `segment_chapter`：
 
@@ -249,12 +249,12 @@ def segment_chapter(content_md: str, max_chars: int = 1600,
 
 注意 `flat.embed_flat_pages` 调用 `segment_chapter(text)` 不传参，保持 1600/无重叠，不要动它。
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
 Run: `cd pipeline && uv run pytest tests/test_embed.py tests/test_flat.py tests/test_reindex.py -q`
 Expected: 全部 PASS（test_flat/test_reindex 是回归保护）
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add pipeline/kb/embed.py pipeline/tests/test_embed.py
@@ -269,7 +269,7 @@ git commit -m "feat(pipeline): segment_chapter 支持 overlap，章节向量化�
 - Create: `pipeline/kb/structure_exam.py`
 - Test: `pipeline/tests/test_structure_exam.py`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 创建 `pipeline/tests/test_structure_exam.py`：
 
@@ -478,12 +478,12 @@ def test_run_exam_structure_idempotent(conn, cfg, pdf_exam):
     assert out["items"] == 0
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `cd pipeline && uv run pytest tests/test_structure_exam.py -q`
 Expected: FAIL（`ModuleNotFoundError: kb.structure_exam`）
 
-- [ ] **Step 3: 实现**
+- [x] **Step 3: 实现**
 
 创建 `pipeline/kb/structure_exam.py`：
 
@@ -673,12 +673,12 @@ def run_exam_structure(conn, cfg: Config, doc_id: str, client=None, recorder=Non
     return {"mode": "exam", "sections": len(sections), "items": total}
 ```
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
 Run: `cd pipeline && uv run pytest tests/test_structure_exam.py -q`
 Expected: 全部 PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add pipeline/kb/structure_exam.py pipeline/tests/test_structure_exam.py
@@ -695,7 +695,7 @@ git commit -m "feat(pipeline): 试卷 LLM 拆题模块 structure_exam（大题 s
 - Modify: `pipeline/kb/internal_api.py`（approve-doc 的 `elif struct_mode == "toc"` 分支，约 237 行）
 - Test: `pipeline/tests/test_structure_exam.py`（追加）、`pipeline/tests/test_internal_api.py` 已有用例做回归
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 在 `pipeline/tests/test_structure_exam.py` 末尾追加：
 
@@ -722,12 +722,12 @@ def test_run_structure_flat_flag_wins_over_exam(conn, cfg, pdf_exam):
         assert cur.fetchone()[0] == 0  # 未拆题
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `cd pipeline && uv run pytest tests/test_structure_exam.py -q -k run_structure`
 Expected: FAIL（doc_type=exam 的文档走了 flat 回退，items 为 0）
 
-- [ ] **Step 3: 实现**
+- [x] **Step 3: 实现**
 
 `pipeline/kb/structure.py` 的 `run_structure` 签名加 `exam: bool = False`，模式判定段（原 181-183 行）改为：
 
@@ -792,12 +792,12 @@ def run_structure(conn, cfg: Config, doc_id: str, toc_pages: list[int] | None = 
 
 （试卷文档 struct_mode=NULL 时 approve-doc 会现场跑 run_structure 拿到 "exam"，必须进 approve_items 分支。）
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
 Run: `cd pipeline && uv run pytest tests/test_structure_exam.py tests/test_structure.py tests/test_internal_api.py tests/test_traj_structure.py -q`
 Expected: 全部 PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add pipeline/kb/structure.py pipeline/kb/cli.py pipeline/kb/internal_api.py pipeline/tests/test_structure_exam.py
@@ -812,7 +812,7 @@ git commit -m "feat(pipeline): structure 接入 exam 拆题分支（--exam / doc
 - Modify: `backend/src/routes/library.ts`（在 `/:id/chunks` 之后加路由）
 - Test: `backend/src/routes/library.test.ts`
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 在 `backend/src/routes/library.test.ts` 末尾追加：
 
@@ -881,12 +881,12 @@ describe("GET /api/library/:id/content", () => {
 });
 ```
 
-- [ ] **Step 2: 跑测试确认失败**
+- [x] **Step 2: 跑测试确认失败**
 
 Run: `cd backend && npm test -- library.test.ts`
 Expected: 3 个新用例 FAIL（404 路由不存在）
 
-- [ ] **Step 3: 实现**
+- [x] **Step 3: 实现**
 
 `backend/src/routes/library.ts` 在 `app.get("/:id/chunks", ...)` 之后加：
 
@@ -931,12 +931,12 @@ Expected: 3 个新用例 FAIL（404 路由不存在）
   });
 ```
 
-- [ ] **Step 4: 跑测试确认通过**
+- [x] **Step 4: 跑测试确认通过**
 
 Run: `cd backend && npm test -- library.test.ts`
 Expected: 全部 PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add backend/src/routes/library.ts backend/src/routes/library.test.ts
@@ -951,7 +951,7 @@ git commit -m "feat(backend): 资料库整文档内容接口 GET /api/library/:i
 - Modify: `frontend/src/api/library.ts`（加 fetchLibraryContent）
 - Modify: `frontend/src/components/LibraryDetail.tsx`
 
-- [ ] **Step 1: api 层加 fetchLibraryContent**
+- [x] **Step 1: api 层加 fetchLibraryContent**
 
 `frontend/src/api/library.ts` 在 `LibraryChunk` 接口后加类型：
 
@@ -976,7 +976,7 @@ export async function fetchLibraryContent(
 }
 ```
 
-- [ ] **Step 2: LibraryDetail 加全文视图（默认）+ OCR 分块入口**
+- [x] **Step 2: LibraryDetail 加全文视图（默认）+ OCR 分块入口**
 
 `frontend/src/components/LibraryDetail.tsx`：
 
@@ -1071,12 +1071,12 @@ export function FullContent({ docId, fetchImpl = fetch }: {
                  onClick={() => setPageId(item.id)}>
 ```
 
-- [ ] **Step 3: 类型检查 + 构建**
+- [x] **Step 3: 类型检查 + 构建**
 
 Run: `cd frontend && npx tsc -b && npm run build`
 Expected: 无类型错误，构建成功
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add frontend/src/api/library.ts frontend/src/components/LibraryDetail.tsx
@@ -1090,7 +1090,7 @@ git commit -m "feat(frontend): 资料库详情三视图——全文(默认)/索�
 **Files:**
 - Create: `e2e/specs/exam-structure.spec.ts`
 
-- [ ] **Step 1: 写 e2e spec**
+- [x] **Step 1: 写 e2e spec**
 
 创建 `e2e/specs/exam-structure.spec.ts`（模式参照 `e2e/specs/materials-review.spec.ts` 与 `flat-ingest.spec.ts`：种子直插 DB，CLI 用 execSync，真实三服务 + ollama）：
 
@@ -1219,17 +1219,17 @@ test("t3 资料库三视图：全文(默认)/索引账页/OCR 分块", async ({ 
 
 注意：资料库列表点击文档标题进入详情的选择器（`page.getByText(EXAM_TITLE)`）以 `frontend/src/views/LibraryView.tsx` 实际渲染为准，写用例时先读该文件确认入口交互；若入口是按钮/卡片，换成对应 role 选择器。
 
-- [ ] **Step 2: 跑 e2e 确认通过**
+- [x] **Step 2: 跑 e2e 确认通过**
 
 Run: `cd e2e && npx playwright test exam-structure`
 Expected: 3 个用例 PASS（服务由 Playwright 自动拉起；t1 真 LLM 拆题若偶发失败，先看 pipeline_events 定位，不要直接放过）
 
-- [ ] **Step 3: 全量回归**
+- [x] **Step 3: 全量回归**
 
 Run: `cd pipeline && uv run pytest tests/ -q && cd ../backend && npm test && cd ../e2e && npm test`
 Expected: 全绿
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add e2e/specs/exam-structure.spec.ts
@@ -1243,7 +1243,7 @@ git commit -m "test(e2e): 试卷拆题链路 + 资料库三视图 + chunk 粒度
 **Files:**
 - Modify: `AGENTS.md`
 
-- [ ] **Step 1: 更新入库工作流描述**
+- [x] **Step 1: 更新入库工作流描述**
 
 `AGENTS.md` 第 4 条「PDF（docx/md 可选）跑 `structure <doc_id>` 拆条成题目级条目；无目录页的试卷集合自动回退「整卷按页」模式（不拆条，页级检索，`--flat` 显式强制）」改为：
 
@@ -1257,7 +1257,7 @@ git commit -m "test(e2e): 试卷拆题链路 + 资料库三视图 + chunk 粒度
    章节向量化分段粒度由 `KB_CHUNK_MAX_CHARS`（默认 500）与 `KB_CHUNK_OVERLAP_RATIO`（默认 0.1）控制；已入库文档改配置后需重索引生效。
 ```
 
-- [ ] **Step 2: Commit**
+- [x] **Step 2: Commit**
 
 ```bash
 git add AGENTS.md
