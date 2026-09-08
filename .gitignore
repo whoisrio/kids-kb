@@ -29,3 +29,6 @@ e2e/test-results/
 .worktrees/
 
 pipeline/.tmp/
+
+# 外部工具误留的会话标记
+*.ses
