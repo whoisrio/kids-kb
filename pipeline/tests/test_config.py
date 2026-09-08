@@ -58,3 +58,18 @@ def test_trajectory_level_from_env(monkeypatch, tmp_path):
     monkeypatch.setenv("KB_TRAJECTORY_LEVEL", "verbose")
     cfg = load_config(env_path=tmp_path / "nonexistent.env")
     assert cfg.trajectory_level == "verbose"
+
+
+def test_load_config_chunk_defaults(tmp_path, monkeypatch):
+    """章节 chunk 粒度可配：默认 500 字符 + 10% overlap。"""
+    monkeypatch.setenv("KB_DATABASE_URL", "postgresql://localhost/kb_test")
+    monkeypatch.delenv("KB_CHUNK_MAX_CHARS", raising=False)
+    monkeypatch.delenv("KB_CHUNK_OVERLAP_RATIO", raising=False)
+    cfg = load_config(tmp_path / "不存在.env")
+    assert cfg.chunk_max_chars == 500
+    assert cfg.chunk_overlap_ratio == 0.1
+    monkeypatch.setenv("KB_CHUNK_MAX_CHARS", "800")
+    monkeypatch.setenv("KB_CHUNK_OVERLAP_RATIO", "0.2")
+    cfg = load_config(tmp_path / "不存在.env")
+    assert cfg.chunk_max_chars == 800
+    assert cfg.chunk_overlap_ratio == 0.2
