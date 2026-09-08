@@ -27,7 +27,7 @@ def test_documents_struct_mode_schema(conn):
 
 @pytest.fixture()
 def flat_doc(conn, tmp_path):
-    """无目录试卷集合：3 页——页 1 块文本（含 header 干扰）、页 2 整页稿、页 3 无内容。"""
+    """无目录练习册：3 页——页 1 块文本（含 header 干扰）、页 2 整页稿、页 3 无内容。"""
     from kb.config import Config
 
     png = tmp_path / "p.png"
@@ -35,7 +35,7 @@ def flat_doc(conn, tmp_path):
     with conn.cursor() as cur:
         cur.execute(
             """INSERT INTO documents (id, title, subject, doc_type, source_path)
-               VALUES (%s, '学霸提优大试卷', '数学', 'exam', %s) RETURNING id""",
+               VALUES (%s, '学霸提优大试卷', '数学', 'workbook', %s) RETURNING id""",
             (str(uuid.uuid4()), f"/tmp/{uuid.uuid4()}.pdf"),
         )
         doc_id = str(cur.fetchone()[0])
