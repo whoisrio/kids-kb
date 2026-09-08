@@ -12,7 +12,8 @@
    `uv run python -m kb.cli ingest <文件> --title <书名> --subject <科目> --type <类型>`
    pdf / docx / md 同一条命令，按扩展名自动分流。
    docx/md 入库即完成**章节向量化**——不拆条也能被聊天检索到。
-4. PDF（docx/md 可选）跑 `structure <doc_id>` 拆条成题目级条目；无目录页的试卷集合自动回退「整卷按页」模式（不拆条，页级检索，`--flat` 显式强制）。
+   章节向量化分段粒度由 `KB_CHUNK_MAX_CHARS`（默认 500）与 `KB_CHUNK_OVERLAP_RATIO`（默认 0.1）控制；已入库文档改配置后需重索引生效。
+4. `structure <doc_id>` 拆条成题目级条目：`--type exam` 的文档（或显式 `--exam`）走试卷拆题——整卷转录文本按大题分批喂 LLM，提取成题目级 items + 答案配对；练习册走目录页→章节拆条；无目录页且非试卷的文档回退「整卷按页」模式（`--flat` 显式强制）。
 5. 批量复核通过：`approve <doc_id>`（可 `--chapter N` 限章）。
    通过即自动向量化，之后聊天可检索到条目级内容；
    也可在复核页逐条 approve（同样即时向量化）。
