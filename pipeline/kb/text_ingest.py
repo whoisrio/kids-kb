@@ -40,6 +40,9 @@ def store_document_chapters(conn, cfg: Config, path, title: str,
             cur.execute("SELECT id FROM documents WHERE source_path=%s", (path,))
             row = cur.fetchone()
         doc_id = str(row[0]) if row else str(uuid.uuid4())
+    chapters = [(ch_title, content) for ch_title, content in chapters if content.strip()]
+    if not chapters:
+        raise ValueError("文档没有可入库内容")
     with conn.cursor() as cur:
         cur.execute(
             """INSERT INTO documents (id, title, subject, grade, doc_type, source_path,
@@ -51,7 +54,9 @@ def store_document_chapters(conn, cfg: Config, path, title: str,
         for i, (ch_title, content) in enumerate(chapters, start=1):
             cur.execute(
                 """INSERT INTO chapters (id, document_id, chapter_no, title, content_md)
-                   VALUES (%s,%s,%s,%s,%s) ON CONFLICT (document_id, chapter_no) DO NOTHING""",
+                   VALUES (%s,%s,%s,%s,%s)
+                   ON CONFLICT (document_id, chapter_no) DO UPDATE
+                   SET title=EXCLUDED.title, content_md=EXCLUDED.content_md""",
                 (str(uuid.uuid4()), doc_id, i, ch_title, content),
             )
         export_chapter_mds(conn, cfg, doc_id)
