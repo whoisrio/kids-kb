@@ -62,7 +62,8 @@ def embed_approved_items(conn, cfg: Config, doc_id: str | None = None,
     return len(rows)
 
 
-def segment_chapter(content_md: str, max_chars: int = 1600) -> list[str]:
+def segment_chapter(content_md: str, max_chars: int = 1600,
+                    overlap_chars: int = 0) -> list[str]:
     """章稿分段:空行分段落,聚合成 ≤max_chars 的段;超长单段硬切。bge-m3 上下文 8k,留足余量。"""
     paras = [p.strip() for p in re.split(r"\n\s*\n", content_md or "") if p.strip()]
     segs: list[str] = []
@@ -73,10 +74,12 @@ def segment_chapter(content_md: str, max_chars: int = 1600) -> list[str]:
         else:
             if buf:
                 segs.append(buf)
-            buf = p
+                buf = buf[-overlap_chars:] if overlap_chars > 0 else ""
+            buf = f"{buf}\n\n{p}" if buf else p
         while len(buf) > max_chars:  # 单段超长:硬切
             segs.append(buf[:max_chars])
-            buf = buf[max_chars:]
+            buf = (buf[max_chars - overlap_chars:]
+                   if 0 < overlap_chars < max_chars else buf[max_chars:])
     if buf:
         segs.append(buf)
     return segs
@@ -102,7 +105,9 @@ def embed_chapters(conn, cfg: Config, doc_id: str | None = None,
     payloads = []
     for r in rows:
         label = f"第 {r[2]} 讲 {r[3]}"  # 与 structure_chapter 的 items.chapter 标签同构
-        for i, seg in enumerate(segment_chapter(r[4]), start=1):
+        overlap = int(cfg.chunk_max_chars * cfg.chunk_overlap_ratio)
+        for i, seg in enumerate(segment_chapter(
+                r[4], max_chars=cfg.chunk_max_chars, overlap_chars=overlap), start=1):
             payloads.append((r, label, i, seg))
     vectors = embed_texts(cfg, [f"{label}\n\n{seg}" for (_r, label, _i, seg) in payloads],
                           client=client)

@@ -242,3 +242,85 @@ def test_approve_items_chapter_filter(conn, doc_chapter):
         cur.execute(
             "SELECT qc_status FROM items WHERE document_id=%s AND label='1-1'", (doc_id,))
         assert cur.fetchone()[0] == "pending"  # 第一章不受影响
+
+
+def test_segment_chapter_default_unchanged():
+    """默认参数保持 1600/无重叠（flat 页向量化路径不受影响）。"""
+    from kb.embed import segment_chapter
+
+    segs = segment_chapter("甲" * 5000)
+    assert [len(s) for s in segs] == [1600, 1600, 1600, 200]
+
+
+def test_segment_chapter_paragraph_aggregation_500():
+    """空行分段落、按序聚合到 500 字符切 chunk。"""
+    from kb.embed import segment_chapter
+
+    paras = [f"第{i}段 " + "字" * 180 for i in range(6)]
+    segs = segment_chapter("\n\n".join(paras), max_chars=500)
+    assert len(segs) == 3
+    assert all(len(s) <= 500 for s in segs)
+
+
+def test_segment_chapter_overlap():
+    """overlap_chars：相邻 chunk 携带上一段尾部重叠。"""
+    from kb.embed import segment_chapter
+
+    text = "\n\n".join(["甲" * 300, "乙" * 300, "丙" * 300])
+    segs = segment_chapter(text, max_chars=400, overlap_chars=50)
+    assert segs[0] == "甲" * 300
+    assert segs[1].startswith("甲" * 50) and segs[1].endswith("乙" * 300)
+    assert segs[2].startswith("乙" * 50) and segs[2].endswith("丙" * 300)
+
+
+def test_embed_chapters_uses_chunk_config(conn, tmp_path):
+    """embed_chapters 按 cfg.chunk_max_chars/overlap 分段。"""
+    from kb.config import Config
+    from kb import embed as embed_mod
+
+    cfg = Config(
+        database_url="postgresql://localhost/kb_test",
+        storage_dir=tmp_path / "storage",
+        vision_base_url="http://localhost:11434/v1",
+        vision_api_key="ollama",
+        vision_model="qwen3:4b",
+        chunk_max_chars=300,
+        chunk_overlap_ratio=0.2,
+    )
+    with conn.cursor() as cur:
+        cur.execute(
+            "INSERT INTO documents (id, title, source_path) VALUES (%s,'t','/tmp/c.md') RETURNING id",
+            (str(uuid.uuid4()),),
+        )
+        doc_id = str(cur.fetchone()[0])
+        cur.execute(
+            "INSERT INTO chapters (id, document_id, chapter_no, title, content_md) VALUES (%s,%s,1,'章','内容')",
+            (str(uuid.uuid4()), doc_id),
+        )
+    seen = []
+
+    class FakeEmbed:
+        class embeddings:
+            @staticmethod
+            def create(model, input):
+                class D:
+                    embedding = [0.0] * 1024
+
+                class R:
+                    data = [D()]
+
+                return R()
+
+    orig = embed_mod.segment_chapter
+
+    def spy(content_md, max_chars=1600, overlap_chars=0):
+        seen.append((max_chars, overlap_chars))
+        return orig(content_md, max_chars=max_chars, overlap_chars=overlap_chars)
+
+    embed_mod.segment_chapter = spy
+    try:
+        n = embed_mod.embed_chapters(conn, cfg, doc_id, client=FakeEmbed())
+    finally:
+        embed_mod.segment_chapter = orig
+    assert n == 1
+    assert seen == [(300, 60)]
