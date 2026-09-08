@@ -12,6 +12,7 @@ import { expect, test, type Page } from "@playwright/test";
 
 const RUN = Date.now().toString(36); // 本次运行唯一标记（侧栏可能有历史会话）
 const DB_URL = process.env.KB_E2E_DATABASE_URL ?? "postgresql://localhost/kb";
+const BACKEND_URL = process.env.KB_E2E_BACKEND_URL ?? "http://127.0.0.1:8787";
 const SESSIONS_ROOT =
   process.env.KB_SESSIONS_ROOT ??
   path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../backend/storage/sessions");
@@ -23,6 +24,7 @@ const MSG_B1 = `E2E-${RUN}-五道两位数乘法题目是什么？不使用工�
 test.describe.configure({ mode: "serial" });
 
 const pool = new pg.Pool({ connectionString: DB_URL });
+const runStart = new Date();
 
 // 会话 A 的跨用例状态（t1 写入）
 let sessionA: { id: string; title: string; model: string } | null = null;
@@ -89,7 +91,18 @@ async function latestChatCall(runStart: Date) {
   };
 }
 
-test.afterAll(async () => {
+test.afterAll(async ({ request }) => {
+  const list = await (await request.get(`${BACKEND_URL}/api/sessions`)).json() as
+    { id: string; title: string }[];
+  const createdSessions = list.filter((session) =>
+    session.title.startsWith(`E2E-${RUN}-`));
+  for (const session of createdSessions) {
+    await request.delete(`${BACKEND_URL}/api/sessions/${session.id}`);
+  }
+  await pool.query(
+    "DELETE FROM llm_calls WHERE purpose='chat' AND created_at >= $1",
+    [runStart.toISOString()],
+  );
   await pool.end();
 });
 

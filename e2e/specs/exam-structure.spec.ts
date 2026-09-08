@@ -1,5 +1,5 @@
 import { execSync } from "node:child_process";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
@@ -127,5 +127,11 @@ test("t3 资料库三视图：全文(默认)/索引账页/OCR 分块", async ({ 
 test.afterAll(async () => {
   if (examDocId) await pool.query("DELETE FROM documents WHERE id=$1", [examDocId]);
   if (mdDocId) await pool.query("DELETE FROM documents WHERE id=$1", [mdDocId]);
+  if (examDocId) {
+    rmSync(path.join(STORAGE_ROOT, examDocId), { recursive: true, force: true });
+  }
+  if (mdDocId) {
+    rmSync(path.join(STORAGE_ROOT, mdDocId), { recursive: true, force: true });
+  }
   await pool.end();
 });
