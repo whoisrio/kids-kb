@@ -29,8 +29,11 @@ const runStart = new Date();
 // 会话 A 的跨用例状态（t1 写入）
 let sessionA: { id: string; title: string; model: string } | null = null;
 
-/** 等流式收尾（data-streaming 复位）且助手气泡非空、无错误文案。 */
-async function waitReplyDone(page: Page, timeout = 240_000) {
+/** 等流式收尾（data-streaming 复位）且助手气泡非空、无错误文案。
+ * sentBefore 是发送前的气泡数：先等本轮 user+assistant 气泡出现，
+ * 避免在 streaming 尚未置 true 的窗口里读到上一轮残留的 false。 */
+async function waitReplyDone(page: Page, sentBefore: number, timeout = 240_000) {
+  await expect(page.locator(".msg")).toHaveCount(sentBefore + 2, { timeout });
   await expect(page.locator(".chat-wrap")).toHaveAttribute("data-streaming", "false", { timeout });
   await expect
     .poll(async () => (await page.locator(".msg:last-child .bubble").textContent())?.length ?? 0, {
@@ -43,8 +46,10 @@ async function waitReplyDone(page: Page, timeout = 240_000) {
 }
 
 async function sendMessage(page: Page, text: string) {
+  const before = await page.locator(".msg").count();
   await page.getByPlaceholder(/问点什么/).fill(text);
   await page.getByRole("button", { name: "发送" }).click();
+  return before;
 }
 
 /** 会话消息流中全部气泡文本（user/agent 交替）。 */
@@ -109,11 +114,11 @@ test.afterAll(async ({ request }) => {
 test("t1 发消息：流式回复 + 侧栏新会话 + JSONL 落盘 + llm_calls 计量", async ({ page }) => {
   const runStart = new Date();
   await page.goto("/");
-  await sendMessage(page, MSG_A1);
+  const sentBeforeA1 = await sendMessage(page, MSG_A1);
 
   // 用户消息上屏，流式进行 → 收尾，回复完整
   await expect(page.locator(".msg.user .bubble")).toContainText(MSG_A1);
-  const replyA1 = await waitReplyDone(page);
+  const replyA1 = await waitReplyDone(page, sentBeforeA1);
   expect(replyA1.length).toBeGreaterThan(10); // 完整回答而非空/残句
 
   // 侧栏：新会话即时出现、标题=首条用户消息前 20 字、高亮
@@ -208,8 +213,8 @@ test("t3 切换模型：下一条消息用新模型 + model_change 留痕 + llm_
   await expect(page.locator(".msg")).toHaveCount(detailBefore.messages.length);
   await expect(page.locator(".chat-wrap")).toHaveAttribute("data-streaming", "false");
   await page.locator("select[aria-label='选择模型']").selectOption(target!);
-  await sendMessage(page, MSG_A2);
-  const replyA2 = await waitReplyDone(page);
+  const sentBeforeA2 = await sendMessage(page, MSG_A2);
+  const replyA2 = await waitReplyDone(page, sentBeforeA2);
 
   // 会话 A 上下文延续：原历史加本轮 user/assistant
   expect((await bubbleTexts(page)).length).toBe(detailBefore.messages.length + 2);
@@ -253,8 +258,8 @@ test("t4 新对话：清空 → 新会话创建 → 侧栏排序与高亮", asyn
   await expect(page.locator("select[aria-label='选择模型']")).toHaveValue(modelBefore);
 
   // 新会话发消息：第二个会话出现、排最前（modifiedAt 倒序）、高亮
-  await sendMessage(page, MSG_B1);
-  await waitReplyDone(page);
+  const sentBeforeB1 = await sendMessage(page, MSG_B1);
+  await waitReplyDone(page, sentBeforeB1);
   const titleB = MSG_B1.slice(0, 20);
   const itemB = page.locator(".session-item").filter({ hasText: titleB });
   await expect(itemB).toHaveCount(1);
