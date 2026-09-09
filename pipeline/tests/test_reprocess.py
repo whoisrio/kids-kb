@@ -5,7 +5,7 @@ import pytest
 
 
 def _cfg(tmp_path):
-    from kb.config import Config
+    from kb.core.config import Config
     return Config(
         database_url="postgresql://localhost/kb_test",
         storage_dir=tmp_path / "storage",
@@ -18,8 +18,8 @@ def _cfg(tmp_path):
 @pytest.fixture()
 def doc3(conn, tmp_path):
     """3 页文档，每页 1 个整页块（骨架模式）。"""
-    from kb.layout import run_layout
-    from kb.render import render_document
+    from kb.ocr.layout import run_layout
+    from kb.ocr.render import render_document
 
     cfg = _cfg(tmp_path)
     p = tmp_path / "book.pdf"
@@ -56,7 +56,7 @@ FAKE_BLOCKS = [
 
 
 def test_reprocess_replaces_page_blocks(conn, doc3):
-    from kb.reprocess import reprocess_pages_paddleocr
+    from kb.ocr.reprocess import reprocess_pages_paddleocr
 
     doc_id, cfg = doc3
     with conn.cursor() as cur:  # 第 2 页旧块挂上复核行；第 1 章覆盖 1-2 页且已有 item
@@ -100,10 +100,19 @@ def test_reprocess_replaces_page_blocks(conn, doc3):
                WHERE p.page_no IN (1,3)"""
         )
         assert cur.fetchone()[0] == 2  # 未指定的页不动
+        cur.execute(
+            """SELECT b.crop_path, b.crop_pad FROM blocks b
+               JOIN pages p ON p.id=b.page_id WHERE p.page_no=2 ORDER BY b.ordinal"""
+        )
+        rows = cur.fetchall()
+        cur.execute("SELECT id::text FROM pages WHERE document_id=%s AND page_no=2", (doc_id,))
+        page2 = cur.fetchone()[0]
+    assert [r[0] for r in rows] == [f"{doc_id}/blocks/{page2}/b{i:03d}.png" for i in range(3)]
+    assert [r[1] for r in rows] == [[6, 4], [6, 4], [12, 5]]
 
 
 def test_reprocess_keeps_unaffected_chapter_items(conn, doc3):
-    from kb.reprocess import reprocess_pages_paddleocr
+    from kb.ocr.reprocess import reprocess_pages_paddleocr
 
     doc_id, cfg = doc3
     with conn.cursor() as cur:  # 第 2 章在第 3 页，与重处理的第 2 页不相交
@@ -129,7 +138,7 @@ def test_reprocess_keeps_unaffected_chapter_items(conn, doc3):
 def test_reprocess_upgrades_star_vertical_arithmetic_to_vlm(conn, doc3):
     """VL 直出的疑似竖式文本块（多行星号/方框）不信任：改标 formula + 内容置 NULL，
     留给 run_parse 用视觉模型升级转录。"""
-    from kb.reprocess import reprocess_pages_paddleocr
+    from kb.ocr.reprocess import reprocess_pages_paddleocr
 
     doc_id, cfg = doc3
     star_block = {"block_label": "text", "block_bbox": [0, 0, 100, 100],
@@ -146,7 +155,7 @@ def test_reprocess_upgrades_star_vertical_arithmetic_to_vlm(conn, doc3):
 
 def test_reprocess_keeps_normal_text_block(conn, doc3):
     """普通文字块不误升级：只一行含符号或纯文字都保持 text + VL 直出内容。"""
-    from kb.reprocess import reprocess_pages_paddleocr
+    from kb.ocr.reprocess import reprocess_pages_paddleocr
 
     doc_id, cfg = doc3
     blocks = [

@@ -12,12 +12,14 @@ from __future__ import annotations
 import uuid
 from pathlib import Path
 
+import pymupdf as fitz
 from psycopg.types.json import Jsonb
 
 from kb.core.config import Config
 from kb.core.paths import resolve_storage_path, storage_rel
 from kb.ocr.layout import crop_image, map_block_label
 from kb.ocr.parse import starred_math
+from kb.ocr.pad import padded_px_bbox
 
 
 def _needs_vlm_upgrade(block_type: str, content: str) -> bool:
@@ -60,25 +62,35 @@ def reprocess_pages_paddleocr(conn, cfg: Config, doc_id: str, page_nos: list[int
             if not row:
                 continue
             page_id, image_path = row
-            image_path = str(resolve_storage_path(cfg, image_path))
+            abs_img = resolve_storage_path(cfg, image_path)
             cur.execute("DELETE FROM blocks WHERE page_id=%s", (page_id,))
-            out_dir = Path(cfg.storage_dir) / "blocks" / str(page_id)
+            out_dir = Path(cfg.storage_dir) / doc_id / "blocks" / str(page_id)
             out_dir.mkdir(parents=True, exist_ok=True)
-            for i, b in enumerate(_parsing_blocks(pipeline.predict(str(image_path)))):
-                bbox = tuple(b.get("block_bbox") or (0, 0, 0, 0))
-                crop = out_dir / f"b{i:03d}.png"
-                crop_image(image_path, bbox, crop)
+            parsed = _parsing_blocks(pipeline.predict(str(abs_img)))
+            pix = fitz.Pixmap(str(abs_img))
+            page_size = (pix.width, pix.height)
+            del pix
+            raw = [tuple(b.get("block_bbox") or (0, 0, 0, 0)) for b in parsed]
+            for i, b in enumerate(parsed, start=1):
+                bbox = raw[i - 1]
                 block_type = map_block_label(b.get("block_label"))
+                padded, pad = padded_px_bbox(
+                    bbox, block_type, cfg.dpi, page_size,
+                    prev_bbox=raw[i - 2] if i > 1 else None,
+                    next_bbox=raw[i] if i < len(raw) else None,
+                )
+                crop = out_dir / f"b{i - 1:03d}.png"
+                crop_image(abs_img, padded, crop)
                 content = (b.get("block_content") or "").strip() or None
                 if content and _needs_vlm_upgrade(block_type, content):
                     block_type, content = "formula", None  # 星号竖式不可信，升级 VLM 重转录
                 cur.execute(
                     """INSERT INTO blocks (id, page_id, block_type, bbox, crop_path,
-                                         content_md, source_model, ordinal)
-                       VALUES (%s,%s,%s,%s,%s,%s,'paddleocr-vl-1.5',%s)""",
+                                         content_md, source_model, ordinal, crop_pad)
+                       VALUES (%s,%s,%s,%s,%s,%s,'paddleocr-vl-1.5',%s,%s)""",
                     (str(uuid.uuid4()), page_id, block_type,
                      Jsonb([float(v) for v in bbox]), storage_rel(cfg, crop),
-                     content, i + 1),
+                     content, i, Jsonb(pad)),
                 )
                 stats["blocks"] += 1
             cur.execute(
