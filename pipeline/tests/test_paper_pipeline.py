@@ -22,7 +22,7 @@ def child(conn):
 
 @pytest.fixture()
 def cfg(tmp_path):
-    from kb.config import Config
+    from kb.core.config import Config
     return Config(
         database_url="postgresql://localhost/kb_test",
         storage_dir=tmp_path / "storage",
@@ -186,6 +186,34 @@ def _responses_for(pages_with_questions: list[list[dict]]) -> list[str]:
     return [_vlm_json(qs) for qs in pages_with_questions]
 
 
+def test_crop_question_clamps_out_of_range_bbox(tmp_path):
+    """整页 bbox 加 padding 后被 clamp 回页内，不崩（验收 4 纵深防御）。"""
+    from kb.paper_pipeline import _crop_question
+
+    doc = fitz.open()
+    doc.new_page(width=595, height=842)
+    page = doc[0]
+    out = tmp_path / "q.png"
+    _crop_question(page, 200, [0, 0, 1000, 1000], out)
+    pix = fitz.Pixmap(str(out))
+    full = page.get_pixmap(dpi=200)
+    assert (pix.width, pix.height) == (full.width, full.height)
+
+
+def test_crop_question_applies_text_padding(tmp_path):
+    """题图按 text 档外扩：A4 下水平 4 单位、垂直 2 单位（0-1000 归一化，spec §5.2 表）。"""
+    from kb.paper_pipeline import _crop_question
+
+    doc = fitz.open()
+    doc.new_page(width=595, height=842)
+    page = doc[0]
+    out = tmp_path / "q.png"
+    _crop_question(page, 200, [100, 100, 200, 200], out)
+    pix = fitz.Pixmap(str(out))
+    base = page.get_pixmap(dpi=200, clip=fitz.Rect(595 * 0.1, 842 * 0.1, 595 * 0.2, 842 * 0.2))
+    assert pix.width > base.width and pix.height > base.height
+
+
 class TestIngestPaper:
     def test_拆题落库_裁图_计量_页数回填(self, conn, cfg, child, tmp_path):
         from kb.paper_pipeline import ingest_paper
@@ -204,7 +232,8 @@ class TestIngestPaper:
         assert row[0] == 1 and row[1] == 1
         assert row[2] == "246 × 37 =" and row[3] == "wrong"  # 行首序号被归一化剥除
         assert row[4] == [0, 0, 500, 300]
-        assert row[5] and Path(row[5]).exists()      # 题图裁切落盘
+        assert row[5] == f"papers/{pid}/questions/p0001_q01.png"
+        assert (cfg.storage_dir / row[5]).exists()
         assert row[6] == "9102" and row[7] == "红笔 ✗"
         paper = conn.execute(
             "SELECT source_path, page_count FROM papers WHERE id=%s", (pid,)).fetchone()

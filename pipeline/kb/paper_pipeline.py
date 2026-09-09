@@ -12,8 +12,9 @@ from pathlib import Path
 
 import pymupdf as fitz
 
-from kb.config import Config
-from kb.metering import extract_usage, record_llm_call
+from kb.core.config import Config
+from kb.ocr.pad import pad_mm_for
+from kb.telemetry.metering import extract_usage, record_llm_call
 
 PAPER_VLM_PROMPT = """你是试卷解析助手。把这一页试卷拆成一道道独立的题,并识别批改痕迹。
 只输出纯 JSON(不要 markdown 围栏),结构:
@@ -156,14 +157,18 @@ def _recognize_page(conn, cfg: Config, paper_id: str, page_no: int,
 
 
 def _crop_question(page: fitz.Page, dpi: int, bbox: list[int], out_path: Path) -> None:
-    """按 0-1000 归一化 bbox 裁题图。
+    """按 0-1000 归一化 bbox 裁题图，text 档 padding（spec §5.2）+ clamp 页内（§5.3）。
 
     用 page.get_pixmap(clip=) 而非 Pixmap(pix, IRect) 二次裁切:后者在 PyMuPDF
     1.28.x 存在 Pixmap 双参构造的兼容问题,前者坐标语义(页面 pt)更干净。
     """
     w, h = page.rect.width, page.rect.height
+    pad_h_mm, pad_v_mm = pad_mm_for("text")
+    ux = pad_h_mm / (w * 25.4 / 72) * 1000
+    uy = pad_v_mm / (h * 25.4 / 72) * 1000
     x1, y1, x2, y2 = bbox
-    rect = fitz.Rect(w * x1 / 1000, h * y1 / 1000, w * x2 / 1000, h * y2 / 1000)
+    rect = fitz.Rect(w * (x1 - ux) / 1000, h * (y1 - uy) / 1000,
+                     w * (x2 + ux) / 1000, h * (y2 + uy) / 1000) & page.rect
     page.get_pixmap(dpi=dpi, clip=rect).save(str(out_path))
 
 
@@ -216,7 +221,7 @@ def ingest_paper(conn, cfg: Config, paper_id: str, pdf_bytes: bytes | None = Non
             if q["bbox"]:
                 rel = questions_dir / f"p{i:04d}_q{q['seq_in_page']:02d}.png"
                 _crop_question(page, cfg.dpi, q["bbox"], rel)
-                q["image_path"] = str(rel.resolve())
+                q["image_path"] = rel.relative_to(cfg.storage_dir).as_posix()
             else:
                 q["image_path"] = None
             q["page_no"] = i
@@ -260,7 +265,7 @@ def recognize_page(conn, cfg: Config, paper_id: str, page_no: int, client=None) 
         if q["bbox"]:
             rel = questions_dir / f"p{page_no:04d}_q{q['seq_in_page']:02d}.png"
             _crop_question(page, cfg.dpi, q["bbox"], rel)
-            q["image_path"] = str(rel.resolve())
+            q["image_path"] = rel.relative_to(cfg.storage_dir).as_posix()
         else:
             q["image_path"] = None
         q["page_no"] = page_no
