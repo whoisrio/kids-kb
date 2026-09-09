@@ -60,7 +60,7 @@ export function createApp(
   app.route("/api/stats", statsRoutes(pool));
   app.route("/api/usage", usageRoutes(pool));
   app.route("/api/papers", papersRoutes(pool, paperJobs, cfg));
-  app.route("/api/paper-questions", paperQuestionsRoutes(pool, paperJobs));
+  app.route("/api/paper-questions", paperQuestionsRoutes(pool, paperJobs, cfg.storageRoot));
   app.route("/api/review", reviewRoutes(pool, {
     search, pipelineUrl: cfg.pipelineUrl, storageRoot: cfg.storageRoot,
   }));

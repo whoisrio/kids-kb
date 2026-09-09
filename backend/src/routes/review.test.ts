@@ -50,7 +50,7 @@ maybe("review API（真库）", () => {
       (await pool.query(
         `INSERT INTO pages (document_id, page_no, image_path, parse_status)
          VALUES ($1,$2,$3,'parsed') RETURNING id::text`,
-        [docId, pageNo, join("storage", docId, "pages", `p${String(pageNo).padStart(4, "0")}.png`)],
+        [docId, pageNo, join(docId, "pages", `p${String(pageNo).padStart(4, "0")}.png`)],
       )).rows[0].id;
     page1 = await mkPage(1);
     page2 = await mkPage(2);
@@ -60,9 +60,10 @@ maybe("review API（真库）", () => {
     writeFileSync(join(pagesDir, "p0002.png"), PNG_1PX);
     const mkBlock = async (pageId: string, type: string, content: string | null, bbox: number[] | null) =>
       (await pool.query(
-        `INSERT INTO blocks (page_id, block_type, bbox, crop_path, content_md)
-         VALUES ($1,$2,$3,$4,$5) RETURNING id::text`,
-        [pageId, type, JSON.stringify(bbox), join("storage", docId, "blocks", `${pageId}-${type}.png`), content],
+        `INSERT INTO blocks (page_id, block_type, bbox, crop_path, content_md, ordinal)
+         VALUES ($1,$2,$3,$4,$5,(SELECT coalesce(max(ordinal), 0) + 1 FROM blocks WHERE page_id = $1))
+         RETURNING id::text`,
+        [pageId, type, JSON.stringify(bbox), join(docId, "blocks", `${pageId}-${type}.png`), content],
       )).rows[0].id;
     block11 = await mkBlock(page1, "text", "24+37=61", [10, 20, 200, 80]);
     block12 = await mkBlock(page1, "header", "第 1 页", null);
@@ -81,7 +82,7 @@ maybe("review API（真库）", () => {
     const fp = await pool.query(
       `INSERT INTO pages (document_id, page_no, image_path, parse_status, adopted_source, page_md)
        VALUES ($1,1,$2,'parsed','page_md','第二套 竖式计算') RETURNING id::text`,
-      [flatDocId, join("storage", flatDocId, "pages", "p0001.png")]);
+      [flatDocId, join(flatDocId, "pages", "p0001.png")]);
     const fDir = join(storageRoot, flatDocId, "pages");
     mkdirSync(fDir, { recursive: true });
     writeFileSync(join(fDir, "p0001.png"), PNG_1PX);
@@ -143,6 +144,7 @@ maybe("review API（真库）", () => {
     expect(d.page_no).toBe(1);
     expect(d.image_url).toBe(`/api/review/pages/${page1}/image`);
     expect(d.blocks).toHaveLength(2);
+    expect(d.blocks.map((b) => b.id)).toEqual([block11, block12]);
     const text = d.blocks.find((b) => b.id === block11)!;
     expect(text).toMatchObject({ block_type: "text", content_md: "24+37=61", bbox: [10, 20, 200, 80], pending: [] });
     expect(d.blocks.find((b) => b.id === block12)!.pending).toEqual([

@@ -1,11 +1,12 @@
 /** 资料 API：旧静态复核页的 React 化。读路径直连 PostgreSQL，图片从 storageRoot 读盘回传。
     设计：docs/superpowers/specs/2026-09-05-phase3-c-design.md（Workstream B） */
 import { readFile } from "node:fs/promises";
-import { dirname, isAbsolute, join } from "node:path";
+import { join } from "node:path";
 import { Hono } from "hono";
 import type { Context } from "hono";
 import type pg from "pg";
 import type { SearchHit } from "../retrieval/search.js";
+import { resolveStoragePath } from "../storagePath.js";
 
 export interface ReviewDeps {
   search: (q: string, filters?: Record<string, string>) => Promise<SearchHit[]>;
@@ -17,10 +18,6 @@ function invalidId(c: Context, err: unknown): Response | null {
   return (err as { code?: string })?.code === "22P02"
     ? c.json({ error: "id 格式非法（须为 UUID）" }, 422)
     : null;
-}
-
-function resolveStoragePath(storageRoot: string, p: string): string {
-  return isAbsolute(p) ? p : join(dirname(storageRoot), p);
 }
 
 export function reviewRoutes(pool: pg.Pool, deps: ReviewDeps): Hono {
@@ -77,7 +74,7 @@ export function reviewRoutes(pool: pg.Pool, deps: ReviewDeps): Hono {
       if (!page) return c.json({ error: "page 不存在" }, 404);
       const { rows: blocks } = await pool.query(
         `SELECT id::text, block_type, bbox, content_md, source_model
-         FROM blocks WHERE page_id = $1 ORDER BY created_at, id`, [page.id]);
+         FROM blocks WHERE page_id = $1 ORDER BY ordinal`, [page.id]);
       const blocksWithCrop = blocks.map((b) => ({ ...b, crop_url: `/api/review/blocks/${b.id}/crop` }));
       const blockIds = blocks.map((b) => b.id);
       const { rows: annotations } = blockIds.length ? await pool.query(
@@ -217,7 +214,7 @@ export function reviewRoutes(pool: pg.Pool, deps: ReviewDeps): Hono {
       const { rows: blocks } = await pool.query(
         `SELECT b.id::text, ib.role, b.block_type, b.content_md, b.source_model
          FROM item_blocks ib JOIN blocks b ON b.id = ib.block_id
-         WHERE ib.item_id = $1 ORDER BY b.created_at, b.id`, [item.id]);
+         WHERE ib.item_id = $1 ORDER BY b.ordinal`, [item.id]);
       const { rows: reviews } = await pool.query(
         "SELECT id::text, reason, status FROM review_queue WHERE item_id = $1 ORDER BY created_at",
         [item.id]);

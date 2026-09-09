@@ -5,6 +5,7 @@ import type { Context } from "hono";
 import type pg from "pg";
 import type { PaperJobDeps } from "../papers/jobs.js";
 import { matchQuestion } from "../retrieval/match.js";
+import { resolveStoragePath } from "../storagePath.js";
 
 const RESULTS = new Set(["correct", "wrong", "partial"]);
 const CAUSES = new Set(["粗心", "概念不清", "方法不会", "计算错"]);
@@ -31,7 +32,7 @@ function invalidId(c: Context, err: unknown): Response | null {
     : null;
 }
 
-export function paperQuestionsRoutes(pool: pg.Pool, deps: PaperJobDeps): Hono {
+export function paperQuestionsRoutes(pool: pg.Pool, deps: PaperJobDeps, storageRoot: string): Hono {
   const app = new Hono({ strict: false });
 
   app.put("/:id/confirm", async (c) => {
@@ -134,7 +135,7 @@ export function paperQuestionsRoutes(pool: pg.Pool, deps: PaperJobDeps): Hono {
       if (!q) return c.json({ error: "题目不存在" }, 404);
       if (!q.image_path) return c.json({ error: "该题无裁图" }, 404);
       try {
-        const buf = await readFile(q.image_path);
+        const buf = await readFile(resolveStoragePath(storageRoot, q.image_path));
         return c.body(new Uint8Array(buf), 200, { "Content-Type": "image/png" });
       } catch {
         return c.json({ error: "题图缺失" }, 404);

@@ -11,6 +11,10 @@ const maybe = url ? describe : describe.skip;
 const CHILD = "11111111-1111-1111-1111-111111111111";
 const DOC = "33333333-3333-3333-3333-333333333333";
 const ITEM = "22222222-2222-2222-2222-222222222222";
+const PNG_1PX = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+  "base64",
+);
 
 maybe("paper-questions API（真库）", () => {
   let pool: pg.Pool;
@@ -18,6 +22,7 @@ maybe("paper-questions API（真库）", () => {
   let paperId: string;
   let q1: string;
   let q2: string;
+  let storageRoot: string;
 
   const deps: PaperJobDeps = {
     pipelineUrl: "http://x", matchThreshold: 0.88,
@@ -28,6 +33,10 @@ maybe("paper-questions API（真库）", () => {
 
   beforeAll(async () => {
     pool = await resetDbForTest(url!);
+    const { mkdtempSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    storageRoot = mkdtempSync(join(tmpdir(), "kb-pq-test-"));
     await pool.query("INSERT INTO children (id, name) VALUES ($1,'小宝')", [CHILD]);
     await pool.query(
       "INSERT INTO documents (id, title, subject, source_path) VALUES ($1,'数学书','数学','/tmp/a.pdf')", [DOC]);
@@ -51,7 +60,7 @@ maybe("paper-questions API（真库）", () => {
        VALUES ($1,1,2,'画一画') RETURNING id::text`, [paperId]);
     q2 = b.id;
     app = new Hono();
-    app.route("/api/paper-questions", paperQuestionsRoutes(pool, deps));
+    app.route("/api/paper-questions", paperQuestionsRoutes(pool, deps, storageRoot));
   });
   afterAll(async () => { await pool.end(); });
 
@@ -132,6 +141,20 @@ maybe("paper-questions API（真库）", () => {
       item_id: ITEM, doc_title: "数学书", label: "1",
     });
     expect(candidates[0].vec_score).toBeGreaterThan(0.88);
+  });
+
+  it("GET /:id/image：相对路径经 resolveStoragePath 解析（不再读原始绝对路径）", async () => {
+    const { mkdirSync, writeFileSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    const rel = join("papers", paperId, "questions", "p0001_q01.png");
+    mkdirSync(join(storageRoot, "papers", paperId, "questions"), { recursive: true });
+    writeFileSync(join(storageRoot, rel), PNG_1PX);
+    await pool.query("UPDATE paper_questions SET image_path=$1 WHERE id=$2", [rel, q1]);
+    const a = new Hono();
+    a.route("/api/paper-questions", paperQuestionsRoutes(pool, deps, storageRoot));
+    const resp = await a.request(`/api/paper-questions/${q1}/image`);
+    expect(resp.status).toBe(200);
+    expect(resp.headers.get("Content-Type")).toBe("image/png");
   });
 
   it("非 UUID id 统一 422(candidates/image)", async () => {
