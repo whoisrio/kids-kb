@@ -9,7 +9,10 @@ from typing import Protocol
 import pymupdf as fitz
 from psycopg.types.json import Jsonb
 
+from kb.core.config import Config
 from kb.core.paths import resolve_storage_path
+from kb.core.paths import storage_rel
+from kb.ocr.pad import padded_px_bbox
 
 @dataclass
 class BlockDraft:
@@ -18,6 +21,7 @@ class BlockDraft:
     crop_path: str
     bbox: tuple[float, float, float, float] | None = None
     ordinal: int | None = None
+    crop_pad: list[int] | None = None
 
 
 _LABEL_MAP = {
@@ -107,10 +111,12 @@ class PaddleOCRLayout:
         self,
         blocks_dir: Path,
         model_name: str = "PP-DocLayoutV3",
+        dpi: int = 200,
         pipeline=None,
     ):
         self._blocks_dir = Path(blocks_dir)
         self._model_name = model_name
+        self._dpi = dpi
         self._pipeline = pipeline  # 测试可注入假模型
 
     def _get_pipeline(self):
@@ -133,23 +139,34 @@ class PaddleOCRLayout:
         # PP-DocLayoutV2/V3 自带指针网络，boxes 返回顺序即阅读顺序，直接采用
         out_dir = self._blocks_dir / page_id
         out_dir.mkdir(parents=True, exist_ok=True)
+        pix = fitz.Pixmap(str(image_path))
+        page_size = (pix.width, pix.height)
+        del pix
+        raw = [tuple(b.get("coordinate") or (0, 0, 0, 0)) for b in boxes]
         drafts = []
         for i, b in enumerate(boxes, start=1):
-            bbox = tuple(b.get("coordinate") or (0, 0, 0, 0))
+            bbox = raw[i - 1]
+            block_type = map_block_label(b.get("label"))
+            padded, pad = padded_px_bbox(
+                bbox, block_type, self._dpi, page_size,
+                prev_bbox=raw[i - 2] if i > 1 else None,
+                next_bbox=raw[i] if i < len(raw) else None,
+            )
             crop = out_dir / f"b{i - 1:03d}.png"
-            crop_image(image_path, bbox, crop)
+            crop_image(image_path, padded, crop)
             drafts.append(BlockDraft(
                 page_id=page_id,
-                block_type=map_block_label(b.get("label")),
+                block_type=block_type,
                 bbox=tuple(float(v) for v in bbox),
                 crop_path=str(crop),
                 ordinal=i,
+                crop_pad=pad,
             ))
         return drafts
 
 
 def run_layout(conn, doc_id: str, analyzer: LayoutAnalyzer | None = None,
-               force: bool = False, cfg=None) -> int:
+               force: bool = False, cfg: Config | None = None) -> int:
     analyzer = analyzer or WholePageLayout()
     with conn.cursor() as cur:
         if force:
@@ -174,20 +191,24 @@ def run_layout(conn, doc_id: str, analyzer: LayoutAnalyzer | None = None,
                 image_path = str(resolve_storage_path(cfg, image_path))
             for i, draft in enumerate(analyzer.analyze(str(page_id), image_path), start=1):
                 cur.execute(
-                    """INSERT INTO blocks (id, page_id, block_type, bbox, crop_path, ordinal)
-                       VALUES (%s,%s,%s,%s,%s,%s)""",
+                    """INSERT INTO blocks (id, page_id, block_type, bbox, crop_path,
+                                           ordinal, crop_pad)
+                       VALUES (%s,%s,%s,%s,%s,%s,%s)""",
                     (str(uuid.uuid4()), page_id, draft.block_type,
                      Jsonb(list(draft.bbox)) if draft.bbox is not None else None,
-                     draft.crop_path, draft.ordinal or i),
+                     storage_rel(cfg, draft.crop_path) if cfg is not None else draft.crop_path,
+                     draft.ordinal or i,
+                     Jsonb(draft.crop_pad) if draft.crop_pad else None),
                 )
                 n += 1
     return n
 
 
-def make_layout_analyzer(cfg) -> LayoutAnalyzer:
-    """按配置选版面引擎。"""
+def make_layout_analyzer(cfg, doc_id: str | None = None) -> LayoutAnalyzer:
+    """按配置选版面引擎。doc_id 传入时块图落 storage/<doc_id>/blocks/（spec §7.1）。"""
     if cfg.layout_engine == "paddleocr":
-        return PaddleOCRLayout(
-            blocks_dir=cfg.storage_dir / "blocks", model_name=cfg.layout_model
-        )
+        blocks_dir = (Path(cfg.storage_dir) / doc_id / "blocks"
+                      if doc_id else Path(cfg.storage_dir) / "blocks")
+        return PaddleOCRLayout(blocks_dir=blocks_dir, model_name=cfg.layout_model,
+                               dpi=cfg.dpi)
     return WholePageLayout()

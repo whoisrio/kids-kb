@@ -26,7 +26,7 @@ def ingest(conn, cfg: Config, pdf_path, title: str,
     t = rec.start("render", f"渲染 {doc_id} 页面")
     rec.end("render", "渲染完成", started=t)
     t = rec.start("layout", "版面切块")
-    run_layout(conn, doc_id, analyzer=make_layout_analyzer(cfg), cfg=cfg)
+    run_layout(conn, doc_id, analyzer=make_layout_analyzer(cfg, doc_id), cfg=cfg)
     rec.end("layout", "版面切块完成", started=t)
     t = rec.start("parse", "区块转录")
     n_parsed = run_parse(conn, cfg, doc_id, client=client, recorder=rec)

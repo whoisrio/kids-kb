@@ -179,6 +179,42 @@ def test_analyze_empty_boxes_returns_no_drafts(tmp_path):
     assert layout.analyze("p1", str(src)) == []
 
 
+def _write_blank_a4_png(path):
+    import pymupdf as fitz
+
+    d = fitz.open()
+    d.new_page(width=595, height=842)
+    d[0].get_pixmap(dpi=200).save(str(path))
+
+
+def test_analyze_applies_padding_with_neighbor_clamp(tmp_path):
+    """figure 块 12/8px padding，邻居 gap 夹紧垂直外扩；bbox 存原始值（验收 3）。"""
+    from kb.ocr.layout import PaddleOCRLayout
+
+    class _FakeOutput:
+        json = {"res": {"boxes": [
+            {"label": "text", "coordinate": [100, 100, 500, 200]},
+            {"label": "figure", "coordinate": [100, 210, 500, 500]},
+            {"label": "text", "coordinate": [100, 514, 500, 600]},
+        ]}}
+
+    class FakePipeline:
+        def predict(self, _path):
+            return [_FakeOutput()]
+
+    src = tmp_path / "p1.png"
+    _write_blank_a4_png(src)
+    layout = PaddleOCRLayout(blocks_dir=tmp_path / "blocks", pipeline=FakePipeline())
+    drafts = layout.analyze("p1", str(src))
+
+    assert drafts[0].crop_pad == [6, 4]
+    assert drafts[1].crop_pad == [12, 5]
+    assert list(drafts[1].bbox) == [100.0, 210.0, 500.0, 500.0]
+    import pymupdf as fitz
+    pix = fitz.Pixmap(drafts[1].crop_path)
+    assert (pix.width, pix.height) == (424, 302)
+
+
 @pytest.mark.skipif(os.environ.get("KB_RUN_SLOW") != "1", reason="需要真实模型，KB_RUN_SLOW=1 才跑")
 def test_doclayoutv3_labels_covered_on_real_page(tmp_path):
     """真图跑 V3：输出 label 全部有映射（验收 19），ordinal 单调（验收 18）。"""
