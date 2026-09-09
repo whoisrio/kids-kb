@@ -6,7 +6,7 @@ import pytest
 
 
 def _cfg(tmp_path):
-    from kb.config import Config
+    from kb.core.config import Config
     return Config(
         database_url="postgresql://localhost/kb_test",
         storage_dir=tmp_path / "storage",
@@ -18,8 +18,8 @@ def _cfg(tmp_path):
 
 @pytest.fixture()
 def parsed_doc(conn, tmp_path):
-    from kb.layout import run_layout
-    from kb.render import render_document
+    from kb.ocr.layout import run_layout
+    from kb.ocr.render import render_document
 
     cfg = _cfg(tmp_path)
     p = tmp_path / "scan.pdf"
@@ -28,7 +28,7 @@ def parsed_doc(conn, tmp_path):
     d.new_page()
     d.save(p)
     doc_id = render_document(conn, cfg, p, title="t")
-    run_layout(conn, doc_id)
+    run_layout(conn, doc_id, cfg=cfg)
     return doc_id, cfg
 
 
@@ -61,7 +61,7 @@ class UsageClient:
 
 def test_parse_records_source_and_tokens(conn, parsed_doc):
     """远端转录块：source_model=模型名 + token 入块 + llm_calls 流水；本地 ocr 块只有来源。"""
-    from kb.parse import run_parse
+    from kb.ocr.parse import run_parse
 
     doc_id, cfg = parsed_doc
     with conn.cursor() as cur:
@@ -87,9 +87,9 @@ def test_parse_records_source_and_tokens(conn, parsed_doc):
 
 def test_reprocess_marks_paddleocr_source(conn, tmp_path):
     """PaddleOCR-VL 整管线产出的块标记本地引擎来源。"""
-    from kb.layout import run_layout
-    from kb.render import render_document
-    from kb.reprocess import reprocess_pages_paddleocr
+    from kb.ocr.layout import run_layout
+    from kb.ocr.render import render_document
+    from kb.ocr.reprocess import reprocess_pages_paddleocr
     from tests.test_reprocess import FAKE_BLOCKS, FakeVL
 
     cfg = _cfg(tmp_path)
@@ -98,7 +98,7 @@ def test_reprocess_marks_paddleocr_source(conn, tmp_path):
     d.new_page()
     d.save(p)
     doc_id = render_document(conn, cfg, p, title="t")
-    run_layout(conn, doc_id)
+    run_layout(conn, doc_id, cfg=cfg)
     reprocess_pages_paddleocr(conn, cfg, doc_id, [1], pipeline=FakeVL(FAKE_BLOCKS))
     with conn.cursor() as cur:
         cur.execute("SELECT DISTINCT source_model FROM blocks")
@@ -106,7 +106,7 @@ def test_reprocess_marks_paddleocr_source(conn, tmp_path):
 
 
 def test_record_llm_call_paper_fields(conn):
-    from kb.metering import record_llm_call
+    from kb.telemetry.metering import record_llm_call
 
     cid = str(uuid.uuid4())
     conn.execute("INSERT INTO children (id, name) VALUES (%s,'小宝')", (cid,))
@@ -127,9 +127,9 @@ def test_record_llm_call_paper_fields(conn):
 
 def test_structure_records_llm_call(conn, tmp_path):
     """章节拆条走远端 -> llm_calls 记 purpose=structure。"""
-    from kb.layout import run_layout
-    from kb.render import render_document
-    from kb.structure import structure_chapter
+    from kb.ocr.layout import run_layout
+    from kb.ocr.render import render_document
+    from kb.rag.structure import structure_chapter
 
     cfg = _cfg(tmp_path)
     p = tmp_path / "b.pdf"

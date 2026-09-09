@@ -9,6 +9,7 @@ from typing import Protocol
 import pymupdf as fitz
 from psycopg.types.json import Jsonb
 
+from kb.core.paths import resolve_storage_path
 
 @dataclass
 class BlockDraft:
@@ -148,7 +149,7 @@ class PaddleOCRLayout:
 
 
 def run_layout(conn, doc_id: str, analyzer: LayoutAnalyzer | None = None,
-               force: bool = False) -> int:
+               force: bool = False, cfg=None) -> int:
     analyzer = analyzer or WholePageLayout()
     with conn.cursor() as cur:
         if force:
@@ -169,6 +170,8 @@ def run_layout(conn, doc_id: str, analyzer: LayoutAnalyzer | None = None,
         rows = cur.fetchall()
         n = 0
         for page_id, image_path in rows:
+            if cfg is not None:
+                image_path = str(resolve_storage_path(cfg, image_path))
             for i, draft in enumerate(analyzer.analyze(str(page_id), image_path), start=1):
                 cur.execute(
                     """INSERT INTO blocks (id, page_id, block_type, bbox, crop_path, ordinal)

@@ -6,7 +6,7 @@ import pytest
 
 
 def test_check_page_layout_pure():
-    from kb.qc import check_page_layout
+    from kb.ocr.qc import check_page_layout
     # 覆盖 1% -> 漏切
     assert check_page_layout([(0, 0, 100, 100)], 1000, 1000) == ["layout_gap"]
     # 覆盖 100% -> 正常
@@ -20,10 +20,10 @@ def test_check_page_layout_pure():
 
 def test_run_qc_page_layout_rows(conn, tmp_path):
     """块覆盖不足的页建页级 layout_gap 复核行；修复 bbox 后 run_qc 自动关闭。"""
-    from kb.config import Config
-    from kb.layout import run_layout
-    from kb.qc import CHECKABLE_REASONS, run_qc
-    from kb.render import render_document
+    from kb.core.config import Config
+    from kb.ocr.layout import run_layout
+    from kb.ocr.qc import CHECKABLE_REASONS, run_qc
+    from kb.ocr.render import render_document
 
     cfg = Config(
         database_url="postgresql://localhost/kb_test",
@@ -45,7 +45,7 @@ def test_run_qc_page_layout_rows(conn, tmp_path):
         cur.execute("UPDATE blocks SET bbox='[0,0,20,100]'::jsonb")
 
     assert {"layout_gap", "layout_overlap"} <= CHECKABLE_REASONS  # 可自动关闭
-    assert run_qc(conn, doc_id) == 1
+    assert run_qc(conn, doc_id, cfg=cfg) == 1
     with conn.cursor() as cur:
         cur.execute(
             "SELECT reason, block_id, page_id FROM review_queue WHERE status='pending'")
@@ -56,7 +56,7 @@ def test_run_qc_page_layout_rows(conn, tmp_path):
 
     with conn.cursor() as cur:  # 模拟重跑版面后块覆盖全页（超出图幅会被网格裁剪）
         cur.execute("UPDATE blocks SET bbox='[0,0,2000,2000]'::jsonb")
-    assert run_qc(conn, doc_id) == 0  # 不新增
+    assert run_qc(conn, doc_id, cfg=cfg) == 0  # 不新增
     with conn.cursor() as cur:
         cur.execute("SELECT status FROM review_queue WHERE reason='layout_gap'")
         assert cur.fetchone()[0] == "approved"  # 机器复算通过，自动关闭

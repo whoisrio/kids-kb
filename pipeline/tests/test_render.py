@@ -1,8 +1,8 @@
 import pymupdf as fitz
 import pytest
 
-from kb.config import Config
-from kb.render import detect_text_layer, render_document
+from kb.core.config import Config
+from kb.ocr.render import detect_text_layer, render_document
 
 
 @pytest.fixture()
@@ -52,8 +52,9 @@ def test_render_document_creates_rows_and_images(conn, cfg, scanned_pdf):
         rows = cur.fetchall()
     assert [r[0] for r in rows] == [1, 2]
     assert all(r[2] == "rendered" for r in rows)
-    for _, img, _ in rows:
-        assert (cfg.storage_dir.parent / img).exists()
+    for row_no, img, _ in rows:
+        assert img == f"{doc_id}/pages/p{row_no:04d}.png"
+        assert (cfg.storage_dir / img).exists()
 
 
 def test_render_document_is_idempotent(conn, cfg, scanned_pdf):
