@@ -45,17 +45,17 @@ test.beforeAll(async () => {
     const { rows: [page] } = await pool.query(
       `INSERT INTO pages (document_id, page_no, image_path, parse_status, adopted_source, page_md)
        VALUES ($1,$2,$3,'parsed','page_md',$4) RETURNING id::text`,
-      [examDocId, no, `storage/${examDocId}/pages/p${String(no).padStart(4, "0")}.png`, md],
+      [examDocId, no, `${examDocId}/pages/p${String(no).padStart(4, "0")}.png`, md],
     );
     if (no === 1) {
       const blocksDir = path.join(STORAGE_ROOT, examDocId, "blocks");
       mkdirSync(blocksDir, { recursive: true });
       writeFileSync(path.join(blocksDir, "b1.png"), PNG_1PX);
       await pool.query(
-        `INSERT INTO blocks (page_id, block_type, bbox, crop_path, content_md)
-         VALUES ($1,'text',$2,$3,$4)`,
+        `INSERT INTO blocks (page_id, block_type, bbox, crop_path, content_md, ordinal)
+         VALUES ($1,'text',$2,$3,$4,1)`,
         [page.id, JSON.stringify([10, 20, 300, 120]),
-         `storage/${examDocId}/blocks/b1.png`, `一、选择题 ${KEYWORD}`],
+         `${examDocId}/blocks/b1.png`, `一、选择题 ${KEYWORD}`],
       );
     }
   }

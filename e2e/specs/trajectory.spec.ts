@@ -36,7 +36,7 @@ test.beforeAll(async () => {
   await pool.query(
     `INSERT INTO pages (id, document_id, page_no, image_path, parse_status)
      VALUES ($1,$2,1,$3,'parsed')`,
-    [pageId, docId, `storage/${docId}/pages/p0001.png`]);
+    [pageId, docId, `${docId}/pages/p0001.png`]);
   await pool.query(
     "INSERT INTO review_queue (page_id, reason) VALUES ($1,'trajectory-e2e')", [pageId]);
   await pool.query(
@@ -45,9 +45,9 @@ test.beforeAll(async () => {
     [itemId, docId]);
 
   execFileSync("uv", ["run", "python", "-c", `
-from kb.config import load_config
-from kb.db import connect
-from kb.traj import Recorder
+from kb.core.config import load_config
+from kb.core.db import connect
+from kb.telemetry.traj import Recorder
 cfg = load_config()
 conn = connect(cfg.database_url)
 rec = Recorder(conn, cfg, "${docId}")

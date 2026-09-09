@@ -43,12 +43,12 @@ test.beforeAll(async () => {
     const { rows: [page] } = await pool.query(
       `INSERT INTO pages (document_id, page_no, image_path, parse_status)
        VALUES ($1,$2,$3,'parsed') RETURNING id::text`,
-      [docId, no, `storage/${docId}/pages/p${String(no).padStart(4, "0")}.png`]);
+      [docId, no, `${docId}/pages/p${String(no).padStart(4, "0")}.png`]);
     if (no === 1) {
       const { rows: [b] } = await pool.query(
-        `INSERT INTO blocks (page_id, block_type, bbox, crop_path, content_md)
-         VALUES ($1,'text',$2,$3,$4) RETURNING id::text`,
-        [page.id, JSON.stringify([10, 20, 300, 120]), `storage/${docId}/blocks/b1.png`, content]);
+        `INSERT INTO blocks (page_id, block_type, bbox, crop_path, content_md, ordinal)
+         VALUES ($1,'text',$2,$3,$4,1) RETURNING id::text`,
+        [page.id, JSON.stringify([10, 20, 300, 120]), `${docId}/blocks/b1.png`, content]);
       blockId = b.id;
       const blocksDir = path.join(STORAGE_ROOT, docId, "blocks");
       mkdirSync(blocksDir, { recursive: true });
@@ -74,7 +74,7 @@ test.beforeAll(async () => {
   const { rows: [fp] } = await pool.query(
     `INSERT INTO pages (document_id, page_no, image_path, parse_status, adopted_source, page_md)
      VALUES ($1,1,$2,'parsed','page_md',$3) RETURNING id::text`,
-    [flatDocId, `storage/${flatDocId}/pages/p0001.png`, `${KEYWORD} 退位减法专项卷`]);
+    [flatDocId, `${flatDocId}/pages/p0001.png`, `${KEYWORD} 退位减法专项卷`]);
   await pool.query(
     "INSERT INTO chapters (document_id, chapter_no, title, content_md) VALUES ($1,1,$2,$3)",
     [flatDocId, FLAT_TITLE, `${KEYWORD} 退位减法专项卷`]);

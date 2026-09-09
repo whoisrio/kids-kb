@@ -42,4 +42,5 @@
 
 - schema 只能由 pipeline/kb/migrations/ 变更。
 - 检索主链路的向量/BM25 在 backend（TS）；只有 rerank 调 pipeline 的 /internal/rerank。
+- DB 图片路径（pages.image_path / blocks.crop_path / paper_questions.image_path）一律相对 KB_STORAGE_DIR；读取走 `kb/core/paths.py` resolve_storage_path（pipeline）/ `src/storagePath.ts`（backend）。md 是只写镜像，搬目录必须 storage/<doc_id>/ 整目录搬。
 - DB 内容的事实来源是 PostgreSQL；storage/ 下的 md 是只写镜像。

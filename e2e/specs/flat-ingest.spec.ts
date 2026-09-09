@@ -40,7 +40,9 @@ test.beforeAll(async () => {
     );
     for (const [content, type] of contents) {
       await pool.query(
-        `INSERT INTO blocks (page_id, block_type, crop_path, content_md) VALUES ($1,$2,'/tmp/c.png',$3)`,
+        `INSERT INTO blocks (page_id, block_type, crop_path, content_md, ordinal)
+         VALUES ($1,$2,'/tmp/c.png',$3,
+                 (SELECT coalesce(max(ordinal), 0) + 1 FROM blocks WHERE page_id = $1))`,
         [page.id, type, content],
       );
     }
