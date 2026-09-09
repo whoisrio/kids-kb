@@ -1,0 +1,1404 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-page-node-id="6xJfVl749ve1gsiz1HNP5A">
+<head data-page-node-id="wPvH7CZbzTiTXp4QZs2W54">
+<meta charset="utf-8" data-page-node-id="jB2tp7QVJVVkhODjRYq9iF"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0" data-page-node-id="lKQ3lTRvymh7nVhGRbdBEZ"/>
+<title>试卷入库 · 人工复核台（经典学院蓝）</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" data-page-node-id="uf01yBPUbZFmCsgDBkqQ6S"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin data-page-node-id="koLS5rdu6EcNy08nezS2UU"/>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet" data-page-node-id="FFoT7fQRNDuFaFLLFhZX9d"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet" data-page-node-id="s7Y463iBiVrSWkYITBTftC"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms"></script>
+<script>
+tailwind.config = {
+  theme: {
+    extend: {
+      colors: {
+        primary: "#1d4ed8", "primary-dark": "#1e40af", "primary-container": "#dbeafe",
+        navy: "#0f172a", slate600: "#475569", slate400: "#94a3b8",
+        amber: "#d97706", "amber-bg": "#fffbeb", "amber-border": "#fcd34d",
+        danger: "#dc2626", "danger-bg": "#fef2f2", "danger-border": "#fecaca",
+        ok: "#15803d", "ok-bg": "#f0fdf4",
+        canvas: "#f8fafc", line: "#e2e8f0", line2: "#cbd5e1",
+      },
+      fontFamily: {
+        display: ["Plus Jakarta Sans", "Noto Sans SC", "PingFang SC", "sans-serif"],
+        body: ["Inter", "Noto Sans SC", "PingFang SC", "sans-serif"],
+      },
+      borderRadius: { DEFAULT: "0.25rem", lg: "0.375rem", xl: "0.5rem" },
+    }
+  }
+};
+</script>
+<style>
+  html, body { margin:0; padding:0; }
+  body { -webkit-font-smoothing: antialiased; overscroll-behavior: none; }
+  ::-webkit-scrollbar { width:10px; height:10px; }
+  ::-webkit-scrollbar-thumb { background:#cbd5e1; border-radius:9999px; border:3px solid transparent; background-clip:content-box; }
+  ::-webkit-scrollbar-track { background:transparent; }
+  .ms { font-family:"Material Symbols Outlined"; font-weight:400; font-style:normal; line-height:1; letter-spacing:normal; text-transform:none; white-space:nowrap; direction:ltr; font-size:18px; }
+
+  /* ============ 答案折叠（默认隐藏，不参与 embedding） ============ */
+  .ans { margin-top:8px; border:1px dashed #cbd5e1; border-radius:6px; background:#f8fafc; overflow:hidden; }
+  .ans-toggle {
+    width:100%; display:flex; align-items:center; gap:6px; padding:6px 10px; cursor:pointer;
+    font:600 12px/1.4 Inter,"Noto Sans SC",sans-serif; color:#475569; background:transparent; border:0; text-align:left;
+  }
+  .ans-toggle:hover { background:#f1f5f9; color:#0f172a; }
+  .ans-toggle .caret { transition:transform .15s ease; font-size:14px; color:#94a3b8; }
+  .ans.open .ans-toggle .caret { transform:rotate(90deg); }
+  .ans-body { display:none; padding:0 10px 10px; font-size:13px; line-height:20px; color:#0f172a; }
+  .ans.open .ans-body { display:block; }
+  .ans-tag { font-size:11px; color:#94a3b8; font-weight:400; margin-left:auto; }
+
+  /* ============ 题目附图（按 OCR 块裁出的图） ============ */
+  .fig {
+    display:inline-flex; flex-direction:column; gap:4px; padding:6px; margin:6px 8px 2px 0;
+    border:1px solid #e2e8f0; border-radius:6px; background:#fff; vertical-align:top;
+  }
+  .fig-box {
+    width:120px; height:78px; border:1px solid #e2e8f0; border-radius:4px; background:#f8fafc;
+    display:grid; place-items:center; color:#94a3b8; font-size:11px; position:relative; overflow:hidden;
+  }
+  .fig-box.cut { background:
+      linear-gradient(#fff,#fff) padding-box,
+      repeating-linear-gradient(45deg,#eef2f7 0 6px,#f8fafc 6px 12px);
+    border-color:#cbd5e1; }
+  .fig-cap { font-size:11px; color:#475569; max-width:120px; }
+  .fig-src { font-size:10px; color:#94a3b8; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; }
+
+  /* ============ 答案配对表 ============ */
+  .pair-tbl { width:100%; border-collapse:collapse; font-size:13px; }
+  .pair-tbl th {
+    text-align:left; font:600 11px/1.4 Inter,"Noto Sans SC",sans-serif; color:#94a3b8;
+    text-transform:uppercase; letter-spacing:.04em; padding:6px 8px; border-bottom:1px solid #e2e8f0;
+  }
+  .pair-tbl td { padding:8px; border-bottom:1px solid #f1f5f9; vertical-align:middle; }
+  .pair-tbl tr.danger-row td { background:#fef2f2; }
+  .pair-tbl tr:hover td { background:#f8fafc; }
+  .pair-tbl tr.danger-row:hover td { background:#fee2e2; }
+
+  /* ============ 流水线阶段条 ============ */
+  .stage { display:flex; align-items:center; gap:0; }
+  .stage-item { display:flex; align-items:center; gap:8px; padding:6px 10px; border-radius:4px; }
+  .stage-dot { width:20px; height:20px; border-radius:9999px; display:grid; place-items:center; font-size:11px; font-weight:700; color:#fff; flex:none; }
+  .stage-dot.done { background:#15803d; }
+  .stage-dot.warn { background:#d97706; }
+  .stage-dot.active { background:#1d4ed8; box-shadow:0 0 0 3px rgba(29,78,216,.16); }
+  .stage-dot.idle { background:#fff; border:1.5px dashed #94a3b8; color:#94a3b8; }
+  .stage-arrow { color:#cbd5e1; font-size:16px; padding:0 2px; }
+
+  /* ============ 页图与 bbox 覆层 ============ */
+  .page-wrap { position:relative; width:100%; }
+  .page-img {
+    position:relative; width:100%; aspect-ratio: 1 / 1.414; background:#fff;
+    border:1px solid #e2e8f0; border-radius:4px; box-shadow:0 1px 2px rgba(15,23,42,.04);
+    overflow:hidden;
+  }
+  /* 页内假内容，仅用于草稿示意 */
+  .pg { position:absolute; color:#1f2937; font-family:"Noto Sans SC","PingFang SC",serif; }
+  .bbox {
+    position:absolute; border-radius:2px; cursor:pointer; padding:0;
+    border:1px dashed rgba(148,163,184,.75); background:transparent;
+    transition: background .12s ease, border-color .12s ease, box-shadow .12s ease;
+  }
+  .bbox:hover { border-color:#1d4ed8; background:rgba(29,78,216,.06); }
+  /* 聚焦：蓝实框（随列表点击 / hover / 键盘上下键自动跟随，并自动滚入视野） */
+  .bbox.focus {
+    border:2px solid #1d4ed8; background:rgba(29,78,216,.10);
+    box-shadow:0 0 0 3px rgba(29,78,216,.14);
+  }
+  .bbox.focus .bbox-no { background:#1d4ed8; color:#fff; }
+  /* 问题块：红实框（OCR 低置信 / VLM 质检命中规则）—— 红色只表示“有问题” */
+  .bbox.issue { border:1.5px solid #dc2626; background:rgba(220,38,38,.05); }
+  .bbox.issue .bbox-no { background:#dc2626; color:#fff; }
+  .bbox.issue.focus { border:2px solid #dc2626; background:rgba(220,38,38,.14); box-shadow:0 0 0 3px rgba(220,38,38,.16); }
+  /* 人工改过的块：琥珀 */
+  .bbox.edited { border:1.5px solid #d97706; background:rgba(217,119,6,.06); }
+  .bbox.edited .bbox-no { background:#d97706; color:#fff; }
+  .bbox-no {
+    position:absolute; top:-9px; left:-1px; min-width:18px; height:18px; padding:0 4px;
+    border-radius:3px; background:#94a3b8; color:#fff; font:600 11px/18px Inter,sans-serif;
+    text-align:center;
+  }
+  .bbox-flag {
+    position:absolute; top:-9px; right:-1px; height:18px; padding:0 5px; border-radius:3px;
+    background:#fff; border:1px solid #fecaca; color:#b91c1c; font:600 10px/16px Inter,sans-serif;
+  }
+
+  /* ============ 块卡片 ============ */
+  .blk { border:1px solid #e2e8f0; background:#fff; border-radius:6px; padding:10px 12px; cursor:pointer; }
+  .blk:hover { border-color:#cbd5e1; }
+  .blk.sel { border-color:#1d4ed8; box-shadow:0 0 0 3px rgba(29,78,216,.12); }
+  .blk.issue { border-left:3px solid #dc2626; }
+  .blk.edited { border-left:3px solid #d97706; }
+  .conf { height:4px; border-radius:9999px; background:#e2e8f0; overflow:hidden; }
+  .conf > i { display:block; height:100%; background:#1d4ed8; }
+  .conf > i.low { background:#dc2626; }
+  .conf > i.mid { background:#d97706; }
+
+  .chip { display:inline-flex; align-items:center; gap:4px; height:20px; padding:0 6px; border-radius:4px;
+          background:#f1f5f9; border:1px solid #e2e8f0; color:#334155; font:600 11px/1 Inter,sans-serif; letter-spacing:.02em; }
+  .chip.warn { background:#fffbeb; border-color:#fcd34d; color:#b45309; }
+  .chip.bad  { background:#fef2f2; border-color:#fecaca; color:#b91c1c; }
+  .chip.ok   { background:#f0fdf4; border-color:#bbf7d0; color:#15803d; }
+  .chip.blue { background:#dbeafe; border-color:#bfdbfe; color:#1e40af; }
+
+  .btn { height:32px; padding:0 12px; border-radius:6px; font:600 13px/1 Inter,"Noto Sans SC",sans-serif;
+         display:inline-flex; align-items:center; gap:6px; border:1px solid transparent; cursor:pointer; }
+  .btn-primary { background:#1d4ed8; color:#fff; border-color:#1e40af; }
+  .btn-primary:hover { background:#1e40af; }
+  .btn-ghost { background:#fff; color:#0f172a; border-color:#cbd5e1; }
+  .btn-ghost:hover { background:#f8fafc; border-color:#94a3b8; }
+  .btn-danger { background:#fff; color:#b91c1c; border-color:#fecaca; }
+  .btn-danger:hover { background:#fef2f2; }
+  .btn-amber { background:#fffbeb; color:#92400e; border-color:#fde68a; }
+  .btn:disabled { opacity:.5; cursor:not-allowed; }
+
+  .md-body { font-size:14px; line-height:22px; color:#0f172a; }
+  .md-body .katex-like { font-family:"Times New Roman",serif; font-style:italic; }
+
+  .screen { display:none; }
+  .screen.on { display:block; }
+  .mono { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; }
+
+  .callout { background:#f8fafc; border-left:3px solid #1d4ed8; padding:10px 12px; border-radius:0 4px 4px 0; }
+</style>
+</head>
+
+<body class="bg-canvas text-navy font-body text-[14px]" data-page-node-id="BbZ5h5xFkcFYtAACi4zixs">
+
+<div class="flex h-screen overflow-hidden" data-page-node-id="PfKCHDWLDk3jPHr3OVCeeo">
+
+  <!-- ============ 左侧图标导航 ============ -->
+  <aside class="w-[68px] flex-none bg-white border-r border-line flex flex-col items-center py-4 gap-1" data-page-node-id="u3V6IwoF6YUZuDO1IcDZ3G">
+    <div class="w-9 h-9 rounded bg-primary text-white grid place-items-center font-display font-extrabold text-[15px] mb-3" data-page-node-id="SSJ2FBnk6B6QZD97MuNysG">KB</div>
+    <button class="w-10 h-10 rounded grid place-items-center text-slate400 hover:bg-slate-50" title="对话" data-page-node-id="m83eEdKBsTnTaMeDvKDJQa"><span class="ms" data-page-node-id="45DSjTyIUj5lMf6w2GvqYw">forum</span></button>
+    <button class="w-10 h-10 rounded grid place-items-center text-slate400 hover:bg-slate-50" title="资料库" data-page-node-id="pUWXbTSxiQZ8bSE6sz9089"><span class="ms" data-page-node-id="oGIPEhw06AHtxPPaFh6dLf">library_books</span></button>
+    <button class="w-10 h-10 rounded grid place-items-center bg-primary-container text-primary" title="复核" data-page-node-id="eenkg39ZJ2Ei9vSNAosea1"><span class="ms" data-page-node-id="eiarTayIEuXBNmlIgQH4hQ">fact_check</span></button>
+    <button class="w-10 h-10 rounded grid place-items-center text-slate400 hover:bg-slate-50" title="统计" data-page-node-id="lVqg0T2hTkfjjO0sJxS6aK"><span class="ms" data-page-node-id="wUb0Q1MKemAylh7ZToEkNX">insights</span></button>
+    <div class="flex-1" data-page-node-id="wXzpHJVcwa2aM1dGlHC5uS"></div>
+    <button class="w-10 h-10 rounded grid place-items-center text-slate400 hover:bg-slate-50" title="设置" data-page-node-id="m3DsKIF6H3Y1XvIWjH0zGt"><span class="ms" data-page-node-id="ImOa7XDOPxe4oKpGVUUQwT">settings</span></button>
+    <div class="w-8 h-8 rounded-full bg-slate-200 mt-2 grid place-items-center text-[11px] font-bold text-slate600" data-page-node-id="BCZ9qjQsyLUdA7E8iB8MYf">L</div>
+  </aside>
+
+  <!-- ============ 主区 ============ -->
+  <div class="flex-1 flex flex-col min-w-0" data-page-node-id="1H1GK91QC7r39vI2qbBYeb">
+
+    <!-- 顶栏 -->
+    <header class="flex-none bg-white border-b border-line px-6 py-3" data-page-node-id="W3tteLqtqs6uxVHlEjJcrQ">
+      <div class="flex items-center gap-3" data-page-node-id="EESc8cFhwCFJpdJ550jH3O">
+        <div class="min-w-0" data-page-node-id="naBtEyPRegZW5AG5HAv2mM">
+          <div class="flex items-center gap-2 text-[11px] font-semibold tracking-wide text-slate400 uppercase" data-page-node-id="EU2KIeqenTFdxZSn6bI7X0">
+            <span data-page-node-id="xufn2Dk6ErM7bkQMCvUjKm">资料库</span><span class="ms text-[12px]" data-page-node-id="GQW6QGBPzwEmJMVacA251a">chevron_right</span>
+            <span data-page-node-id="bAszbAiAGbkWxMmUI19uKd">复核队列</span><span class="ms text-[12px]" data-page-node-id="UnWdDLh1TKVHt3wTRgIjgH">chevron_right</span>
+            <span class="text-primary" data-page-node-id="zqFvaV4TrHhGJs7ix9e6zB">第 3 页</span>
+          </div>
+          <h1 class="font-display font-bold text-[20px] leading-7 tracking-[-0.01em] truncate" data-page-node-id="kH0x3CMo7HWUT6sAi6NgoF">
+            《五年级下册数学 · 期中练习卷》
+            <span class="chip blue ml-2 align-middle" data-page-node-id="wG6QHq8dCVwlMHrEksJkCu">试卷 exam</span>
+            <span class="chip ml-1 align-middle" data-page-node-id="utMBE1gXzGgid4tzAYEA5X">PDF · 6 页</span>
+          </h1>
+        </div>
+        <div class="flex-1" data-page-node-id="YIWxCs93FRyrTgPW0WVE7N"></div>
+        <button class="btn btn-ghost" data-page-node-id="AHzToHQnzVUQTWLM6kmp5d"><span class="ms text-[16px]" data-page-node-id="EHlGA9ztAklkbmZFyaCg3G">history</span>处理日志</button>
+        <button class="btn btn-primary" data-page-node-id="Yil1GMZ6mVcR2sKJvCte2z"><span class="ms text-[16px]" data-page-node-id="OVaTViIVUySxxyo3AZCXWU">rocket_launch</span>提交拆题并入库</button>
+      </div>
+
+      <!-- 流水线阶段条 -->
+      <div class="mt-3 border-t border-line pt-3" data-page-node-id="DGrFDSJCadDTGcZX6NEdsY">
+        <div class="stage text-[12px]" data-page-node-id="jqIRPxGmabnTHZHKpZeXpJ">
+          <div class="stage-item" data-page-node-id="5Pa60pGeAbxyJxxx8gjftt"><span class="stage-dot done" data-page-node-id="4VRhsBIa4zW3LpmPjhFopG">✓</span>
+            <div data-page-node-id="OMROSnLJxvFXGw4JwwzJXk"><div class="font-semibold" data-page-node-id="ETm4GZAS5RPpvCrkXhR9OK">① OCR 版面解析</div><div class="text-slate400" data-page-node-id="bv4Tcb58PGoGjNXasfTTLI">6/6 页 · PaddleOCR 切块</div></div></div>
+          <span class="stage-arrow" data-page-node-id="0FgyH2wGSD5yakSyGrh3XM">›</span>
+          <div class="stage-item" data-page-node-id="l9Mzv0Dbmyfn0pKSr0CgAi"><span class="stage-dot done" data-page-node-id="qTbzNUcm9Xo2k41ltp8wVm">✓</span>
+            <div data-page-node-id="fSaQTaOrwSOOUn4GKFIH8d"><div class="font-semibold" data-page-node-id="HMEcMcpvM7U4LvwyG7Cfb3">② VLM 补解析</div><div class="text-slate400" data-page-node-id="3ASiL1yMVRK869R6fGckdk">3 页回退 · rapidocr→VLM</div></div></div>
+          <span class="stage-arrow" data-page-node-id="0KPZKxueIeBqpiEA11NTSZ">›</span>
+          <div class="stage-item" data-page-node-id="JEZ3uhDIcBuDDPDPjA1EuK"><span class="stage-dot warn" data-page-node-id="2lxi3VDOEY25XJmeyBU0HX">!</span>
+            <div data-page-node-id="Trqk8NarTysYV0gVJxiXya"><div class="font-semibold text-amber" data-page-node-id="OXfec6mqK1KwrbSnvDH1Qs">③ VLM 质检</div><div class="text-slate400" data-page-node-id="JYidy4Ooy5dCfh6Gb2boKl">6 页未达标 · 需人工</div></div></div>
+          <span class="stage-arrow" data-page-node-id="OTITYwYK77WqUMnnPNeobX">›</span>
+          <div class="stage-item bg-primary-container rounded" data-page-node-id="LIRaA7ezxZvNwhsNsZbGgo"><span class="stage-dot active" data-page-node-id="OXnjfNk8wtRndE1QgXc5Cz">4</span>
+            <div data-page-node-id="4Ak1IP4BBbHErf6hoSUefv"><div class="font-semibold text-primary" data-page-node-id="X676nFfOwCPhZ1gNcgoeoi">④ 人工复核</div><div class="text-slate600" data-page-node-id="YRd2NBdzqpQgCEMUvuN0i2">进行中 2/6 页</div></div></div>
+          <span class="stage-arrow" data-page-node-id="OGM5UE0BDIKOsZT5qAvnCz">›</span>
+          <div class="stage-item" data-page-node-id="U0c3zXNSedpYSFjh6HaiZ8"><span class="stage-dot idle" data-page-node-id="1jsCMLXQSheJbVGYWa169H">5</span>
+            <div data-page-node-id="pY9gUDPADBeispPb2MAJ0F"><div class="font-semibold text-slate400" data-page-node-id="1zf7A26AYNmg6EmHCymkzx">⑤ LLM 拆题</div><div class="text-slate400" data-page-node-id="rPIVQwKxSCgKN98dY2dXAx">等复核通过</div></div></div>
+          <span class="stage-arrow" data-page-node-id="RgO60AaqVAH5G6k7UtmWks">›</span>
+          <div class="stage-item" data-page-node-id="NLSFCM69a7zm6qdbdwP2mo"><span class="stage-dot idle" data-page-node-id="jGrrGFgPmyctKP9LhUzmva">6</span>
+            <div data-page-node-id="yX4V19zu5r0wWeIYZ6CHcF"><div class="font-semibold text-slate400" data-page-node-id="WX0C2O8OK9KweHK2bKYst5">⑥ 按题向量入库</div><div class="text-slate400" data-page-node-id="WshOyAm4tkXhJsa6l8JPeF">等拆题确认</div></div></div>
+        </div>
+      </div>
+    </header>
+
+    <!-- 视图切换 -->
+    <nav class="flex-none bg-white border-b border-line px-6 flex gap-1" data-page-node-id="AE0Q3RuJSk1lVrucOX4sWw">
+      <button class="tab-btn on" data-target="scr-review" data-page-node-id="Rrnj6N9nf8h8VgYfGoHI28">人工复核工作台</button>
+      <button class="tab-btn" data-target="scr-items" data-page-node-id="rOrbIuqxkHUBjB2jmZAiyD">拆题复核（题目维度）</button>
+      <button class="tab-btn" data-target="scr-blockfix">分块修正（改框/合并/拆分/补画）</button>
+      <button class="tab-btn" data-target="scr-answers">答案关联与检索呈现</button>
+      <button class="tab-btn" data-target="scr-chunks" data-page-node-id="GpKCM4ccO1TS4YR0djOvHf">入库查看（chunk / 全文）</button>
+      <button class="tab-btn" data-target="scr-rules" data-page-node-id="MPLz5TRNexBTpanDxD4xYC">质检与入库规则</button>
+    </nav>
+
+    <main class="flex-1 overflow-hidden" data-page-node-id="JtPltgwJ34TF1KVAInbPBT">
+
+      <!-- ================================================================= -->
+      <!-- 屏幕 1：人工复核工作台                                            -->
+      <!-- ================================================================= -->
+      <section id="scr-review" class="screen on h-full" data-page-node-id="7FiVQtDdhu66b6FMQ9kcUz">
+        <div class="flex h-full" data-page-node-id="Gcn3uANnj3zrwfD7zRMz1j">
+
+          <!-- 左：待复核页队列 -->
+          <aside class="w-[260px] flex-none bg-white border-r border-line flex flex-col" data-page-node-id="EhMOB7gRCpTgjvpdgS9Gvn">
+            <div class="px-4 py-3 border-b border-line" data-page-node-id="CBgT67Nj9lhzWJDBp22TRw">
+              <div class="flex items-center justify-between" data-page-node-id="qKKYdwESFtbVwdf4fs3OIw">
+                <h2 class="font-display font-bold text-[15px]" data-page-node-id="RhXadHbCFxOEkrY6AFZUbZ">待复核页</h2>
+                <span class="chip bad" data-page-node-id="k7xzpmqbBhGowVRUIxkkp7">6 页</span>
+              </div>
+              <p class="text-[12px] text-slate400 mt-1" data-page-node-id="VC7VHYqUidBF6DkHSGabE7">VLM 质检未达标的页，按严重度排序</p>
+              <div class="mt-2 flex gap-1" data-page-node-id="d80lDYRn96E2xDan1eC6ae">
+                <button class="chip blue" data-page-node-id="CemcHKDWkGiIUdIChlHjT7">仅未处理 4</button>
+                <button class="chip" data-page-node-id="Qq7ZS0W0oV8farhFoxB5UV">全部</button>
+                <button class="chip" data-page-node-id="dG3faCD3kJ4d1wpjRFBRf5">已通过 2</button>
+              </div>
+            </div>
+            <div class="flex-1 overflow-y-auto p-3 flex flex-col gap-2" id="queue" data-page-node-id="WoeXGEwQlL4GbNHhzE5p7m">
+              <!-- 由 JS 渲染 -->
+            </div>
+            <div class="flex-none border-t border-line p-3 flex flex-col gap-2" data-page-node-id="JTj1PIgPMOHuPaE3pSnJvV">
+              <button class="btn btn-ghost w-full justify-center" data-page-node-id="lXBsNbs6cHuUpPHB3VrKEY"><span class="ms text-[16px]" data-page-node-id="9ybec7Qvl8g6w7mCyEBof6">checklist</span>抽样复核（10% 随机页）</button>
+              <div class="text-[12px] text-slate400" data-page-node-id="tKfqlFnUPxr3H1KY0Srgwm">规则命中页必审 + 随机抽样页，其余自动通过</div>
+            </div>
+          </aside>
+
+          <!-- 中：页图 + bbox -->
+          <div class="flex-1 min-w-0 flex flex-col bg-canvas" data-page-node-id="Hsif58YLXjJlw11Tpo3Esy">
+            <div class="flex-none bg-white border-b border-line px-4 py-2 flex items-center gap-2" data-page-node-id="kpC06AFL1BnHrHiHfKDfwf">
+              <button class="btn btn-ghost" data-page-node-id="FTRlHd00wSLFelqqdjezbj"><span class="ms text-[16px]" data-page-node-id="yf7GUHLuU7FLDcQJn1Gcvv">chevron_left</span>上一页</button>
+              <span class="font-semibold" data-page-node-id="W35kgKaQKsGhxO6mUJtVOR">第 3 页</span>
+              <span class="chip bad" data-page-node-id="ePqFHXt0jNKhFNr4G1mEvP">VLM 质检 0.62</span>
+              <span class="chip warn" data-page-node-id="j1abwUjxajsGo8vjHGRExL">2 个问题块</span>
+              <div class="flex-1" data-page-node-id="HUUy04iegn6D1m3aZ9DT3L"></div>
+              <div class="flex items-center gap-1" data-page-node-id="p852UejKeTLivELIJaPwcs">
+                <button class="btn btn-ghost" title="缩小" data-page-node-id="dgJX9V1XgXd33dwzzt8vrC">−</button>
+                <span class="text-[12px] text-slate600 w-10 text-center" data-page-node-id="LC6E34m3jTXfuT38unDOfl">适应</span>
+                <button class="btn btn-ghost" title="放大" data-page-node-id="re337DrTQbP22qjW63yyh2">+</button>
+              </div>
+              <label class="flex items-center gap-1 text-[12px] text-slate600 ml-2" data-page-node-id="8FEIjGnxrQS9OcdoVTWBQy">
+                <input type="checkbox" checked class="rounded border-line2 text-primary" data-page-node-id="4RgK13qcz3z0cEJiFcBCUs"/> 显示块框
+              </label>
+              <label class="flex items-center gap-1 text-[12px] text-slate600" data-page-node-id="pja2FhnM2UMy09LGd1GSsB">
+                <input type="checkbox" checked class="rounded border-line2 text-primary" data-page-node-id="vWVPLkjM2xTO8JtXTstw4c"/> 仅看问题块
+              </label>
+            </div>
+
+            <div class="flex-1 overflow-auto p-6" id="pageScroll" data-page-node-id="TcjWvB6wZhuCVe2FePj2Nc">
+              <div class="max-w-[560px] mx-auto" data-page-node-id="BDC9fmAVBPrfbfbci8kA48">
+                <div class="page-img" id="pageImg" data-page-node-id="0ELbqG5PAhfGeAYQ3p9RX7">
+                  <!-- 页内示意内容 -->
+                  <div class="pg" style="left:8%;top:4%;width:84%;font-size:11px;color:#64748b;border-bottom:1px solid #e2e8f0;padding-bottom:4px;" data-page-node-id="70AUlqh5739jzohzAIa0tV">
+                    2026 学年第二学期 · 五年级数学期中练习　　第 3 页（共 6 页）
+                  </div>
+                  <div class="pg" style="left:8%;top:13%;width:84%;font-size:13px;font-weight:700;" data-page-node-id="IMb8Jcl0sCDtUE9KleVWUw">
+                    二、填空题（第 9 – 14 题，每题 3 分，共 18 分）
+                  </div>
+                  <div class="pg" style="left:8%;top:19%;width:84%;font-size:12px;line-height:2;" data-page-node-id="p2rmHA8EjBk6nc8mAxpNvU">
+                    9. 一个长方体的长是 8 cm，宽是 5 cm，高是 4 cm，它的体积是 ______ cm³。<br data-page-node-id="iOZH088CbqMOZ5A0ivUj3m"/>
+                    10. 把 <span style="font-family:Times New Roman,serif" data-page-node-id="52ANlcWu2Sky2uEZMf9JeD">3/4</span> 化成小数是 ______，化成百分数是 ______%。
+                  </div>
+                  <div class="pg" style="left:8%;top:32%;width:40%;font-size:12px;line-height:1.9;" data-page-node-id="VpDANROnmm8idDnTzSX1rq">
+                    11. 如图，梯形上底 6 cm，下底 10 cm，高 5 cm，<br data-page-node-id="yNXDLePuYBg0xcgi4fdkMK"/>　　面积是 ______ cm²。
+                  </div>
+                  <div class="pg" style="left:52%;top:32%;width:40%;height:16%;border:1px solid #cbd5e1;display:grid;place-items:center;font-size:11px;color:#94a3b8;" data-page-node-id="FRagaIfJyisQjOeXoijHTD">
+                    〔 梯 形 示 意 图 〕
+                  </div>
+                  <div class="pg" style="left:8%;top:52%;width:84%;font-size:12px;line-height:1.9;" data-page-node-id="jNJGju7ow6tTeeRtGbSUcG">
+                    12. 在○里填上「&gt;」「&lt;」或「＝」：<span style="font-family:Times New Roman,serif" data-page-node-id="56VD6wDvwhpg6q1DpZWyeC">3/5 ○ 0.6</span>
+                  </div>
+                  <div class="pg" style="left:8%;top:59%;width:84%;font-size:12px;line-height:1.9;" data-page-node-id="vufKEsTVzV74CQAQPGaqzI">
+                    13. 某商品原价 120 元，打八折后是 ______ 元。<br data-page-node-id="HbW9fkOGRHfBun9MHODdVX"/>
+                    14. 一个数的 <span style="font-family:Times New Roman,serif" data-page-node-id="aMRAaRwocdxMPTMTwkHjVK">3/5</span> 是 24，这个数是 ______。
+                  </div>
+                  <div class="pg" style="left:8%;top:74%;width:84%;font-size:12px;line-height:1.9;color:#475569;border-top:1px dashed #cbd5e1;padding-top:6px;" data-page-node-id="ANCQxGGQfi0eHuyqriqcbY">
+                    得分：　　　　　　阅卷人：
+                  </div>
+                  <div class="pg" style="left:8%;top:94%;width:84%;font-size:10px;color:#94a3b8;" data-page-node-id="EItPHvSgT3alMKp7bfKrEC">— 3 —</div>
+                  <!-- bbox 由 JS 渲染 -->
+                </div>
+
+                <!-- 图例 -->
+                <div class="mt-3 bg-white border border-line rounded p-3 flex items-center gap-4 text-[12px] text-slate600 flex-wrap" data-page-node-id="XZUyA0GrS3beTAgqmmxuRU">
+                  <span class="font-semibold text-navy" data-page-node-id="eGpvdr4y8D1jpAhqFlaOB7">图例</span>
+                  <span class="flex items-center gap-1.5" data-page-node-id="uJZgsSCfIB1LHeS1N4Y54r"><i class="inline-block w-4 h-3 border-2 border-primary bg-primary-100 rounded-sm" data-page-node-id="EeIpwAq0zX1KWuyBEnU0Q3"></i>当前聚焦（跟随列表/键盘/点击，自动滚入视野）</span>
+                  <span class="flex items-center gap-1.5" data-page-node-id="Aw0Tek0ds2OalCHsa74RWk"><i class="inline-block w-4 h-3 border-[1.5px] border-danger bg-danger-50 rounded-sm" data-page-node-id="sOesd5uFDPqL6A8qYETAsN"></i>问题块（低置信 / 命中质检规则）</span>
+                  <span class="flex items-center gap-1.5" data-page-node-id="z8d7jezzu3JupMOViRfgbL"><i class="inline-block w-4 h-3 border-[1.5px] border-amber bg-amber-50 rounded-sm" data-page-node-id="2zNyObVZtdeoMxKuSutLCl"></i>人工已修改</span>
+                  <span class="flex items-center gap-1.5" data-page-node-id="85kqQrCH7XWIAnkrQHF1ll"><i class="inline-block w-4 h-3 border border-dashed border-slate400 rounded-sm" data-page-node-id="e4FW2VOpkzRQ5uqva67Czu"></i>正常块</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- 底部操作条 -->
+            <div class="flex-none bg-white border-t border-line px-4 py-2 flex items-center gap-2" data-page-node-id="zSqZFVb6KbG81z7FwkxsGS">
+              <button class="btn btn-primary" data-page-node-id="qzOHlfgcuDFd5wDztn4pHh"><span class="ms text-[16px]" data-page-node-id="gXKEOtHYFioeL1cV00i8jD">check</span>本页通过并下一页</button>
+              <button class="btn btn-ghost" data-page-node-id="H4qmFaaaFCxg0VY4oXtilJ"><span class="ms text-[16px]" data-page-node-id="8C8MWqA2ziVQJKsOGYd0mH">block</span>打回本页</button>
+              <button class="btn btn-ghost" data-page-node-id="R0i37L15cjLzhpmZECE7aK"><span class="ms text-[16px]" data-page-node-id="OExwg5E6gGbxXEhb2nFU1r">auto_awesome</span>重跑 VLM 解析本页</button>
+              <button class="btn btn-ghost" data-page-node-id="t7hHcmAIIMXPCrHQ0i6eKl"><span class="ms text-[16px]" data-page-node-id="zVfoGrzMq694lzCeO9dWOq">call_merge</span>合并选中块</button>
+              <button class="btn btn-ghost" data-page-node-id="HyxTasJT8MuutZK7Nz2R5m"><span class="ms text-[16px]" data-page-node-id="GacBOnuEiVgNdJl1TETtVR">call_split</span>拆分块</button>
+              <div class="flex-1" data-page-node-id="mhsFMY6xWvYnaSBEUweEwJ"></div>
+              <div class="text-[12px] text-slate400" data-page-node-id="aHumivT0BW0hSgAPj2c6E1">
+                <kbd class="px-1.5 py-0.5 border border-line2 rounded bg-slate-50" data-page-node-id="906i35qmsZUOB8mtg46yZ1">↑↓</kbd> 切块
+                <kbd class="px-1.5 py-0.5 border border-line2 rounded bg-slate-50 ml-1" data-page-node-id="LCgaGRidAKkxsdxdPN9uGI">E</kbd> 编辑
+                <kbd class="px-1.5 py-0.5 border border-line2 rounded bg-slate-50 ml-1" data-page-node-id="ExFIGbaCuwi6vepMLeWHhM">⌘↵</kbd> 通过本页
+              </div>
+            </div>
+          </div>
+
+          <!-- 右：块列表 + 质检结论 -->
+          <aside class="w-[390px] flex-none bg-white border-l border-line flex flex-col" data-page-node-id="KhnAr3y0zWAFA5o8x4DXr8">
+            <div class="flex-none px-4 py-3 border-b border-line" data-page-node-id="tlmEn7Y6HTaloGniOSX6ju">
+              <div class="flex items-center justify-between" data-page-node-id="DdCKN7TgEaTTeM9JPrvdBC">
+                <h2 class="font-display font-bold text-[15px]" data-page-node-id="zO1HOFzh6an7ZByCW8J490">本页 OCR 块 <span class="text-slate400 font-normal" data-page-node-id="whNp6X0Iz6PYVP6WP8UxXX">9</span></h2>
+                <div class="flex gap-1" data-page-node-id="IOwyi33Mn3xNXm13sDHqQf">
+                  <button class="chip blue" data-page-node-id="PvroL4qsv2GmWT2YQQ7zoe">Markdown</button>
+                  <button class="chip" data-page-node-id="mO8kYE5z84GqwnbDHyaxv8">原始文本</button>
+                </div>
+              </div>
+              <p class="text-[12px] text-slate400 mt-1" data-page-node-id="jIHwnP8I85QZzV5NoQ3vEC">点击 / hover 任一块，页图自动框出并滚动定位</p>
+            </div>
+
+            <div class="flex-1 overflow-y-auto p-3 flex flex-col gap-2" id="blocks" data-page-node-id="hGfMlhmN4HAACljKILR2Bk">
+              <!-- 由 JS 渲染 -->
+            </div>
+
+            <!-- 质检结论卡 -->
+            <div class="flex-none border-t border-line p-4 bg-canvas" data-page-node-id="aqEyI7W8x9kzsRiSYhUuqC">
+              <div class="bg-white border border-line rounded p-3" data-page-node-id="jMdUdmVUrywLptB1vPHdxU">
+                <div class="flex items-center justify-between mb-2" data-page-node-id="VNOHMBdf3IhXBtJv7s9wxV">
+                  <h3 class="font-display font-bold text-[14px]" data-page-node-id="We9MeQHGJCTRnbA2lJccQH">VLM 质检结论</h3>
+                  <span class="chip bad" data-page-node-id="bsRBilU13q2AXHk6UQ8iLE">评分 0.62 · 未达标</span>
+                </div>
+                <div class="text-[12px] text-slate600 leading-5 mb-2" data-page-node-id="Hkfzy6GnoJuGiZmqYYM3ld">
+                  第 11、12 题所在区域存在符号识别异常与版面错位，可能丢失数值；建议人工核对图示与不等号。
+                </div>
+                <div class="flex flex-wrap gap-1 mb-2" data-page-node-id="PFMFCvcSWqwXPuQu5fE43U">
+                  <span class="chip bad" data-page-node-id="z0qHbc7FC7es26bYYsgyP0">块置信度 &lt; 0.6（2）</span>
+                  <span class="chip warn" data-page-node-id="GXdCKztkEzUEGQN39osvK9">符号占比 18% 偏高</span>
+                  <span class="chip warn" data-page-node-id="9fN6jql2Ff5ZAwsH0FlFDb">题号序列连续 ✓</span>
+                  <span class="chip ok" data-page-node-id="7vTKM1YloaW5GpWj4C0pFX">文本密度正常</span>
+                </div>
+                <div class="callout text-[12px] text-slate600 leading-5" data-page-node-id="V0CX2IIV63qN7KAPIlKzNO">
+                  <strong data-page-node-id="HTfo01T8LkPo0NqLYJ4reh">提示：</strong>本页第 11 块由 VLM 补解析生成（rapidocr 失败回退），
+                  补解析结果不再由 VLM 自己复核，直接进人工队列。
+                </div>
+              </div>
+            </div>
+          </aside>
+
+        </div>
+      </section>
+
+      <!-- ================================================================= -->
+      <!-- 屏幕 2：拆题复核（题目维度）                                       -->
+      <!-- ================================================================= -->
+      <section id="scr-items" class="screen h-full overflow-y-auto" data-page-node-id="ZhXEgJmJ8HxgGAEmg9Kikk">
+        <div class="max-w-[1200px] mx-auto p-6" data-page-node-id="rZmcqL0Ob7iwv2l1O0Dn3F">
+          <div class="flex items-start gap-3 mb-4" data-page-node-id="nvcajqb59Eu9otAIzsfMjx">
+            <div class="flex-1" data-page-node-id="fy1ZDOYdjaWXn2rPZiLAzD">
+              <h2 class="font-display font-bold text-[20px]" data-page-node-id="Vka86CJPOseI0yf1hTswJc">拆题复核 · 题目维度</h2>
+              <p class="text-[13px] text-slate600 mt-1" data-page-node-id="IAxFNNQpLM9swHlkJgbUIl">
+                人工复核通过的 6 页已交给 LLM 抽题。确认后<strong data-page-node-id="GeSDWyW7LIwAaVOeAGHMru">才</strong>按题向量入库——顺序不能反，否则人工改动无法回灌。
+              </p>
+            </div>
+            <div class="flex items-center gap-2" data-page-node-id="kLjrd3eziayVGOs9m0c4cY">
+              <span class="text-[12px] text-slate400" data-page-node-id="lhgNIBcEDrJp252g7yvZIY">入库粒度</span>
+              <select class="text-[13px] border-line2 rounded-lg" data-page-node-id="85x8puuJMzyYOrdptgwUig">
+                <option data-page-node-id="7eCbZFKTkUvVabQ3oCEB81">按题组（材料 + 子题）· 推荐</option>
+                <option data-page-node-id="099M2opioHwDCa2lFvg2aw">按单题</option>
+                <option data-page-node-id="AHFmopNaYzIO4LeFXtvdGV">按页</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-[1fr_340px] gap-5" data-page-node-id="jWWekr5ihokCS80ZfLWW8M">
+            <!-- 题目卡片列表 -->
+            <div class="flex flex-col gap-3" data-page-node-id="lW0cjO9vjd0aaYG5hKm0mp">
+              <!-- 题组 -->
+              <div class="bg-white border border-line rounded-xl p-4" data-page-node-id="k1laMC3FeE0YUeIFuiLkjD">
+                <div class="flex items-center gap-2 mb-2" data-page-node-id="js1TspxJMJTh0iTG7PfAjv">
+                  <span class="chip blue" data-page-node-id="hBGWa9KIGaCLUMBeJrH2Qw">题组 · 三、解答题 15</span>
+                  <span class="text-[12px] text-slate400" data-page-node-id="dOEC0FR5clAzNKm7LeCb0Y">P4–P5 · 3 子题 · 共用材料</span>
+                  <div class="flex-1" data-page-node-id="EDAyf2th7kjXwbEpLzUt5F"></div>
+                  <span class="chip ok" data-page-node-id="6f96jXwAEWSSAqbLhfjKah">已确认</span>
+                </div>
+                <div class="callout text-[13px] leading-6 mb-3" data-page-node-id="yHtpLUxumWbNWMvVtmJdfe">
+                  <strong data-page-node-id="8CBPCSTyklWutmZkVt1NSy">【材料】</strong>李老师用一根长 96 cm 的铁丝焊接成一个长方体框架，长是宽的 2 倍，高是 6 cm。
+                </div>
+                <div class="pl-3 border-l-2 border-line flex flex-col gap-2" data-page-node-id="ucsAiduDoV7gBTYjTH9spF">
+                  <div class="text-[13px] leading-6" data-page-node-id="ty6wIgU3GjbVgPXNui9ThH">（1）求这个长方体的宽。</div>
+                  <div class="text-[13px] leading-6" data-page-node-id="fsiHYzxL5h09S7nXoi7HED">（2）求它的体积。</div>
+                  <div class="text-[13px] leading-6" data-page-node-id="oOnF5VpSRuZ73gkY57slfC">（3）若在其表面糊纸，求表面积。</div>
+                </div>
+                <div class="ans" data-page-node-id="ucsAiduDoV7gBTYjTH9spF">
+                  <button class="ans-toggle"><span class="ms caret">chevron_right</span>答案（3 条 · 卷末 P6 关联 · 置信 0.89）<span class="ans-tag">不参与 embedding</span></button>
+                  <div class="ans-body">（1）6 cm　（2）432 cm³　（3）360 cm²<br/><span class="text-slate400 text-[12px]">题组共用一条答案块 P6/B11，按子题序号「（1）（2）（3）」切分对齐</span></div>
+                </div>
+                <div class="mt-3 text-[12px] text-slate400" data-page-node-id="TqqHSeoFv1CBWGyTia2RjB">题组整体作为一个 chunk 入库，子题带父引用，避免题干材料丢失</div>
+              </div>
+
+              <!-- 单题 -->
+              <div class="bg-white border border-line rounded-xl p-4" data-page-node-id="wg9vWHNPYuErAzhiqj7Ar2">
+                <div class="flex items-center gap-2 mb-2" data-page-node-id="bhVWNX9EVRhkmLCSEMb91L">
+                  <span class="chip" data-page-node-id="rZTljfcSQvzyah59tsvdDc">二、填空题 · 第 12 题</span>
+                  <span class="text-[12px] text-slate400" data-page-node-id="0RSYcUV9LZmekVXTEuIBKL">P3 · 来源块 B06（人工已改）</span>
+                  <div class="flex-1" data-page-node-id="UfGDaSlwplKc0An9ZZ7A1F"></div>
+                  <span class="chip warn" data-page-node-id="DOkCN9JT830bziZw7LIE8T">待确认</span>
+                </div>
+                <div class="md-body" data-page-node-id="cDeUC8hirIgyicE8WMSDxp">在○里填上「&gt;」「&lt;」或「＝」：<span class="katex-like" data-page-node-id="LXTPodIWu8rfkFXVJtv5EK">3/5 ○ 0.6</span></div>
+                <div class="ans" data-page-node-id="tAbD38QhHp4yGe7GFWdKbt">
+                  <button class="ans-toggle"><span class="ms caret">chevron_right</span>答案（卷末 P6 关联 · 置信 0.94）<span class="ans-tag">不参与 embedding</span></button>
+                  <div class="ans-body">＝　<span class="text-slate400 text-[12px]">来源块 P6/B04 · 题号「12」对齐</span></div>
+                </div>
+                <div class="mt-3 flex gap-2" data-page-node-id="kqg4SJBGgszKqmD36RC0g9">
+                  <button class="btn btn-primary" data-page-node-id="zvk0uwPmHLcjav7wr9LuT2">采纳</button>
+                  <button class="btn btn-ghost" data-page-node-id="uLh1hWd6TDEyg0ge2fjbUD">✎ 修改题干</button>
+                  <button class="btn btn-ghost" data-page-node-id="sqRj4C6DeMyUcUumFTl3Lw">关联题组</button>
+                  <button class="btn btn-ghost" data-page-node-id="7txridH3EBVtkC2HN0132W">重跑本页解析</button>
+                  <button class="btn btn-danger" data-page-node-id="mXRzO58asuoN1Id7pT9hCg">删除</button>
+                </div>
+                <div class="mt-3 text-[12px] text-slate400" data-page-node-id="QmNGDAXqkArHCE0qrdeKZG">
+                  溯源：第 3 页 B06 · 修改后 chunk revision 会 bump，旧向量自动失效待重建
+                </div>
+              </div>
+
+              <div class="bg-white border border-line rounded-xl p-4" data-page-node-id="Lfz8tCO2KUcmEWrCglgdDE">
+                <div class="flex items-center gap-2 mb-2" data-page-node-id="u5x7lfsEY04nKHEOGm90fF">
+                  <span class="chip" data-page-node-id="GkKosYzobzgeu0KcTAydPK">二、填空题 · 第 11 题</span>
+                  <span class="text-[12px] text-slate400" data-page-node-id="Umo16mEWTTqAi5D09gG79y">P3 · 来源块 B05 + 图 B05-fig</span>
+                  <div class="flex-1" data-page-node-id="3XJxs5iBBV7suKsjsBT1wA"></div>
+                  <span class="chip ok" data-page-node-id="PZUSINEPI2BD4oarfC488B">图已裁出</span>
+                </div>
+                <div class="md-body" data-page-node-id="Es83ohtfyEHNcKs4FDIW44">如图，梯形上底 6 cm，下底 10 cm，高 5 cm，面积是 ______ cm²。</div>
+                <div class="fig">
+                  <div class="fig-box cut">〔 梯 形 示 意 图 〕</div>
+                  <div class="fig-cap">梯形，上底 6 cm，下底 10 cm，高 5 cm</div>
+                  <div class="fig-src">P3 · B06 crop · 360×172</div>
+                </div>
+                <div class="ans" data-page-node-id="r0NKsCfUySSSt7EFQjMeYj">
+                  <button class="ans-toggle"><span class="ms caret">chevron_right</span>答案（卷末 P6 关联 · 置信 0.91）<span class="ans-tag">不参与 embedding</span></button>
+                  <div class="ans-body">40 cm²　<span class="text-slate400 text-[12px]">来源块 P6/B06 · 题号「11」对齐</span></div>
+                </div>
+                <div class="mt-3 flex gap-2" data-page-node-id="taqBb9W1Dc3lU6ZspgM1ID">
+                  <button class="btn btn-primary" data-page-node-id="YpUBY72GjCgGHV60xfU6NO">采纳</button>
+                  <button class="btn btn-ghost" data-page-node-id="a5OLn6ocKL43lhxoPCNPdu">✎ 修改</button>
+                  <button class="btn btn-amber" data-page-node-id="Dh43bwva0NankcZDdvnd03">补录图形说明</button>
+                  <button class="btn btn-ghost" data-page-node-id="EFjJERzHP2lvx81Bh8bBkm">在页图中定位</button>
+                  <button class="btn btn-danger" data-page-node-id="HmxRJRB2sbxemVqUuxFdaJ">删除</button>
+                </div>
+                <div class="mt-2 text-[12px] text-slate600" data-page-node-id="W73htv4x26UY5D9HBKrX9W">图已按 OCR 块裁出随题入库；进向量的是「图注描述」这句文本，图像本身不参与 embedding。</div>
+              </div>
+
+              <div class="bg-white border border-line rounded-xl p-4" data-page-node-id="fmDZueIEQF35QB9sSSNhrV">
+                <div class="flex items-center gap-2 mb-2" data-page-node-id="HEEVHPn1vDwvc7yzYuAnEK">
+                  <span class="chip" data-page-node-id="FeQ6revGvl6wuEa4DNv2qW">二、填空题 · 第 9 题</span>
+                  <span class="text-[12px] text-slate400" data-page-node-id="hUQC5MyPud9WToTMgOSlYO">P3 · 来源块 B03</span>
+                  <div class="flex-1" data-page-node-id="gNb2oNTD6WqSy51ijJtSyn"></div>
+                  <span class="chip ok" data-page-node-id="MdK6xGx2bX8hKIb0n8htEi">已确认</span>
+                </div>
+                <div class="md-body" data-page-node-id="CHFuATIw7YwvDVhvIeDOM9">一个长方体的长是 8 cm，宽是 5 cm，高是 4 cm，它的体积是 ______ cm³。</div>
+                <div class="ans" data-page-node-id="sUagW2AYvZ9XCN34rncLBW">
+                  <button class="ans-toggle"><span class="ms caret">chevron_right</span>答案（卷末 P6 关联 · 置信 0.97）<span class="ans-tag">不参与 embedding</span></button>
+                  <div class="ans-body">160 cm³　<span class="text-slate400 text-[12px]">来源块 P6/B02 · 题号「9」对齐</span></div>
+                </div>
+                <div class="mt-3 flex gap-2" data-page-node-id="OhgtAwzSwSzKMZAGQjfPWZ"><button class="btn btn-ghost" data-page-node-id="E30TO8QARHw90vVhYVhdnw">✎ 改判</button><button class="btn btn-ghost" data-page-node-id="lP99Kehdg332PirauuMZKE">在页图中定位</button></div>
+              </div>
+            </div>
+
+            <!-- 右栏：汇总与入库 -->
+            <div class="flex flex-col gap-3" data-page-node-id="7nG8RB2IFqPp0Rv4hfNASi">
+              <div class="bg-white border border-line rounded-xl p-4" data-page-node-id="iUuDkk4gSOtU2exH1B8RXX">
+                <h3 class="font-display font-bold text-[14px] mb-3" data-page-node-id="Ydi8TzCPWYcR1pzLwYPoUz">本卷抽题概览</h3>
+                <div class="flex flex-col gap-2 text-[13px]" data-page-node-id="FmfwdYH0gO4qTIeZavfzfL">
+                  <div class="flex justify-between" data-page-node-id="GjEfikEAR8AJQC9KDyYAHl"><span class="text-slate600" data-page-node-id="Cp5lKBkcIKbqb4OtjRvNAV">识别题目</span><strong data-page-node-id="OlRoAN2Y2Yte3JZHSHQCsF">24 题 / 5 题组</strong></div>
+                  <div class="flex justify-between" data-page-node-id="VdC9kmwZL6no20wwIPWBpk"><span class="text-slate600" data-page-node-id="9xOCDkuIT3iqZRrr5SGdd0">已确认</span><strong class="text-ok" data-page-node-id="wER4ugeAF8GfmZtEoFDaMp">18</strong></div>
+                  <div class="flex justify-between" data-page-node-id="KEjj2cvGM22VOR3j6aE1g4"><span class="text-slate600" data-page-node-id="VNVLYzUh5762wiQYUOrRHu">待确认</span><strong class="text-amber" data-page-node-id="WCFJpGlD2CKtsq3VVRTwrf">6</strong></div>
+                  <div class="flex justify-between" data-page-node-id="3VEeiFEiHEvTifNjt72VWm"><span class="text-slate600" data-page-node-id="CI9Nb1HSqipUqtNK4SzeIe">答案配对</span><strong data-page-node-id="OqL3yBScCelhNSYzre4fCI">22 / 24</strong></div>
+                  <div class="flex justify-between" data-page-node-id="oOXXAMPdsUvK1Gacw7POAj"><span class="text-slate600" data-page-node-id="5VbeOpeouAYCwe3L5Gebjv">缺图题</span><strong class="text-danger" data-page-node-id="xS6XFr4eS6gp90MSVNjhTo">2</strong></div>
+                </div>
+                <div class="h-1.5 rounded bg-line mt-3 overflow-hidden" data-page-node-id="uJ0Gtkpi8n0FWZRThQITON"><i class="block h-full bg-primary" style="width:75%" data-page-node-id="4atbXSQEsCt7VDTS5FXkR5"></i></div>
+                <div class="text-[12px] text-slate400 mt-1" data-page-node-id="EYoXUZUEIj7broxVQiF6mf">确认进度 18/24</div>
+              </div>
+
+              <div class="bg-white border border-line rounded-xl p-4" data-page-node-id="npAklCVlNYBDXQdRnJEDal">
+                <h3 class="font-display font-bold text-[14px] mb-2" data-page-node-id="rqDXc9rnF12Hs6fgu75hZq">入库</h3>
+                <p class="text-[12px] text-slate600 leading-5 mb-3" data-page-node-id="zrebTiPlyU7o7uQ3CjHHDZ">
+                  入库 = 生成 chunk + 向量。它是一次可重跑的「发布」动作，不是一次性写入；
+                  题目改动 → revision +1 → 旧向量标记失效 → 重建。
+                </p>
+                <button class="btn btn-primary w-full justify-center mb-2" data-page-node-id="0IH1D4yOXgdMEMQXTP9kp3">确认全部并生成向量</button>
+                <button class="btn btn-ghost w-full justify-center" data-page-node-id="7NHGYxGqqjZGYNiFlGlF9w">仅确认，稍后批量入库</button>
+                <div class="mt-3 text-[12px] text-slate400" data-page-node-id="AA2YiiiBO0qdLHmltkpBCF">
+                  快捷键：<kbd class="px-1 border border-line2 rounded" data-page-node-id="u4QuEnt5D9S4tRupdY6U9X">1</kbd> 采纳
+                  <kbd class="px-1 border border-line2 rounded" data-page-node-id="IzHkuoLdxRQk5RRVobry1Y">2</kbd> 修改
+                  <kbd class="px-1 border border-line2 rounded" data-page-node-id="4jNHAIu7XJaCBEhJhe3dYw">Enter</kbd> 下一条
+                </div>
+              </div>
+
+              <div class="bg-amber-bg border border-amber-border rounded-xl p-4" data-page-node-id="9T4kCoxKwBZ8KBfhUG8YIr">
+                <h3 class="font-display font-bold text-[14px] mb-2 text-[#92400e]" data-page-node-id="SY8MOR692tPBxyZDzjhXMl">注意</h3>
+                <p class="text-[12px] leading-5 text-[#92400e]" data-page-node-id="GhKngS3Z66Z01pSv8NvDmD">
+                  未配对的 2 条答案不阻塞入库，会在列表里标「待配对」，人工处理后再补向量。
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================================================================= -->
+      <!-- 屏幕 2.4：分块修正（改框 / 合并 / 拆分 / 补画）                      -->
+      <!-- ================================================================= -->
+      <section id="scr-blockfix" class="screen h-full overflow-y-auto">
+        <div class="max-w-[1280px] mx-auto p-6">
+
+          <div class="mb-4">
+            <h2 class="font-display font-bold text-[20px]">分块修正 · OCR 切错了怎么改</h2>
+            <p class="text-[13px] leading-5 text-slate600 mt-1">
+              分块错了有四种情况，处置成本差别很大：<b>改文字 / 合并 / 按行拆分</b>不动 bbox，即时生效；
+              <b>调框 / 补画</b>动了 bbox，必须重裁 + 重跑 OCR，要等模型。
+              这条链的因果是 <code class="px-1 bg-canvas border border-line rounded text-[12px]">bbox → 裁图 → OCR → content_md</code>，动上游就必须重跑下游。
+            </p>
+          </div>
+
+          <div class="grid grid-cols-[300px_1fr] gap-4 items-start">
+
+            <!-- 左：四种操作 -->
+            <div class="bg-white border border-line rounded-xl p-3">
+              <div class="text-[11px] font-bold text-slate400 uppercase tracking-wide mb-2 px-1">四种操作（点击看演示）</div>
+
+              <button class="fixop w-full text-left rounded-lg border-2 border-primary bg-primary-container p-3 mb-2 cursor-pointer" data-demo="d-text">
+                <div class="flex items-center justify-between mb-1">
+                  <span class="font-display font-bold text-[14px] text-navy">① 改文字</span>
+                  <span class="chip border border-[#bbf7d0] bg-[#f0fdf4] text-[#15803d]">即时</span>
+                </div>
+                <div class="text-[12px] leading-4 text-slate600">识别错字、漏字，直接改 content_md。框不动，不用重跑。</div>
+              </button>
+
+              <button class="fixop w-full text-left rounded-lg border-2 border-line2 bg-white p-3 mb-2 cursor-pointer hover:border-slate400" data-demo="d-merge">
+                <div class="flex items-center justify-between mb-1">
+                  <span class="font-display font-bold text-[14px] text-navy">② 合并</span>
+                  <span class="chip border border-[#bbf7d0] bg-[#f0fdf4] text-[#15803d]">即时</span>
+                </div>
+                <div class="text-[12px] leading-4 text-slate600">切多了。新框 = 两框外接矩形，文本拼接，纯元数据操作。</div>
+              </button>
+
+              <button class="fixop w-full text-left rounded-lg border-2 border-line2 bg-white p-3 mb-2 cursor-pointer hover:border-slate400" data-demo="d-split">
+                <div class="flex items-center justify-between mb-1">
+                  <span class="font-display font-bold text-[14px] text-navy">③ 拆分</span>
+                  <span class="chip border border-[#bbf7d0] bg-[#f0fdf4] text-[#15803d]">即时</span>
+                </div>
+                <div class="text-[12px] leading-4 text-slate600">切少了。在<b>文本里点位置</b>按行 y 坐标切，比在图上画线准，且不用重跑。</div>
+              </button>
+
+              <button class="fixop w-full text-left rounded-lg border-2 border-line2 bg-white p-3 cursor-pointer hover:border-slate400" data-demo="d-adjust">
+                <div class="flex items-center justify-between mb-1">
+                  <span class="font-display font-bold text-[14px] text-navy">④ 调框 / 补画</span>
+                  <span class="chip border border-amber-border bg-amber-bg text-[#b45309]">要等 OCR</span>
+                </div>
+                <div class="text-[12px] leading-4 text-slate600">切歪了或漏检。拖控制点改框 / 拉新框，松手自动重裁 + 重识别。</div>
+              </button>
+
+              <div class="mt-3 pt-3 border-t border-line text-[12px] leading-5 text-slate400">
+                前三个点了就有反应，第四个要转圈等模型——这个差异必须在 UI 上说清楚，
+                否则用户点完"调框"没反应，会以为坏了。
+              </div>
+            </div>
+
+            <!-- 右：演示区 -->
+            <div class="bg-white border border-line rounded-xl overflow-hidden">
+
+              <!-- 演示 1：改文字 -->
+              <div class="fixdemo" data-demo="d-text">
+                <div class="px-4 py-3 border-b border-line bg-canvas flex items-center gap-2">
+                  <span class="font-display font-bold text-[14px]">① 改文字</span>
+                  <span class="chip border border-[#bbf7d0] bg-[#f0fdf4] text-[#15803d]">即时生效 · 不重跑 OCR</span>
+                </div>
+                <div class="grid grid-cols-[300px_1fr] gap-4 p-4">
+                  <div>
+                    <div class="text-[11px] font-bold text-slate400 mb-2">页图（琥珀 = 已修改）</div>
+                    <div class="relative bg-white border border-line2 rounded" style="width:264px;height:373px">
+                      <div class="absolute text-[8px] text-slate400" style="left:16px;top:14px">2026 学年 · 五年级数学期中</div>
+                      <div class="absolute border border-line2" style="left:14px;top:34px;width:236px;height:18px"></div>
+                      <div class="absolute text-[8px] text-[#334155]" style="left:16px;top:38px">二、填空题（每题 3 分，共 18 分）</div>
+                      <div class="absolute border border-line2" style="left:14px;top:58px;width:236px;height:22px"></div>
+                      <div class="absolute text-[8px] text-[#334155]" style="left:16px;top:62px">9. 长方体长 8cm 宽 5cm 高 4cm，体积 ___</div>
+                      <div class="absolute border border-line2" style="left:14px;top:86px;width:236px;height:22px"></div>
+                      <div class="absolute text-[8px] text-[#334155]" style="left:16px;top:90px">10. 把 3/4 化成小数是 ___</div>
+                      <div class="absolute border-2 border-amber bg-amber-bg" style="left:14px;top:114px;width:236px;height:40px"></div>
+                      <div class="absolute text-[8px] text-[#334155]" style="left:16px;top:118px">11. 梯形上底 6cm 下底 10cm 高 5cm，面积 ___</div>
+                      <div class="absolute text-[8px] text-slate400" style="left:16px;top:136px">〔 梯 形 示 意 图 〕</div>
+                      <div class="absolute bg-amber text-white text-[9px] font-bold px-1 rounded" style="left:14px;top:104px">已改</div>
+                    </div>
+                  </div>
+                  <div>
+                    <div class="text-[11px] font-bold text-slate400 mb-2">块内容（可直接编辑）</div>
+                    <div class="border-2 border-amber rounded-lg p-3 bg-amber-bg">
+                      <div class="text-[11px] text-[#b45309] font-bold mb-1">B05 题目 · 已修改</div>
+                      <div class="bg-white border border-line2 rounded p-2 text-[13px] leading-6 text-navy">
+                        11. 如图，梯形上底 6 cm，下底 10 cm，高 5 cm，面积是 ______ cm²。
+                      </div>
+                      <div class="text-[12px] leading-5 text-[#92400e] mt-2">
+                        原文「上底 6 cm」被识别成「上底 5 cm」，人工改回。<br>
+                        保存后块转琥珀框，<b>不触发任何模型调用</b>。
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 演示 2：合并 -->
+              <div class="fixdemo hidden" data-demo="d-merge">
+                <div class="px-4 py-3 border-b border-line bg-canvas flex items-center gap-2">
+                  <span class="font-display font-bold text-[14px]">② 合并（切多了）</span>
+                  <span class="chip border border-[#bbf7d0] bg-[#f0fdf4] text-[#15803d]">即时生效 · 不重跑 OCR</span>
+                </div>
+                <div class="grid grid-cols-[300px_1fr] gap-4 p-4">
+                  <div>
+                    <div class="text-[11px] font-bold text-slate400 mb-2">页图（蓝 = 合并后的外接框）</div>
+                    <div class="relative bg-white border border-line2 rounded" style="width:264px;height:373px">
+                      <div class="absolute border border-line2" style="left:14px;top:34px;width:236px;height:18px"></div>
+                      <div class="absolute text-[8px] text-[#334155]" style="left:16px;top:38px">二、填空题（每题 3 分，共 18 分）</div>
+                      <div class="absolute border border-line2" style="left:14px;top:58px;width:236px;height:22px"></div>
+                      <div class="absolute text-[8px] text-[#334155]" style="left:16px;top:62px">9. 长方体长 8cm 宽 5cm 高 4cm，体积 ___</div>
+                      <div class="absolute border border-dashed border-danger" style="left:14px;top:86px;width:236px;height:20px"></div>
+                      <div class="absolute text-[8px] text-[#334155]" style="left:16px;top:89px">10. 把 3/4 化成小数是 ___，</div>
+                      <div class="absolute border border-dashed border-danger" style="left:14px;top:110px;width:236px;height:20px"></div>
+                      <div class="absolute text-[8px] text-[#334155]" style="left:16px;top:113px">化成百分数是 ___%。</div>
+                      <div class="absolute border-2 border-primary bg-primary-container" style="left:10px;top:82px;width:244px;height:52px"></div>
+                      <div class="absolute bg-primary text-white text-[9px] font-bold px-1 rounded" style="left:10px;top:70px">合并后 · 外接矩形</div>
+                    </div>
+                  </div>
+                  <div>
+                    <div class="text-[11px] font-bold text-slate400 mb-2">合并结果</div>
+                    <div class="border-2 border-primary rounded-lg p-3 bg-primary-container mb-3">
+                      <div class="text-[11px] text-primary font-bold mb-1">B10 题目 · origin=merged</div>
+                      <div class="bg-white border border-line2 rounded p-2 text-[13px] leading-6 text-navy">
+                        10. 把 3/4 化成小数是 ______，化成百分数是 ______%。
+                      </div>
+                    </div>
+                    <div class="text-[12px] leading-5 text-slate600">
+                      第 10 题被版面模型切成两半（红虚线），选中两块 →「合并选中块」。
+                      <br><br>
+                      新 bbox = 两框外接矩形，新 content_md = <b>两段文本直接拼接</b>——内容本身没变，只是归属变了，所以<b>不需要重跑 OCR</b>。
+                      <br><br>
+                      <span class="text-[#15803d] font-bold">连带处理：</span>item_blocks 里指向旧块的引用重定向到新块并去重；
+                      chunks 标 stale 待重建；新块 <code class="px-1 bg-canvas border border-line rounded text-[11px]">ordinal</code> <b>落在原位</b>而不是页末尾。
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 演示 3：拆分 -->
+              <div class="fixdemo hidden" data-demo="d-split">
+                <div class="px-4 py-3 border-b border-line bg-canvas flex items-center gap-2">
+                  <span class="font-display font-bold text-[14px]">③ 拆分（切少了）</span>
+                  <span class="chip border border-[#bbf7d0] bg-[#f0fdf4] text-[#15803d]">即时生效 · 不重跑 OCR</span>
+                </div>
+                <div class="grid grid-cols-[300px_1fr] gap-4 p-4">
+                  <div>
+                    <div class="text-[11px] font-bold text-slate400 mb-2">页图（按文本切分点的 y 坐标切）</div>
+                    <div class="relative bg-white border border-line2 rounded" style="width:264px;height:373px">
+                      <div class="absolute border border-line2" style="left:14px;top:34px;width:236px;height:18px"></div>
+                      <div class="absolute text-[8px] text-[#334155]" style="left:16px;top:38px">三、解答题</div>
+                      <div class="absolute border border-line2" style="left:14px;top:58px;width:236px;height:70px"></div>
+                      <div class="absolute text-[8px] text-[#334155]" style="left:16px;top:62px">15. 长方体棱长和 96cm，长是宽的 2 倍，高 6cm。</div>
+                      <div class="absolute text-[8px] text-[#334155]" style="left:16px;top:82px">（1）求宽。（2）求体积。</div>
+                      <div class="absolute bg-danger text-white text-[9px] font-bold px-1 rounded" style="left:14px;top:48px">切多了：两问挤一块</div>
+                      <div class="absolute border-t-2 border-dashed border-danger" style="left:10px;top:100px;width:244px"></div>
+                      <div class="absolute bg-danger text-white text-[9px] font-bold px-1 rounded" style="left:60px;top:102px">切分点</div>
+                      <div class="absolute border-2 border-primary bg-primary-container" style="left:14px;top:58px;width:236px;height:40px"></div>
+                      <div class="absolute border-2 border-primary bg-primary-container" style="left:14px;top:104px;width:236px;height:24px"></div>
+                      <div class="absolute bg-primary text-white text-[9px] font-bold px-1 rounded" style="left:14px;top:48px">拆成 2 块</div>
+                    </div>
+                  </div>
+                  <div>
+                    <div class="text-[11px] font-bold text-slate400 mb-2">在文本里点切分位置</div>
+                    <div class="border border-line2 rounded-lg p-3 mb-3">
+                      <div class="text-[11px] text-slate400 font-bold mb-1">B15 原块（含 2 问）</div>
+                      <div class="text-[13px] leading-6 text-navy">
+                        15. 长方体棱长和 96cm，长是宽的 2 倍，高 6cm。
+                        <span class="bg-danger-bg border-b-2 border-danger px-0.5">（1）求宽。<span class="text-danger font-bold">｜</span></span>（2）求体积。
+                      </div>
+                      <div class="text-[12px] text-danger mt-1">↑ 光标点这里 → 「拆分块」</div>
+                    </div>
+                    <div class="grid grid-cols-2 gap-2 mb-3">
+                      <div class="border-2 border-primary rounded-lg p-2 bg-primary-container">
+                        <div class="text-[11px] text-primary font-bold mb-1">B15a · origin=split</div>
+                        <div class="text-[12px] leading-5 text-navy">15. 长方体棱长和 96cm，长是宽的 2 倍，高 6cm。（1）求宽。</div>
+                      </div>
+                      <div class="border-2 border-primary rounded-lg p-2 bg-primary-container">
+                        <div class="text-[11px] text-primary font-bold mb-1">B15b · origin=split</div>
+                        <div class="text-[12px] leading-5 text-navy">（2）求体积。</div>
+                      </div>
+                    </div>
+                    <div class="text-[12px] leading-5 text-slate600">
+                      <b>为什么优先"在文本里点"而不是"在图上画线"：</b>
+                      按文本行切，切分点的 y 坐标是确定的，两半各自继承对应文本，
+                      <b>不需要重跑 OCR</b>，而且比手画几何线准得多。图上画线只作兜底（那种才要重跑）。
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 演示 4：调框 / 补画 -->
+              <div class="fixdemo hidden" data-demo="d-adjust">
+                <div class="px-4 py-3 border-b border-line bg-canvas flex items-center gap-2">
+                  <span class="font-display font-bold text-[14px]">④ 调框 / 补画（切歪了 / 漏检）</span>
+                  <span class="chip border border-amber-border bg-amber-bg text-[#b45309]">要重裁 + 重跑 OCR</span>
+                </div>
+                <div class="grid grid-cols-[300px_1fr] gap-4 p-4">
+                  <div>
+                    <div class="text-[11px] font-bold text-slate400 mb-2">页图（8 控制点 + 虚线补画框）</div>
+                    <div class="relative bg-white border border-line2 rounded" style="width:264px;height:373px">
+                      <div class="absolute border border-line2" style="left:14px;top:34px;width:236px;height:18px"></div>
+                      <div class="absolute text-[8px] text-[#334155]" style="left:16px;top:38px">二、填空题</div>
+                      <div class="absolute border border-line2" style="left:14px;top:58px;width:236px;height:22px"></div>
+                      <div class="absolute text-[8px] text-[#334155]" style="left:16px;top:62px">9. 长方体体积 ___</div>
+
+                      <!-- 正在调的框（8 控制点） -->
+                      <div class="absolute border-2 border-primary bg-primary-container" style="left:14px;top:86px;width:236px;height:56px"></div>
+                      <div class="absolute text-[8px] text-[#334155]" style="left:16px;top:90px">11. 梯形上底 6cm 下底 10cm 高 5cm</div>
+                      <div class="absolute text-[8px] text-[#334155]" style="left:16px;top:108px">〔 梯 形 示 意 图 〕</div>
+                      <div class="absolute bg-primary text-white text-[9px] font-bold px-1 rounded" style="left:14px;top:74px">调整中 · 拖 8 个控制点</div>
+                      <!-- 8 控制点 -->
+                      <div class="absolute bg-white border-2 border-primary" style="left:11px;top:83px;width:6px;height:6px"></div>
+                      <div class="absolute bg-white border-2 border-primary" style="left:129px;top:83px;width:6px;height:6px"></div>
+                      <div class="absolute bg-white border-2 border-primary" style="left:247px;top:83px;width:6px;height:6px"></div>
+                      <div class="absolute bg-white border-2 border-primary" style="left:11px;top:111px;width:6px;height:6px"></div>
+                      <div class="absolute bg-white border-2 border-primary" style="left:247px;top:111px;width:6px;height:6px"></div>
+                      <div class="absolute bg-white border-2 border-primary" style="left:11px;top:139px;width:6px;height:6px"></div>
+                      <div class="absolute bg-white border-2 border-primary" style="left:129px;top:139px;width:6px;height:6px"></div>
+                      <div class="absolute bg-white border-2 border-primary" style="left:247px;top:139px;width:6px;height:6px"></div>
+
+                      <!-- 补画的框（虚线） -->
+                      <div class="absolute border-2 border-dashed border-[#7c3aed] bg-[#f5f3ff]" style="left:14px;top:152px;width:236px;height:28px"></div>
+                      <div class="absolute text-[8px] text-[#5b21b6]" style="left:16px;top:160px">12. 在○里填「>」「<」或「＝」</div>
+                      <div class="absolute bg-[#7c3aed] text-white text-[9px] font-bold px-1 rounded" style="left:14px;top:142px">补画 · origin=manual</div>
+
+                      <div class="absolute text-[8px] text-slate400" style="left:14px;top:200px">↓ 拖到相邻块边界 4px 内自动吸附</div>
+                    </div>
+                  </div>
+                  <div>
+                    <div class="text-[11px] font-bold text-slate400 mb-2">松手后：重裁 → 重跑 OCR → 新旧对比</div>
+
+                    <div class="border border-amber-border bg-amber-bg rounded-lg p-3 mb-3">
+                      <div class="flex items-center gap-2 mb-2">
+                        <span class="inline-block w-3 h-3 border-2 border-amber border-t-transparent rounded-full animate-spin"></span>
+                        <span class="text-[13px] font-bold text-[#92400e]">重裁 + 重识别中…</span>
+                      </div>
+                      <div class="text-[12px] leading-5 text-[#92400e]">
+                        改了框，content_md 就失效了。<b>不能留着旧文本不动</b>——页图和文字对不上，复核就白做了。
+                      </div>
+                    </div>
+
+                    <div class="border border-line2 rounded-lg overflow-hidden">
+                      <div class="grid grid-cols-2 text-[11px] font-bold">
+                        <div class="px-3 py-2 bg-canvas text-slate400 border-r border-line">原文本</div>
+                        <div class="px-3 py-2 bg-primary-container text-primary">新识别</div>
+                      </div>
+                      <div class="grid grid-cols-2 text-[12px] leading-5">
+                        <div class="px-3 py-2 border-r border-line text-slate600">
+                          11. 梯形<b class="bg-danger-bg text-danger">上底 5cm</b> 下底 10cm 高 5cm，面积 ___
+                        </div>
+                        <div class="px-3 py-2 text-navy">
+                          11. 梯形<b class="bg-[#f0fdf4] text-[#15803d]">上底 6cm</b> 下底 10cm 高 5cm，面积 ___
+                        </div>
+                      </div>
+                    </div>
+
+                    <div class="flex gap-2 mt-3">
+                      <button class="btn btn-primary" style="height:30px;font-size:12px">采用新文本</button>
+                      <button class="btn btn-ghost" style="height:30px;font-size:12px">保留原文本</button>
+                      <button class="btn btn-ghost" style="height:30px;font-size:12px">手动改</button>
+                    </div>
+
+                    <div class="text-[12px] leading-5 text-slate600 mt-3 pt-3 border-t border-line">
+                      确认后 <code class="px-1 bg-canvas border border-line rounded text-[11px]">geometry_revision += 1</code>，
+                      页图上加「人工调过」角标；<code class="px-1 bg-canvas border border-line rounded text-[11px]">parent_block_ids</code> 记血缘，能回溯这块是从哪改来的。
+                      补画的框用<b>虚线 + manual 角标</b>，一眼能看出"这块是人补的"。
+                      <br><br>
+                      <span class="text-slate400">键盘微调：方向键 1px，Shift + 方向键 10px。</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+            </div>
+          </div>
+
+          <!-- 底部：引用重定向 -->
+          <div class="mt-4 bg-white border border-line rounded-xl p-4">
+            <h3 class="font-display font-bold text-[14px] mb-2">改块会牵动 item 和 chunk（引用重定向）</h3>
+            <p class="text-[12px] leading-5 text-slate600 mb-3">
+              <code class="px-1 bg-canvas border border-line rounded text-[11px]">item_blocks.block_id</code> 和
+              <code class="px-1 bg-canvas border border-line rounded text-[11px]">chunks.source_block_ids</code> 都指向 block，块变了这些引用不能悬空。
+              现有 <code class="px-1 bg-canvas border border-line rounded text-[11px]">PATCH /blocks/:id</code> 直接 <code class="px-1 bg-canvas border border-line rounded text-[11px]">DELETE FROM chunks</code>——改文字没问题，<b>改分块时不能照抄</b>。
+            </p>
+            <div class="overflow-hidden border border-line rounded-lg">
+              <div class="grid grid-cols-[120px_1fr_1fr] text-[11px] font-bold bg-canvas text-slate400">
+                <div class="px-3 py-2">操作</div><div class="px-3 py-2">item_blocks</div><div class="px-3 py-2">chunks</div>
+              </div>
+              <div class="grid grid-cols-[120px_1fr_1fr] text-[12px] border-t border-line">
+                <div class="px-3 py-2 font-bold text-navy">合并 A+B→C</div>
+                <div class="px-3 py-2 text-slate600">指向 A/B 的重定向到 C，去重</div>
+                <div class="px-3 py-2 text-slate600">合并 source_block_ids，标 stale</div>
+              </div>
+              <div class="grid grid-cols-[120px_1fr_1fr] text-[12px] border-t border-line bg-canvas">
+                <div class="px-3 py-2 font-bold text-navy">拆分 A→B+C</div>
+                <div class="px-3 py-2 text-slate600">按文本落哪一半，重定向到对应块</div>
+                <div class="px-3 py-2 text-slate600">标 stale</div>
+              </div>
+              <div class="grid grid-cols-[120px_1fr_1fr] text-[12px] border-t border-line">
+                <div class="px-3 py-2 font-bold text-navy">调框 / 补画</div>
+                <div class="px-3 py-2 text-slate600">保持不变（内容变了，归属没变）</div>
+                <div class="px-3 py-2 text-slate600">标 stale</div>
+              </div>
+              <div class="grid grid-cols-[120px_1fr_1fr] text-[12px] border-t border-line bg-canvas">
+                <div class="px-3 py-2 font-bold text-navy">删除块</div>
+                <div class="px-3 py-2 text-slate600">解除绑定，item 标 no_source</div>
+                <div class="px-3 py-2 text-slate600">标 stale</div>
+              </div>
+            </div>
+            <p class="text-[12px] leading-5 text-slate400 mt-3">
+              删除块要沿用 <code class="px-1 bg-canvas border border-line rounded text-[11px]">layout.py:126</code> 已有的保护：
+              有 review_queue 记录的块<b>不删</b>，人工痕迹不丢。
+            </p>
+          </div>
+
+        </div>
+      </section>
+
+      <!-- ================================================================= -->
+      <!-- 屏幕 2.5：答案关联（卷末答案区）与检索呈现                          -->
+      <!-- ================================================================= -->
+      <section id="scr-answers" class="screen h-full overflow-y-auto">
+        <div class="max-w-[1280px] mx-auto p-6">
+          <div class="mb-4">
+            <h2 class="font-display font-bold text-[20px]">答案关联 · 卷末答案区</h2>
+            <p class="text-[13px] text-slate600 mt-1">
+              答案不单独成 chunk，只作为题目 chunk 里的独立字段。卷末统一给答案时，解析阶段就要把它拆开并按题号对回题目——
+              <strong>对不上的进人工</strong>，不能靠位置相邻猜。
+            </p>
+          </div>
+
+          <div class="grid grid-cols-[320px_1fr_360px] gap-5">
+
+            <!-- 左：卷末答案区页图 -->
+            <div class="flex flex-col gap-3">
+              <div class="bg-white border border-line rounded-xl p-4">
+                <div class="flex items-center gap-2 mb-2">
+                  <span class="chip blue">第 6 页 · 答案区</span>
+                  <div class="flex-1"></div>
+                  <span class="chip">已切块 8</span>
+                </div>
+                <div class="page-img" style="aspect-ratio:1/1.15">
+                  <div class="pg" style="left:8%;top:6%;right:8%;font-size:11px;font-weight:700">参考答案</div>
+                  <div class="pg" style="left:8%;top:15%;right:8%;font-size:9.5px;line-height:1.9;color:#334155">
+                    一、1. 8.4　2. 9　3. 10<br/>二、9. 160　10. 0.75，75%　11. 40<br/>12. ＝　13. 96　14. 40<br/>三、15.（1）6 cm　（2）432 cm³<br/>　　（3）360 cm²
+                  </div>
+                  <div class="absolute" style="left:6%;top:12%;width:88%;height:8%;border:1px dashed #94a3b8;border-radius:2px">
+                    <span class="absolute -top-[9px] left-0 text-[9px] bg-white px-1 text-slate400">B01 标题</span>
+                  </div>
+                  <div class="absolute" style="left:6%;top:22%;width:88%;height:14%;border:1.5px solid #1d4ed8;background:rgba(29,78,216,.06);border-radius:2px">
+                    <span class="absolute -top-[9px] left-0 text-[9px] bg-primary text-white px-1 rounded-sm">B02 连排</span>
+                  </div>
+                  <div class="absolute" style="left:6%;top:40%;width:88%;height:16%;border:1.5px solid #dc2626;background:rgba(220,38,38,.06);border-radius:2px">
+                    <span class="absolute -top-[9px] left-0 text-[9px] bg-danger text-white px-1 rounded-sm">B03 子题嵌套</span>
+                  </div>
+                </div>
+                <div class="mt-3 flex flex-col gap-2 text-[12px] text-slate600 leading-5">
+                  <div><strong>①</strong> 版面定位：识别「参考答案 / 答案」标题块，锁定答案区页范围。</div>
+                  <div><strong>②</strong> 连排切分：一行的「9. 160　10. 0.75，75%」不是一题，按题号正则切成 N 段。</div>
+                  <div><strong>③</strong> 子题再切：「15.（1）6 cm（2）432 cm³」先按大题号、再按「（n）」切。</div>
+                  <div><strong>④</strong> 题号对齐：拿切出来的题号去匹配题目 item 的 label，匹配不上进人工。</div>
+                </div>
+              </div>
+
+              <div class="bg-amber-bg border border-amber-border rounded-xl p-4">
+                <h3 class="font-display font-bold text-[14px] mb-2 text-[#92400e]">为什么不能靠位置</h3>
+                <p class="text-[12px] leading-5 text-[#92400e]">
+                  答案在卷末，和题目隔着好几页，「下一个块就是答案」这个假设直接失效。
+                  现有 <span class="mono text-[11px]">pair_items()</span> 是按 label 精确相等配对的——
+                  连排答案切不出来、题号写成「9、」还是「9.」不一致，都会静默漏配。
+                </p>
+              </div>
+            </div>
+
+            <!-- 中：题号对齐表 -->
+            <div class="bg-white border border-line rounded-xl p-4">
+              <div class="flex items-center gap-2 mb-3">
+                <h3 class="font-display font-bold text-[14px]">题号对齐结果</h3>
+                <span class="chip ok">已配对 22</span>
+                <span class="chip bad">待确认 1</span>
+                <span class="chip bad">未配对 1</span>
+                <div class="flex-1"></div>
+                <button class="btn btn-ghost" style="height:28px;font-size:12px">重跑对齐</button>
+                <button class="btn btn-primary" style="height:28px;font-size:12px">确认全部配对</button>
+              </div>
+
+              <table class="pair-tbl">
+                <thead>
+                  <tr><th style="width:56px">题号</th><th>题目 item</th><th>答案文本</th><th style="width:96px">来源块</th><th style="width:64px">置信</th><th style="width:88px">状态</th></tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td class="mono font-semibold">9</td>
+                    <td class="text-slate600">二、填空 9 · 长方体体积</td>
+                    <td>160 cm³</td>
+                    <td class="mono text-[11px] text-slate400">P6/B02</td>
+                    <td class="text-ok font-semibold">0.97</td>
+                    <td><span class="chip ok">已配对</span></td>
+                  </tr>
+                  <tr>
+                    <td class="mono font-semibold">10</td>
+                    <td class="text-slate600">二、填空 10 · 分数化小数</td>
+                    <td>0.75；75%</td>
+                    <td class="mono text-[11px] text-slate400">P6/B02</td>
+                    <td class="text-ok font-semibold">0.95</td>
+                    <td><span class="chip ok">已配对</span></td>
+                  </tr>
+                  <tr>
+                    <td class="mono font-semibold">11</td>
+                    <td class="text-slate600">二、填空 11 · 梯形面积（含图）</td>
+                    <td>40 cm²</td>
+                    <td class="mono text-[11px] text-slate400">P6/B03</td>
+                    <td class="text-ok font-semibold">0.91</td>
+                    <td><span class="chip ok">已配对</span></td>
+                  </tr>
+                  <tr>
+                    <td class="mono font-semibold">15（2）</td>
+                    <td class="text-slate600">三、解答 15 · 子题 2</td>
+                    <td>432 cm³</td>
+                    <td class="mono text-[11px] text-slate400">P6/B04</td>
+                    <td class="text-ok font-semibold">0.88</td>
+                    <td><span class="chip ok">已配对</span></td>
+                  </tr>
+                  <tr class="danger-row">
+                    <td class="mono font-semibold">13</td>
+                    <td class="text-slate600">二、填空 13 · 商品打折</td>
+                    <td>96 元 <span class="text-[11px] text-slate400">（也可能是「96」）</span></td>
+                    <td class="mono text-[11px] text-slate400">P6/B02</td>
+                    <td class="text-danger font-semibold">0.62</td>
+                    <td><span class="chip bad">待确认</span></td>
+                  </tr>
+                  <tr class="danger-row">
+                    <td class="mono font-semibold">14</td>
+                    <td class="text-slate600">二、填空 14 · 分数应用</td>
+                    <td class="text-slate400">—（答案区没找到 14）</td>
+                    <td class="mono text-[11px] text-slate400">—</td>
+                    <td class="text-slate400">—</td>
+                    <td><span class="chip bad">未配对</span></td>
+                  </tr>
+                </tbody>
+              </table>
+
+              <div class="mt-3 flex gap-2">
+                <button class="btn btn-primary" style="height:30px;font-size:12px">✓ 采纳选中配对</button>
+                <button class="btn btn-ghost" style="height:30px;font-size:12px">✎ 手工指定答案块</button>
+                <button class="btn btn-ghost" style="height:30px;font-size:12px">在卷末页图中定位</button>
+                <button class="btn btn-danger" style="height:30px;font-size:12px">标记无答案</button>
+              </div>
+              <div class="mt-3 text-[12px] text-slate400 leading-5">
+                未配对的题<strong>不阻塞</strong>入库：题目照常向量化，答案字段留空并标「待配对」，人工补上后再重建该 chunk 的向量。
+              </div>
+            </div>
+
+            <!-- 右：检索呈现预览 -->
+            <div class="flex flex-col gap-3">
+              <div class="bg-white border border-line rounded-xl p-4">
+                <h3 class="font-display font-bold text-[14px] mb-1">检索命中时的呈现</h3>
+                <p class="text-[12px] text-slate400 mb-3">答案默认折叠，点开才看；图随 chunk 一起返回。</p>
+
+                <div class="border border-line rounded-xl p-3 bg-canvas">
+                  <div class="flex items-center gap-2 mb-2">
+                    <span class="chip blue">相似 0.87</span>
+                    <span class="text-[11px] text-slate400">P3 · 二、填空 11</span>
+                    <div class="flex-1"></div>
+                    <span class="text-[11px] text-slate400">《期中练习卷》</span>
+                  </div>
+                  <div class="text-[13px] leading-6 text-navy">如图，梯形上底 6 cm，下底 10 cm，高 5 cm，面积是 ______ cm²。</div>
+                  <div class="fig">
+                    <div class="fig-box cut" style="width:100px;height:64px">〔 梯 形 图 〕</div>
+                    <div class="fig-cap" style="max-width:100px">梯形，上底 6 下底 10 高 5</div>
+                  </div>
+                  <div class="ans">
+                    <button class="ans-toggle"><span class="ms caret">chevron_right</span>显示答案<span class="ans-tag">默认隐藏</span></button>
+                    <div class="ans-body">40 cm²</div>
+                  </div>
+                  <div class="mt-2 flex gap-2">
+                    <button class="btn btn-ghost" style="height:26px;font-size:12px">查看原文</button>
+                    <button class="btn btn-ghost" style="height:26px;font-size:12px">加入练习</button>
+                  </div>
+                </div>
+              </div>
+
+              <div class="bg-white border border-line rounded-xl p-4">
+                <h3 class="font-display font-bold text-[14px] mb-2">三条硬规则</h3>
+                <div class="flex flex-col gap-2 text-[12px] leading-5 text-slate600">
+                  <div><span class="chip ok mr-1">1</span>答案不参与 embedding，只跟在 chunk 里返回。改答案不必重建题面向量。</div>
+                  <div><span class="chip ok mr-1">2</span>卷末答案整页<strong>不单独入索引</strong>，拆完逐条挂到题目上。</div>
+                  <div><span class="chip ok mr-1">3</span>图本身不进向量，进的是图注描述文本；没有描述就补一句，否则图里的信息检索不到。</div>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </section>
+
+      <!-- ================================================================= -->
+      <!-- 屏幕 3：入库查看（chunk / 全文 markdown）                          -->
+      <!-- ================================================================= -->
+      <section id="scr-chunks" class="screen h-full" data-page-node-id="EkjdcfLgqw7z4kNp6MYqhP">
+        <div class="flex h-full" data-page-node-id="edBfSyuZCB03EFBpkBQAjC">
+          <!-- 左：chunks -->
+          <div class="flex-1 min-w-0 flex flex-col bg-canvas" data-page-node-id="VQ0ATznmtn41srmXX8s6LM">
+            <div class="flex-none bg-white border-b border-line px-5 py-3" data-page-node-id="Y1J8wXYFpFNjrZPDgLH3No">
+              <div class="flex items-center gap-2" data-page-node-id="PrySHQ8qzcF8fGsFRXTQUt">
+                <h2 class="font-display font-bold text-[16px]" data-page-node-id="on04bpVOl0k3A6MyjAXDH3">索引账页 · 按 chunk 查看</h2>
+                <span class="chip" data-page-node-id="28sb7qdcqC6R174R7HqOU5">共 31 段</span>
+                <div class="flex-1" data-page-node-id="zsLpDpVUp4DEq1oL4S1m8L"></div>
+                <input placeholder="在 chunk 中搜索…" class="text-[13px] border-line2 rounded-lg w-56" data-page-node-id="SCsE6f54fbjVgmHS3SaYWG"/>
+                <select class="text-[13px] border-line2 rounded-lg" data-page-node-id="F803r2OGKeTtr2ZVkicRcG"><option data-page-node-id="afLW9ADxNSZ5y3nbrHRNGF">全部来源</option><option data-page-node-id="ufGOCUUV2WNFlfaT9w9X4K">题组</option><option data-page-node-id="VsAouj04l44OM1CEuQwtCP">单题</option><option data-page-node-id="ppBTAFFPChRy8l9zoeSa12">页</option></select>
+                <button class="btn btn-ghost" data-page-node-id="4mK9SWiabFogIYexrysMLD"><span class="ms text-[16px]" data-page-node-id="ol9F328jrWD8G1T0wPMnZA">refresh</span>重建全部向量</button>
+              </div>
+            </div>
+            <div class="flex-1 overflow-y-auto p-5" data-page-node-id="4pUWyftfTekFOAF36BbkXF">
+              <ol class="flex flex-col gap-2" id="chunkList" data-page-node-id="ECMdb0iNfMSuT93m21iaiA"></ol>
+            </div>
+            <div class="flex-none bg-white border-t border-line px-5 py-2 flex items-center gap-2 text-[12px] text-slate400" data-page-node-id="ltzSgypSpMAu9gfg29Oc54">
+              <button class="btn btn-ghost" data-page-node-id="oDoBYVS8nEDi340lEsLhQA">← 上一页</button>
+              <span data-page-node-id="31ljSWBOnrJm90w8mgnwwf">第 1 / 4 页 · 共 31 条</span>
+              <button class="btn btn-ghost" data-page-node-id="UnpanQ5732B9AFXc51bHxs">下一页 →</button>
+              <div class="flex-1" data-page-node-id="B1gzSAwpCxO7wWvEWL1dpe"></div>
+              <span data-page-node-id="CrRttYP3Aj7li0CPgApHQC">已索引 31 · 失效待重建 0 · 排除 1（封面）</span>
+            </div>
+          </div>
+
+          <!-- 右：全文 markdown -->
+          <aside class="w-[520px] flex-none bg-white border-l border-line flex flex-col" data-page-node-id="B5slLRu2Qgk0envkNeZACm">
+            <div class="flex-none px-5 py-3 border-b border-line flex items-center gap-2" data-page-node-id="PMBJn6YOc0sH1MfZrJqYrF">
+              <h2 class="font-display font-bold text-[16px]" data-page-node-id="vHpVC6lF3K3CG0hOxITzIT">完整文档（Markdown）</h2>
+              <div class="flex-1" data-page-node-id="majXEwwDryOSwXv7AEemcu"></div>
+              <button class="chip blue" data-page-node-id="9Uxr5jBZgkOi4QEzz2Afiu">渲染</button>
+              <button class="chip" data-page-node-id="hbxj8zSlJd97rcNIsXIESU">源码</button>
+              <button class="btn btn-ghost" data-page-node-id="9YTKHaQputTXYYAgnWDngi"><span class="ms text-[16px]" data-page-node-id="agwwnmbWlOJePzEYLuMKOK">download</span>导出</button>
+            </div>
+            <div class="flex-1 overflow-y-auto p-5 md-body" id="fullDoc" data-page-node-id="uRkg8Mu07jCpjh5b6QkbfZ"></div>
+          </aside>
+        </div>
+      </section>
+
+      <!-- ================================================================= -->
+      <!-- 屏幕 4：规则说明                                                   -->
+      <!-- ================================================================= -->
+      <section id="scr-rules" class="screen h-full overflow-y-auto" data-page-node-id="CZGhGTpIrERuoB7Y1lDmpl">
+        <div class="max-w-[1080px] mx-auto p-6" data-page-node-id="hZhLAWAm7D4FTG9o8jXpJc">
+          <h2 class="font-display font-bold text-[20px] mb-1" data-page-node-id="VKInrTkHtqs9isjl1K1Lns">质检规则与入库规则（可配置）</h2>
+          <p class="text-[13px] text-slate600 mb-5" data-page-node-id="NEkbWIfk3OP2t7G2RiGYou">全部阈值写在配置里，页面只负责呈现命中结果，判定逻辑不藏在 UI 里。</p>
+
+          <div class="grid grid-cols-2 gap-4" data-page-node-id="DIRvbyTxkduKXhYxGn4h5m">
+            <div class="bg-white border border-line rounded-xl p-4" data-page-node-id="MfOtOMT1b5B1lUOBPbzNkF">
+              <h3 class="font-display font-bold text-[15px] mb-3" data-page-node-id="cDc4nHPb7ZwwaK4CLLv8wD">一、什么页进人工队列</h3>
+              <table class="w-full text-[13px]" data-page-node-id="Fhw6pNB38BD59JNxy625OK">
+                <thead data-page-node-id="E0E25OdjEIMYTmUsWnArLv"><tr class="text-left text-[11px] uppercase tracking-wider text-slate400 border-b border-line" data-page-node-id="aOi8MnXfApmoLyvzp6pGlS">
+                  <th class="py-2" data-page-node-id="Ak7PAS6IE2HvF9jaGyUWZc">信号</th><th class="py-2" data-page-node-id="hGLNdMul7JGDiwun7hJ6JC">阈值</th><th class="py-2" data-page-node-id="nNNaBU89enPkYh74IpYZPE">来源</th></tr></thead>
+                <tbody class="align-top" data-page-node-id="Kden5ruAmxmu0u2K1wJOdb">
+                  <tr class="border-b border-line" data-page-node-id="D0Y5cWD2VKSKkPhPF8xX2u"><td class="py-2" data-page-node-id="spHo9HZoxHqwEGwD2Z5Dzw">块置信度</td><td class="py-2 mono" data-page-node-id="elf1B05cgqR2YectT0SELK">&lt; 0.60</td><td class="py-2" data-page-node-id="paNW4lyMLHOjKRDdO5aCLn">OCR</td></tr>
+                  <tr class="border-b border-line" data-page-node-id="sQZGw0VRLAg7XbQ8as1Ree"><td class="py-2" data-page-node-id="eD3O9xTwosWjFJkdw6MX6j">VLM 质检评分</td><td class="py-2 mono" data-page-node-id="KR4H74nXWF23Ur7UQmA10b">&lt; 0.80</td><td class="py-2" data-page-node-id="utsAMuN405hotYUAMSOwHh">VLM</td></tr>
+                  <tr class="border-b border-line" data-page-node-id="WEiLu2xq4SwerHmXZMDa47"><td class="py-2" data-page-node-id="wuMesxS0ZUfs8mAA4kvNDY">文本密度异常</td><td class="py-2 mono" data-page-node-id="SytkwqKitlxiGNrlhVggZ1">&lt; 30 或 &gt; 3000 字/页</td><td class="py-2" data-page-node-id="JNKPGotohZnlR6RprxCzl8">计算</td></tr>
+                  <tr class="border-b border-line" data-page-node-id="rIpxom27O5fEywN3pG6unY"><td class="py-2" data-page-node-id="BwCXykcTE40sfQTTn1poiv">乱码 / 不可识字符</td><td class="py-2 mono" data-page-node-id="GkIDIzAje5QRwShB9wwzF5">&gt; 3%</td><td class="py-2" data-page-node-id="jVrNp80YvEULSHXIHavxHq">计算</td></tr>
+                  <tr class="border-b border-line" data-page-node-id="yDW0VyzqqrV6spb3eNq1KP"><td class="py-2" data-page-node-id="wgQw5MIaueBVFU6xfaJIJa">题号序列断层</td><td class="py-2 mono" data-page-node-id="syWvoRhxsh8JrMHn5yA2wP">缺号 / 跳号</td><td class="py-2" data-page-node-id="mujaF2Y9h54DIAmPnxOWGi">计算</td></tr>
+                  <tr class="border-b border-line" data-page-node-id="9yE4KmxF8dBx0SMHSDpW06"><td class="py-2" data-page-node-id="JEmm3XkXceeQD4CbA36CB5">OCR 失败触发 VLM 补解析</td><td class="py-2 mono" data-page-node-id="xqH9jWHqXGAJQR1aNPyQex">无条件</td><td class="py-2" data-page-node-id="86wLSo5SVo5lRUP0wimKfH">编排</td></tr>
+                  <tr data-page-node-id="tFhrjNqj0h50TeGjarGe8P"><td class="py-2" data-page-node-id="Ws29iBYOQzJoQHhymyoM6c">随机抽样</td><td class="py-2 mono" data-page-node-id="NJocEKuDRbvHug7HnGlG2X">10%</td><td class="py-2" data-page-node-id="YvwXEnTshK9hwfN2GowZhM">编排</td></tr>
+                </tbody>
+              </table>
+              <div class="callout text-[12px] mt-3 leading-5" data-page-node-id="cVEBaYya9fJpGNEzkZXAL2">
+                「VLM 补解析」与「VLM 质检」不能是同一次调用：补出来的内容再让他自己打分基本都合格，
+                所以补解析页强制进人工队列。
+              </div>
+            </div>
+
+            <div class="bg-white border border-line rounded-xl p-4" data-page-node-id="OY6l0KNJS4xGtSUJFaw0s2">
+              <h3 class="font-display font-bold text-[15px] mb-3" data-page-node-id="HolCnfWRfEWODnHqV7ojgQ">二、入库与重建</h3>
+              <ul class="text-[13px] leading-6 text-slate600 flex flex-col gap-2" data-page-node-id="FJCVBa4xcVB47IcUkVPJWD">
+                <li data-page-node-id="2EYd3DrcQV9CR3bA7dHYpO">· chunk 与题目/页强绑定，带 <span class="mono" data-page-node-id="OzdWd2VjF9Cdf3jV7dHpPk">source_id + revision</span>。</li>
+                <li data-page-node-id="SMknnHd782lenAf6ZRInV5">· 人工改动题目 → revision +1 → 对应 chunk 标记 <span class="chip bad" data-page-node-id="1U2FWJ8BxZIt7PgoQCgkSc">索引过期</span>，旧向量在重建前不参与检索。</li>
+                <li data-page-node-id="iOWhMnWiyVryiAn6rNHVkf">· 默认入库粒度为题组（材料 + 子题），单题做子块并保留父引用。</li>
+                <li data-page-node-id="2HgyHGC2IS8Q2oiLTP9J6k">· 向量化可整卷重跑，也可单 chunk / 单题重建。</li>
+                <li data-page-node-id="W0jbDyySSq4f39Ow9qyQH1">· 图形块暂不进向量，只在 chunk 里留 <span class="mono" data-page-node-id="bndKjL7yTKAy4hGTtPLYN8">figure: 描述</span> 占位，缺图题在拆题复核里提示补录。</li>
+              </ul>
+              <div class="callout text-[12px] mt-3 leading-5" data-page-node-id="LboDXD4UAjcdGkV1h74c5O">
+                顺序：OCR →（失败）VLM 补解析 → VLM 质检 → 人工复核 → LLM 拆题 → 人工确认题目 → 向量入库。
+                任何一步回退，下游已生成的内容一律标记过期而不是静默覆盖。
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+</div>
+
+<script>
+/* ---------------- 数据 ---------------- */
+const PAGES = [
+  { no: 3,  score: 0.62, state: "current", reasons: ["2 个问题块", "VLM 0.62"] },
+  { no: 7,  score: 0.71, state: "todo",    reasons: ["题号断层"] },
+  { no: 11, score: 0.55, state: "todo",    reasons: ["乱码 6%", "VLM 0.55"] },
+  { no: 14, score: 0.78, state: "todo",    reasons: ["图形密集"] },
+  { no: 19, score: 0.83, state: "done",    reasons: ["抽样页"] },
+  { no: 22, score: 0.66, state: "edited",  reasons: ["人工已改 1 块"] },
+];
+
+// bbox 坐标为百分比 [x, y, w, h]
+const BLOCKS = [
+  { id: 1, type: "页眉",   conf: 0.98, box: [7, 2.5, 86, 4],   text: "2026 学年第二学期 · 五年级数学期中练习　第 3 页（共 6 页）", flag: "" },
+  { id: 2, type: "题型标题", conf: 0.95, box: [7, 11.5, 86, 5], text: "二、填空题（第 9 – 14 题，每题 3 分，共 18 分）", flag: "" },
+  { id: 3, type: "题目",   conf: 0.93, box: [7, 17.5, 86, 7],  text: "9. 一个长方体的长是 8 cm，宽是 5 cm，高是 4 cm，它的体积是 ______ cm³。", flag: "" },
+  { id: 4, type: "题目",   conf: 0.91, box: [7, 24.5, 86, 4],  text: "10. 把 3/4 化成小数是 ______，化成百分数是 ______%。", flag: "" },
+  { id: 5, type: "题目+图", conf: 0.58, box: [7, 30, 45, 10],  text: "11. 如图，梯形上底 6 cm，下底 10 cm，高 5 cm，面积是 ______ cm²。", flag: "低置信", issue: true, note: "VLM 补解析" },
+  { id: 6, type: "图",     conf: 0.52, box: [51, 30, 42, 17],  text: "〔梯形示意图〕", flag: "图形", issue: true },
+  { id: 7, type: "题目",   conf: 0.44, box: [7, 50, 86, 4],    text: "12. 在○里填上「>」「<」或「＝」：3/5 ○ 0.6", flag: "符号异常", issue: true, edited: true },
+  { id: 8, type: "题目",   conf: 0.90, box: [7, 57, 86, 7],    text: "13. 某商品原价 120 元，打八折后是 ______ 元。\n14. 一个数的 3/5 是 24，这个数是 ______。", flag: "含 2 题" },
+  { id: 9, type: "页脚",   conf: 0.99, box: [7, 92, 86, 3],    text: "— 3 —", flag: "" },
+];
+
+// chunk = 一道题。stem 参与 embedding；answer 是同一 chunk 里的独立字段，不参与 embedding。
+const CHUNKS = [
+  { seq: 1, src: "题组 · 三、解答题 15", page: "P4–P5", chars: 486, state: "indexed",
+    stem: "【材料】李老师用一根长 96 cm 的铁丝焊接成一个长方体框架，长是宽的 2 倍，高是 6 cm。（1）求这个长方体的宽。（2）求它的体积。（3）若在其表面糊纸，求表面积。",
+    answer: "（1）6 cm　（2）432 cm³　（3）360 cm²", from: "卷末 P6/B11", conf: 0.89,
+    note: "题组整体一个 chunk，子题带父引用；3 条答案共用 1 个块，按「（1）（2）（3）」切分对齐", figs: [] },
+  { seq: 2, src: "题 · 二、填空 9", page: "P3/B03", chars: 62, state: "indexed",
+    stem: "一个长方体的长是 8 cm，宽是 5 cm，高是 4 cm，它的体积是 ______ cm³。",
+    answer: "160 cm³", from: "卷末 P6/B02", conf: 0.97, figs: [] },
+  { seq: 3, src: "题 · 二、填空 10", page: "P3/B04", chars: 58, state: "indexed",
+    stem: "把 3/4 化成小数是 ______，化成百分数是 ______%。",
+    answer: "0.75；75%", from: "卷末 P6/B03", conf: 0.95, figs: [] },
+  { seq: 4, src: "题 · 二、填空 11", page: "P3/B05+B06", chars: 74, state: "stale",
+    stem: "如图，梯形上底 6 cm，下底 10 cm，高 5 cm，面积是 ______ cm²。〔图注〕梯形，上底 6 cm，下底 10 cm，高 5 cm。",
+    answer: "40 cm²", from: "卷末 P6/B06", conf: 0.91,
+    note: "图注这句文本随题干进 embedding；图像本身不进向量，只作附件返回",
+    figs: [{ cap: "梯形，上底 6 cm，下底 10 cm，高 5 cm", src: "P3 · B06 crop · 360×172" }] },
+  { seq: 5, src: "题 · 二、填空 12", page: "P3/B07", chars: 55, state: "indexed",
+    stem: "在○里填上「>」「<」或「＝」：3/5 ○ 0.6",
+    answer: "＝", from: "卷末 P6/B07", conf: 0.94,
+    note: "题干由人工修正（不等号），revision 已 bump，向量待重建", figs: [] },
+  { seq: 6, src: "页 · P6 答案区", page: "P6", chars: 312, state: "excluded",
+    stem: "参考答案：二、9. 160　10. 0.75，75%　11. 40　12. ＝　13. 96　14. 40……",
+    answer: "", from: "", conf: 0,
+    note: "答案已逐条拆给各题，整页答案区不再单独入索引（避免答案被独立检索到）", figs: [] },
+  { seq: 7, src: "页 · 封面", page: "P1", chars: 24, state: "excluded",
+    stem: "五年级下册数学 · 期中练习卷", answer: "", from: "", conf: 0,
+    note: "已排除，不参与检索", figs: [] },
+];
+
+const DOC_SECTIONS = [
+  { title: "第 1 页 · 卷头", md: "# 五年级下册数学 · 期中练习卷\n\n班级 ______　姓名 ______　学号 ______　得分 ______\n\n> 说明：本卷共 6 页，满分 100 分，考试时间 80 分钟。" },
+  { title: "第 2 页 · 一、计算题", md: "## 一、计算题（共 28 分）\n\n1. 直接写出得数。\n\n| 算式 | 结果 |\n| --- | --- |\n| $3.6 + 4.8$ | $8.4$ |\n| $\\frac{3}{4} \\times 12$ | $9$ |\n\n2. 脱式计算（能简算的要简算）：$2.5 \\times 3.2 \\times 1.25$。" },
+  { title: "第 3 页 · 二、填空题", md: "## 二、填空题（第 9 – 14 题，每题 3 分，共 18 分）\n\n9. 一个长方体的长是 8 cm，宽是 5 cm，高是 4 cm，它的体积是 ______ cm³。\n\n10. 把 $\\frac{3}{4}$ 化成小数是 ______，化成百分数是 ______%。\n\n11. 如图，梯形上底 6 cm，下底 10 cm，高 5 cm，面积是 ______ cm²。\n\n　　〔figure: 梯形示意图〕\n\n12. 在○里填上「>」「<」或「＝」：$\\frac{3}{5}$ ○ $0.6$。\n\n13. 某商品原价 120 元，打八折后是 ______ 元。\n\n14. 一个数的 $\\frac{3}{5}$ 是 24，这个数是 ______。" },
+  { title: "第 4–5 页 · 三、解答题", md: "## 三、解答题（第 15 – 18 题）\n\n15. 李老师用一根长 96 cm 的铁丝焊接成一个长方体框架，长是宽的 2 倍，高是 6 cm。\n\n（1）求这个长方体的宽；\n\n（2）求它的体积；\n\n（3）若在其表面糊纸，求表面积。" },
+];
+
+/* ---------------- 渲染 ---------------- */
+const esc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+function renderQueue() {
+  document.getElementById("queue").innerHTML = PAGES.map((p) => {
+    const cls = p.state === "current" ? "border-primary bg-primary-50"
+              : p.state === "done" ? "border-line" : "border-line";
+    const badge = p.state === "done" ? '<span class="chip ok">已通过</span>'
+                : p.state === "edited" ? '<span class="chip warn">已改待确认</span>'
+                : p.state === "current" ? '<span class="chip blue">审核中</span>' : "";
+    return `<div class="border ${cls} rounded-lg p-2 flex gap-2 cursor-pointer hover:border-line2">
+      <div class="w-12 h-16 flex-none bg-white border border-line rounded grid place-items-center text-[11px] text-slate400">
+        P${p.no}
+        <div class="w-8 h-[1px] bg-line mt-1"></div>
+        <div class="w-8 h-[1px] bg-line mt-1"></div>
+      </div>
+      <div class="min-w-0 flex-1">
+        <div class="flex items-center gap-1"><strong class="text-[13px]">第 ${p.no} 页</strong>${badge}</div>
+        <div class="text-[11px] text-slate400 mt-0.5">质检 ${p.score}</div>
+        <div class="flex flex-wrap gap-1 mt-1">${p.reasons.map((r) => `<span class="chip ${p.state === "done" ? "" : "bad"}">${r}</span>`).join("")}</div>
+      </div>
+    </div>`;
+  }).join("");
+}
+
+function renderBlocks() {
+  document.getElementById("blocks").innerHTML = BLOCKS.map((b) => {
+    const level = b.conf < 0.6 ? "low" : b.conf < 0.85 ? "mid" : "";
+    return `<div class="blk ${b.issue ? "issue" : ""} ${b.edited ? "edited" : ""}" data-id="${b.id}">
+      <div class="flex items-center gap-2 mb-1">
+        <span class="text-[11px] font-bold text-slate400">B${String(b.id).padStart(2, "0")}</span>
+        <span class="chip">${b.type}</span>
+        ${b.issue ? '<span class="chip bad">待修</span>' : ""}
+        ${b.edited ? '<span class="chip warn">已改</span>' : ""}
+        <div class="flex-1"></div>
+        <span class="text-[11px] mono ${b.conf < 0.6 ? "text-danger" : b.conf < 0.85 ? "text-amber" : "text-slate400"}">${b.conf.toFixed(2)}</span>
+      </div>
+      <div class="conf mb-1.5"><i class="${level}" style="width:${Math.round(b.conf * 100)}%"></i></div>
+      <div class="text-[13px] leading-5 text-navy whitespace-pre-line">${esc(b.text)}</div>
+      ${b.note ? `<div class="text-[11px] text-amber mt-1">${b.note}</div>` : ""}
+    </div>`;
+  }).join("");
+}
+
+function renderBboxes() {
+  const host = document.getElementById("pageImg");
+  host.querySelectorAll(".bbox").forEach((n) => n.remove());
+  BLOCKS.forEach((b) => {
+    const el = document.createElement("div");
+    el.className = "bbox" + (b.issue ? " issue" : "") + (b.edited ? " edited" : "");
+    el.style.left = b.box[0] + "%";
+    el.style.top = b.box[1] + "%";
+    el.style.width = b.box[2] + "%";
+    el.style.height = b.box[3] + "%";
+    el.dataset.id = b.id;
+    el.innerHTML = `<span class="bbox-no">${b.id}</span>${b.issue ? `<span class="bbox-flag">${b.flag}</span>` : ""}`;
+    host.appendChild(el);
+  });
+}
+
+function renderChunks() {
+  document.getElementById("chunkList").innerHTML = CHUNKS.map((c) => {
+    const st = c.state === "indexed" ? '<span class="chip ok">已索引</span>'
+             : c.state === "stale" ? '<span class="chip bad">索引过期</span>'
+             : '<span class="chip">已排除</span>';
+    return `<li class="bg-white border border-line rounded-xl p-3">
+      <div class="flex items-center gap-2 mb-1.5">
+        <span class="text-[11px] font-bold text-slate400 mono">${String(c.seq).padStart(2, "0")}</span>
+        <span class="chip blue">${c.src}</span>
+        <span class="text-[11px] text-slate400">${c.page} · ${c.chars} 字</span>
+        <div class="flex-1"></div>
+        ${st}
+      </div>
+      <div class="text-[11px] font-semibold text-primary mb-1">▸ embedding 输入（stem + 图注）</div>
+      <div class="text-[13px] leading-6 text-navy">${esc(c.stem)}</div>
+      ${c.figs && c.figs.length ? c.figs.map((f) => `
+        <div class="fig"><div class="fig-box cut">〔 裁 切 图 〕</div>
+          <div class="fig-cap">${esc(f.cap)}</div><div class="fig-src">${esc(f.src)}</div></div>`).join("") : ""}
+      ${c.answer ? `<div class="ans">
+        <button class="ans-toggle"><span class="ms caret">chevron_right</span>答案（${esc(c.from)} · 置信 ${c.conf.toFixed(2)}）<span class="ans-tag">独立字段 · 不参与 embedding</span></button>
+        <div class="ans-body">${esc(c.answer)}</div>
+      </div>` : ""}
+      ${c.note ? `<div class="mt-2 text-[12px] text-slate400">${esc(c.note)}</div>` : ""}
+      <div class="mt-2 flex gap-2">
+        <button class="btn btn-ghost" style="height:26px;font-size:12px">复制</button>
+        <button class="btn btn-ghost" style="height:26px;font-size:12px">在原文中定位</button>
+        <button class="btn btn-ghost" style="height:26px;font-size:12px">${c.state === "excluded" ? "加入索引" : "重建向量"}</button>
+      </div>
+    </li>`;
+  }).join("");
+}
+
+function renderDoc() {
+  const md = (s) => esc(s)
+    .replace(/^# (.*)$/gm, '<h2 class="font-display font-bold text-[18px] mt-0 mb-2">$1</h2>')
+    .replace(/^## (.*)$/gm, '<h3 class="font-display font-bold text-[15px] mt-4 mb-2">$1</h3>')
+    .replace(/^> (.*)$/gm, '<div class="callout text-slate600">$1</div>')
+    .replace(/^\| (.*) \|$/gm, '<div class="mono text-[12px] text-slate600">$1</div>')
+    .replace(/\\frac\{([^}]*)\}\{([^}]*)\}/g, '<span class="katex-like">$1/$2</span>')
+    .replace(/\$([^$]+)\$/g, '<span class="katex-like">$1</span>')
+    .replace(/\n\n/g, "<br/><br/>");
+  document.getElementById("fullDoc").innerHTML = DOC_SECTIONS.map((s) =>
+    `<section class="mb-6"><div class="text-[11px] font-semibold uppercase tracking-wider text-slate400 mb-2">${s.title}</div>${md(s.md)}</section>`
+  ).join("");
+}
+
+/* ---------------- 交互：块 ⇄ 页图联动 ---------------- */
+let current = 5;
+
+function focusBlock(id, scroll) {
+  current = id;
+  document.querySelectorAll(".bbox").forEach((el) => el.classList.toggle("focus", +el.dataset.id === id));
+  document.querySelectorAll(".blk").forEach((el) => el.classList.toggle("sel", +el.dataset.id === id));
+  if (scroll) {
+    const box = document.querySelector(`.bbox[data-id="${id}"]`);
+    const row = document.querySelector(`.blk[data-id="${id}"]`);
+    box?.scrollIntoView({ block: "center", behavior: "smooth" });
+    row?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }
+}
+
+document.addEventListener("click", (e) => {
+  const blk = e.target.closest(".blk");
+  if (blk) return focusBlock(+blk.dataset.id, true);
+  const box = e.target.closest(".bbox");
+  if (box) return focusBlock(+box.dataset.id, true);
+});
+document.addEventListener("mouseover", (e) => {
+  const blk = e.target.closest(".blk");
+  if (blk) focusBlock(+blk.dataset.id, false);
+});
+document.addEventListener("keydown", (e) => {
+  if (!document.getElementById("scr-review").classList.contains("on")) return;
+  if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+    e.preventDefault();
+    const idx = BLOCKS.findIndex((b) => b.id === current);
+    const next = BLOCKS[Math.min(BLOCKS.length - 1, Math.max(0, idx + (e.key === "ArrowDown" ? 1 : -1)))];
+    focusBlock(next.id, true);
+  }
+});
+
+/* ---------------- 答案折叠（默认收起） ---------------- */
+document.addEventListener("click", (e) => {
+  const t = e.target.closest(".ans-toggle");
+  if (!t) return;
+  const box = t.closest(".ans");
+  box.classList.toggle("open");
+  // 标签是 toggle 里的裸文本节点，首次点击时把原文存到容器上，收起时还原
+  const node = [...t.childNodes].find((n) => n.nodeType === 3 && n.textContent.trim());
+  if (!node) return;
+  if (!box.dataset.closedText) box.dataset.closedText = node.textContent.trim();
+  node.textContent = box.classList.contains("open") ? "收起答案" : box.dataset.closedText;
+});
+
+/* ---------------- 分块修正：四种操作演示切换 ---------------- */
+const fixOps = document.querySelectorAll(".fixop");
+const fixDemos = document.querySelectorAll(".fixdemo");
+function showFixDemo(name) {
+  fixDemos.forEach((d) => d.classList.toggle("hidden", d.dataset.demo !== name));
+  fixOps.forEach((o) => {
+    const on = o.dataset.demo === name;
+    o.classList.toggle("border-primary", on);
+    o.classList.toggle("bg-primary-container", on);
+    o.classList.toggle("border-line2", !on);
+    o.classList.toggle("bg-white", !on);
+  });
+}
+fixOps.forEach((o) => { o.onclick = () => showFixDemo(o.dataset.demo); });
+
+/* ---------------- 视图切换 ---------------- */
+document.querySelectorAll(".tab-btn").forEach((btn) => {
+  btn.onclick = () => {
+    document.querySelectorAll(".tab-btn").forEach((b) => b.classList.remove("on"));
+    btn.classList.add("on");
+    document.querySelectorAll(".screen").forEach((s) => s.classList.remove("on"));
+    document.getElementById(btn.dataset.target).classList.add("on");
+  };
+});
+
+/* ---------------- 初始化 ---------------- */
+renderQueue(); renderBlocks(); renderBboxes(); renderChunks(); renderDoc();
+setTimeout(() => focusBlock(5, false), 100);
+</script>
+
+<style>
+  .tab-btn { height:40px; padding:0 14px; font:600 13px/1 Inter,"Noto Sans SC",sans-serif; color:#475569;
+             border-bottom:2px solid transparent; cursor:pointer; }
+  .tab-btn:hover { color:#0f172a; }
+  .tab-btn.on { color:#1d4ed8; border-bottom-color:#1d4ed8; }
+</style>
+</body>
+</html>

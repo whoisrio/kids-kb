@@ -26,6 +26,7 @@
 一键起三服务（pipeline :8766 + backend :8787 + frontend :5200）：在**仓库根目录**执行 `node scripts/start.mjs`（Ctrl+C 全停，跨平台）。
 
 - pipeline：`cd pipeline && uv run pytest tests/`（测试需 KB_TEST_DATABASE_URL）
+  版面切块默认启用（PP-DocLayoutV3），需 paddlepaddle/paddleocr 依赖（pyproject 已声明），首次运行自动下载模型约 125MB 到 ~/.paddlex；`KB_LAYOUT_MODEL=PP-DocLayoutV2` 可切回 V2。
 - backend：`cd backend && npm test`（真库测试需 KB_TEST_DATABASE_URL）/ `npm run dev`（8787）
 - frontend：`cd frontend && npm run dev`（5200，proxy 到 8787）
 - e2e：`cd e2e && npm test`（全栈 Playwright，见下）
