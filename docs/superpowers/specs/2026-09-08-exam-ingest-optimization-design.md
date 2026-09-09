@@ -72,7 +72,7 @@ PDF
   `Config` 增加 `layout_model` 字段，`.env.example` 同步。
 - `KB_LAYOUT_ENGINE` 默认值从 `whole_page` 改为 `paddleocr`（合法值不变）；没装 paddle 依赖的环境 ingest 直接失败，import 报错要带出安装指引，不做静默降级 whole_page（避免"以为在切块其实在整页"重演）。
 - `PaddleOCRLayout` 构造函数增加 `model_name` 参数，懒加载处 `LayoutDetection(model_name=self._model_name)`；`make_layout_analyzer` 透传 `cfg.layout_model`。
-- blocks 的阅读顺序：PP-DocLayoutV2/V3 都带指针网络，返回 boxes 的顺序即阅读顺序，`analyze()` 删掉现有 y/x 排序，按模型输出顺序写 `blocks.ordinal`（1..N）；仅在模型输出缺失/为空时退回 y/x 兜底。
+- blocks 的阅读顺序：PP-DocLayoutV2/V3 都带指针网络，返回 boxes 的顺序即阅读顺序，`analyze()` 删掉现有 y/x 排序，按模型输出顺序写 `blocks.ordinal`（1..N）；模型输出为空时不产生块（与 y/x 兜底行为等价，不保留死代码）。
 - `_LABEL_MAP` 需按 V3 实际标签集核对补齐；未知标签仍回落 text 不丢内容（现状行为保留）。
 - 依赖：paddlepaddle/paddleocr 已在 pyproject 声明，本次起需实际安装；首次运行自动下载模型到 ~/.paddlex（V3 约 125MB）。
 - 影响：整页 VLM 不再是默认路径，workbook/exam 入库默认切块，文字块走 rapidocr 才真正生效；需要旧行为可显式 `KB_LAYOUT_ENGINE=whole_page` 回退。
@@ -472,7 +472,7 @@ revision 机制：
 15. 默认配置（不设 `KB_LAYOUT_MODEL`）下 `make_layout_analyzer` 加载 PP-DocLayoutV3（断言传给 `LayoutDetection` 的 `model_name`）。
 16. `KB_LAYOUT_MODEL=PP-DocLayoutV2` 时加载 V2。
 17. `KB_LAYOUT_MODEL` 非法值时 `load_config` 报错退出，错误信息含合法值列表。
-18. `blocks.ordinal` 采用模型输出顺序：构造返回乱序坐标的假 pipeline，断言 ordinal 不再按 y/x 排；模型输出为空时退回 y/x 兜底。
+18. `blocks.ordinal` 采用模型输出顺序：构造返回乱序坐标的假 pipeline，断言 ordinal 不再按 y/x 排；模型输出为空时不产生块。
 19. `_LABEL_MAP` 覆盖 V3 实际标签集：一页真图跑 V3，输出 label 全部有映射；未知标签回落 text 行为不变。
 20. 黄金集回归：V3 下切块结果不劣于现状基线（沿用现有 golden 机制）。
 
@@ -500,8 +500,8 @@ revision 机制：
 
 | # | 子系统 | 覆盖章节 | 状态 |
 |---|---|---|---|
-| 1 | 版面模型可配置（V2/V3 默认 V3 + ordinal 阅读顺序） | §3.1、§12 用例 14–20 | **已出计划**：`docs/superpowers/plans/2026-09-09-layout-model-configurable.md`，未执行 |
-| 2 | 裁图 padding / clamp / 路径统一 | §5、§7.1、§12 用例 3–5 | 未开始 |
+| 1 | 版面模型可配置（V2/V3 默认 V3 + ordinal 阅读顺序） | §3.1、§12 用例 14–20 | 已实现（本计划 Task 1 修补 `_LABEL_MAP`；验收 19/20 随计划二 Task 9 收尾） |
+| 2 | 裁图 padding / clamp / 路径统一 | §5、§7.1、§12 用例 3–5 | **已出计划**：`docs/superpowers/plans/2026-09-09-crop-padding-path-unification.md`，未执行 |
 | 3 | 块编辑四操作 + 引用重定向 + 复核/分块修正 UI | §4（血缘/几何部分）、§6、§11.1、§11.3、§12 用例 9–13 | 未开始 |
 | 4 | 答案字段化 + 卷末关联 + 答案关联 UI | §8、§11.4、§12 用例 1–2、8 | 未开始 |
 | 5 | 向量化 revision + caption + 拆题复核/入库/规则屏 | §7.2–7.3、§10、§11.2、§11.5、§11.6、§12 用例 6–7 | 未开始 |
