@@ -3,7 +3,7 @@ from contextlib import contextmanager
 
 import pytest
 
-from kb.config import Config
+from kb.core.config import Config
 
 
 class RecordingCursor:
@@ -40,10 +40,10 @@ def cfg(tmp_path):
 
 
 def test_store_document_chapters_upserts_existing_empty_chapter(cfg, monkeypatch):
-    from kb.text_ingest import store_document_chapters
+    from kb.rag.text_ingest import store_document_chapters
 
-    monkeypatch.setattr("kb.text_ingest.export_chapter_mds", lambda *_: 1)
-    monkeypatch.setattr("kb.embed.embed_chapters", lambda *_args, **_kwargs: 1)
+    monkeypatch.setattr("kb.rag.text_ingest.export_chapter_mds", lambda *_: 1)
+    monkeypatch.setattr("kb.rag.embed.embed_chapters", lambda *_args, **_kwargs: 1)
     conn = RecordingConn()
     doc_id = store_document_chapters(
         conn, cfg, "/tmp/source.docx", "语法二阶", "英语", None, "exam",
@@ -61,9 +61,9 @@ def test_store_document_chapters_upserts_existing_empty_chapter(cfg, monkeypatch
 
 
 def test_store_document_chapters_rejects_empty_chapters(cfg, monkeypatch):
-    from kb.text_ingest import store_document_chapters
+    from kb.rag.text_ingest import store_document_chapters
 
-    monkeypatch.setattr("kb.text_ingest.export_chapter_mds", lambda *_: 0)
+    monkeypatch.setattr("kb.rag.text_ingest.export_chapter_mds", lambda *_: 0)
     conn = RecordingConn()
     with pytest.raises(ValueError, match="文档没有可入库内容"):
         store_document_chapters(

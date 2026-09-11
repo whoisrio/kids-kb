@@ -29,7 +29,10 @@ maybe("review API（真库）", () => {
   let page2 = "";
   let block11 = "";
   let block12 = "";
+  let block13 = "";
   let itemId = "";
+  let answerId = "";
+  let orphanAnswerId = "";
 
   beforeAll(async () => {
     pool = await resetDbForTest(url!);
@@ -67,6 +70,7 @@ maybe("review API（真库）", () => {
       )).rows[0].id;
     block11 = await mkBlock(page1, "text", "24+37=61", [10, 20, 200, 80]);
     block12 = await mkBlock(page1, "header", "第 1 页", null);
+    block13 = await mkBlock(page1, "text", "解析：61", [10, 90, 200, 140]);
     const blocksDir = join(storageRoot, docId, "blocks");
     mkdirSync(blocksDir, { recursive: true });
     writeFileSync(join(blocksDir, `${page1}-text.png`), PNG_1PX);
@@ -98,6 +102,20 @@ maybe("review API（真库）", () => {
     itemId = item.rows[0].id;
     await pool.query(
       "INSERT INTO item_blocks (item_id, block_id, role) VALUES ($1,$2,'stem')", [itemId, block11]);
+    const answer = await pool.query(
+      `INSERT INTO items (document_id, content_type, label, content_md, chapter, paired_item_id, qc_status)
+       VALUES ($1,'answer','例 1','解析：61','第 1 讲 加法',$2,'pending') RETURNING id::text`,
+      [docId, itemId]);
+    answerId = answer.rows[0].id;
+    const orphanAnswer = await pool.query(
+      `INSERT INTO items (document_id, content_type, label, content_md, chapter, qc_status)
+       VALUES ($1,'answer','例 2','未配对解析','第 1 讲 加法','pending') RETURNING id::text`,
+      [docId]);
+    orphanAnswerId = orphanAnswer.rows[0].id;
+    await pool.query(
+      "INSERT INTO item_blocks (item_id, block_id, role) VALUES ($1,$2,'solution')", [answerId, block13]);
+    await pool.query(
+      "INSERT INTO item_blocks (item_id, block_id, role) VALUES ($1,$2,'solution')", [orphanAnswerId, block13]);
     await pool.query(
       "INSERT INTO review_queue (item_id, reason) VALUES ($1,'ungrounded:例 1 摘录')", [itemId]);
 
@@ -138,18 +156,46 @@ maybe("review API（真库）", () => {
     expect(resp.status).toBe(200);
     const d = (await resp.json()) as {
       id: string; page_no: number; doc_title: string; image_url: string;
-      blocks: { id: string; block_type: string; bbox: number[] | null; content_md: string | null; pending: { reason: string }[] }[];
+      blocks: { id: string; origin: string; geometry_revision: number; crop_pad: number[] | null }[];
       page_pending: { reason: string }[];
     };
     expect(d.page_no).toBe(1);
     expect(d.image_url).toBe(`/api/review/pages/${page1}/image`);
-    expect(d.blocks).toHaveLength(2);
-    expect(d.blocks.map((b) => b.id)).toEqual([block11, block12]);
+    expect(d.blocks).toHaveLength(3);
+    expect(d.blocks.map((b) => b.id)).toEqual([block11, block12, block13]);
     const text = d.blocks.find((b) => b.id === block11)!;
+    expect(text.origin).toBe("layout");
+    expect(text.geometry_revision).toBe(1);
+    expect(text).toHaveProperty("crop_pad");
     expect(text).toMatchObject({ block_type: "text", content_md: "24+37=61", bbox: [10, 20, 200, 80], pending: [] });
     expect(d.blocks.find((b) => b.id === block12)!.pending).toEqual([
       { id: expect.any(String), reason: "empty" },
     ]);
+  });
+
+  it("GET /pages/:id：题目视图按题目聚合配对解析，未配对解析单独返回", async () => {
+    const resp = await app.request(`/api/review/pages/${page1}`);
+    expect(resp.status).toBe(200);
+    const payload = await resp.json() as { questions: {
+        id: string; content_type: string; content_md: string;
+        block_ids: string[]; block_crops: string[];
+        answer: { id: string; content_md: string; block_ids: string[]; block_crops: string[] } | null;
+      }[] };
+    const { questions } = payload;
+    expect(questions).toHaveLength(2);
+    expect(questions[0]).toMatchObject({
+      id: itemId, content_type: "exercise", content_md: "24+37=61",
+      block_ids: [block11],
+      block_crops: [`/api/review/blocks/${block11}/crop`],
+    });
+    expect(questions[0].answer).toMatchObject({
+      id: answerId, content_md: "解析：61", block_ids: [block13],
+      block_crops: [`/api/review/blocks/${block13}/crop`],
+    });
+    expect(questions[1]).toMatchObject({
+      id: orphanAnswerId, content_type: "answer", content_md: "未配对解析",
+      block_ids: [block13], answer: null,
+    });
   });
 
   it("GET /pages/:id/image 与 /blocks/:id/crop：相对路径按 pipeline 根解析回传 PNG；缺失 404", async () => {
@@ -173,8 +219,9 @@ maybe("review API（真库）", () => {
     const { items } = (await resp.json()) as {
       items: { id: string; label: string; chapter: string; qc_status: string; pending_reasons: string[] }[];
     };
-    expect(items).toHaveLength(1);
-    expect(items[0]).toMatchObject({
+    expect(items).toHaveLength(3);
+    const item = items.find((row) => row.id === itemId)!;
+    expect(item).toMatchObject({
       id: itemId, label: "例 1", chapter: "第 1 讲 加法", qc_status: "pending",
       pending_reasons: ["ungrounded:例 1 摘录"],
     });
@@ -363,6 +410,288 @@ maybe("review API（真库）", () => {
     expect(ok.status).toBe(200);
     expect((await pool.query("SELECT adopted_source FROM pages WHERE id=$1", [page2])).rows[0].adopted_source)
       .toBe("page_md");
+  });
+
+  it("POST /blocks/merge：合并两块——item_blocks 重定向不重复、chunks 标 stale、origin/ordinal 正确（验收 9）", async () => {
+    const { vi } = await import("vitest");
+    const mk = async (ord: number, content: string, bbox: number[]) =>
+      (await pool.query(
+        `INSERT INTO blocks (page_id, block_type, bbox, crop_path, content_md, ordinal)
+         VALUES ($1,'text',$2,$3,$4,$5) RETURNING id::text`,
+        [page1, JSON.stringify(bbox), join(docId, "blocks", `m${ord}.png`), content, ord],
+      )).rows[0].id as string;
+    const blockA = await mk(10, "上半", [10, 100, 200, 150]);
+    const blockB = await mk(11, "下半", [20, 160, 220, 200]);
+    const item = (await pool.query(
+      `INSERT INTO items (document_id, content_type, content_md) VALUES ($1,'exercise','题') RETURNING id::text`,
+      [docId])).rows[0].id as string;
+    await pool.query(
+      `INSERT INTO item_blocks (item_id, block_id, role) VALUES ($1,$2,'stem'),($1,$3,'stem')`,
+      [item, blockA, blockB]);
+    const vector = `[${"1,".repeat(1023)}1]`;
+    await pool.query(
+      `INSERT INTO chunks (document_id, item_id, content_md, embedding, source_block_ids)
+       VALUES ($1, $2, '题', $3::vector, $4::uuid[])`,
+      [docId, item, vector, [blockA, blockB]]);
+    const fetchMock = vi.fn().mockResolvedValue(new Response("{}", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      const resp = await app.request("/api/review/blocks/merge", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ block_ids: [blockB, blockA] }),
+      });
+      expect(resp.status).toBe(200);
+      const { id: newId } = await resp.json();
+
+      const block = (await pool.query(
+        "SELECT bbox, content_md, ordinal, origin, parent_block_ids FROM blocks WHERE id=$1",
+        [newId])).rows[0];
+      expect(block.bbox).toEqual([10, 100, 220, 200]);
+      expect(block.content_md).toBe("上半\n\n下半");
+      expect(block.ordinal).toBe(10);
+      expect(block.origin).toBe("merged");
+      expect(block.parent_block_ids).toEqual([blockA, blockB]);
+      const links = await pool.query("SELECT count(*)::int AS n FROM item_blocks WHERE item_id=$1", [item]);
+      expect(links.rows[0].n).toBe(1);
+      const chunk = (await pool.query(
+        "SELECT source_block_ids, state FROM chunks WHERE item_id=$1", [item])).rows[0];
+      expect(chunk.source_block_ids).toEqual([newId]);
+      expect(chunk.state).toBe("stale");
+      const gone = await pool.query(
+        "SELECT count(*)::int AS n FROM blocks WHERE id = ANY($1::uuid[])", [[blockA, blockB]]);
+      expect(gone.rows[0].n).toBe(0);
+      const event = await pool.query(
+        "SELECT 1 FROM pipeline_events WHERE stage='user_edit' AND event_type='block_merge'");
+      expect(event.rowCount).toBeGreaterThan(0);
+      expect(fetchMock).toHaveBeenCalledWith("http://127.0.0.1:8766/internal/block-recrop", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ block_id: newId }),
+      });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("POST /blocks/merge：跨页 → 422；不足两块 → 422", async () => {
+    const otherPageBlock = (await pool.query(
+      `INSERT INTO blocks (page_id, block_type, bbox, crop_path, content_md, ordinal)
+       VALUES ($1,'text','[0,0,1,1]',$2,'异页',1) RETURNING id::text`,
+      [page2, join(docId, "blocks", "cross.png")])).rows[0].id as string;
+    const cross = await app.request("/api/review/blocks/merge", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ block_ids: [block11, otherPageBlock] }),
+    });
+    expect(cross.status).toBe(422);
+    const single = await app.request("/api/review/blocks/merge", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ block_ids: [block11] }),
+    });
+    expect(single.status).toBe(422);
+  });
+
+  it("POST /blocks/:id/split：两半各自继承文本与比例 bbox，ordinal 原位，不触发 OCR（验收 10）", async () => {
+    const { vi } = await import("vitest");
+    const blockX = (await pool.query(
+      `INSERT INTO blocks (page_id, block_type, bbox, crop_path, content_md, ordinal)
+       VALUES ($1,'text',$2,$3,$4,5) RETURNING id::text`,
+      [page1, JSON.stringify([0, 100, 200, 300]), join(docId, "blocks", "x.png"),
+        "第一行\n第二行\n第三行\n第四行"])).rows[0].id as string;
+    const item = (await pool.query(
+      `INSERT INTO items (document_id, content_type, content_md) VALUES ($1,'exercise','第三行 第四行') RETURNING id::text`,
+      [docId])).rows[0].id as string;
+    await pool.query(
+      "INSERT INTO item_blocks (item_id, block_id, role) VALUES ($1,$2,'stem')", [item, blockX]);
+    const vector = `[${"1,".repeat(1023)}1]`;
+    await pool.query(
+      `INSERT INTO chunks (document_id, item_id, content_md, embedding, source_block_ids)
+       VALUES ($1, $2, '题', $3::vector, ARRAY[$4::uuid])`, [docId, item, vector, blockX]);
+    const llmBefore = Number((await pool.query("SELECT count(*)::int AS n FROM llm_calls")).rows[0].n);
+    const fetchMock = vi.fn().mockResolvedValue(new Response("{}", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      const resp = await app.request(`/api/review/blocks/${blockX}/split`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ line_index: 2 }),
+      });
+      expect(resp.status).toBe(200);
+      const { ids } = await resp.json() as { ids: string[] };
+      expect(ids).toHaveLength(2);
+
+      const halves = (await pool.query(
+        `SELECT content_md, bbox, ordinal, origin, parent_block_ids FROM blocks
+         WHERE id = ANY($1::uuid[]) ORDER BY ordinal`, [ids])).rows;
+      expect(halves[0].content_md).toBe("第一行\n第二行");
+      expect(halves[0].bbox).toEqual([0, 100, 200, 200]);
+      expect(halves[1].content_md).toBe("第三行\n第四行");
+      expect(halves[1].bbox).toEqual([0, 200, 200, 300]);
+      expect([halves[0].ordinal, halves[1].ordinal]).toEqual([5, 6]);
+      expect(halves[0].origin).toBe("split");
+      expect(halves[0].parent_block_ids).toEqual([blockX]);
+      const link = await pool.query("SELECT block_id::text FROM item_blocks WHERE item_id=$1", [item]);
+      expect(link.rows[0].block_id).toBe(ids[1]);
+      const chunk = (await pool.query(
+        "SELECT state, source_block_ids FROM chunks WHERE item_id=$1", [item])).rows[0];
+      expect(chunk.state).toBe("stale");
+      expect(chunk.source_block_ids).toEqual(ids);
+      const llmAfter = Number((await pool.query("SELECT count(*)::int AS n FROM llm_calls")).rows[0].n);
+      expect(llmAfter).toBe(llmBefore);
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(fetchMock).toHaveBeenNthCalledWith(1, "http://127.0.0.1:8766/internal/block-recrop", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ block_id: ids[0] }),
+      });
+      expect(fetchMock).toHaveBeenNthCalledWith(2, "http://127.0.0.1:8766/internal/block-recrop", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ block_id: ids[1] }),
+      });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("POST /blocks/:id/split：line_index 越界 → 422", async () => {
+    const resp = await app.request(`/api/review/blocks/${block11}/split`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ line_index: 99 }),
+    });
+    expect(resp.status).toBe(422);
+  });
+
+  it("DELETE /blocks/:id：有 review_queue 记录的块 → 409 不删（验收 13）", async () => {
+    const resp = await app.request(`/api/review/blocks/${block12}`, { method: "DELETE" });
+    expect(resp.status).toBe(409);
+    const still = await pool.query("SELECT count(*)::int AS n FROM blocks WHERE id=$1", [block12]);
+    expect(still.rows[0].n).toBe(1);
+  });
+
+  it("DELETE /blocks/:id：无保护块——item 解绑置 needs_review，chunk 摘引用标 stale", async () => {
+    const blockD = (await pool.query(
+      `INSERT INTO blocks (page_id, block_type, bbox, crop_path, content_md, ordinal)
+       VALUES ($1,'text','[0,0,1,1]',$2,'待删',20) RETURNING id::text`,
+      [page1, join(docId, "blocks", "d.png")])).rows[0].id as string;
+    const item = (await pool.query(
+      `INSERT INTO items (document_id, content_type, content_md, qc_status)
+       VALUES ($1,'exercise','题','approved') RETURNING id::text`, [docId])).rows[0].id as string;
+    await pool.query(
+      "INSERT INTO item_blocks (item_id, block_id, role) VALUES ($1,$2,'stem')", [item, blockD]);
+    const vector = `[${"1,".repeat(1023)}1]`;
+    await pool.query(
+      `INSERT INTO chunks (document_id, item_id, content_md, embedding, source_block_ids)
+       VALUES ($1, $2, '题', $3::vector, ARRAY[$4::uuid])`, [docId, item, vector, blockD]);
+
+    const resp = await app.request(`/api/review/blocks/${blockD}`, { method: "DELETE" });
+    expect(resp.status).toBe(200);
+    expect(Number((await pool.query(
+      "SELECT count(*)::int AS n FROM blocks WHERE id=$1", [blockD])).rows[0].n)).toBe(0);
+    expect(Number((await pool.query(
+      "SELECT count(*)::int AS n FROM item_blocks WHERE block_id=$1", [blockD])).rows[0].n)).toBe(0);
+    expect((await pool.query("SELECT qc_status FROM items WHERE id=$1", [item])).rows[0].qc_status)
+      .toBe("needs_review");
+    const chunk = (await pool.query(
+      "SELECT source_block_ids, state FROM chunks WHERE item_id=$1", [item])).rows[0];
+    expect(chunk.source_block_ids).toEqual([]);
+    expect(chunk.state).toBe("stale");
+  });
+
+  it("POST /pages/:id/blocks：转发 pipeline 补画端点（验收 12 backend 侧）", async () => {
+    const { vi } = await import("vitest");
+    const fakeBlock = { id: "new-b", origin: "manual", content_md: "补画内容", ordinal: 2 };
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === "http://127.0.0.1:8766/internal/block-create") {
+        expect(JSON.parse(String(init?.body))).toEqual({
+          page_id: page1,
+          bbox: [1, 2, 3, 4],
+          block_type: "text",
+        });
+        return new Response(JSON.stringify({ block: fakeBlock }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      return new Response("no route", { status: 404 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      const resp = await app.request(`/api/review/pages/${page1}/blocks`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bbox: [1, 2, 3, 4], block_type: "text" }),
+      });
+      expect(resp.status).toBe(200);
+      expect((await resp.json()).block.origin).toBe("manual");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("geometry preview/commit 转发：pipeline 不可达 → 502", async () => {
+    const { vi } = await import("vitest");
+    vi.stubGlobal("fetch", async () => { throw new Error("ECONNREFUSED"); });
+    try {
+      const resp = await app.request(`/api/review/blocks/${block11}/geometry-preview`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bbox: [0, 0, 10, 10] }),
+      });
+      expect(resp.status).toBe(502);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+
+    const { rows: [block] } = await pool.query(
+      "SELECT id::text FROM blocks WHERE page_id=$1 LIMIT 1", [page1]);
+    vi.stubGlobal("fetch", async () => { throw new Error("ECONNREFUSED"); });
+    try {
+      const resp = await app.request(`/api/review/blocks/${block.id}/geometry-commit`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          bbox: [0, 0, 10, 10], staging: "s.png", adopted_text: "新", source_model: "rapidocr",
+        }),
+      });
+      expect(resp.status).toBe(502);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("geometry commit 转发 pipeline：透传 block_id 和确认结果", async () => {
+    const { vi } = await import("vitest");
+    const { rows: [block] } = await pool.query(
+      "SELECT id::text FROM blocks WHERE page_id=$1 LIMIT 1", [page1]);
+    const body = {
+      bbox: [1, 2, 3, 4], staging: "s.png",
+      adopted_text: "新识别文本", source_model: "rapidocr",
+    };
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === "http://127.0.0.1:8766/internal/block-geometry-commit") {
+        expect(JSON.parse(String(init?.body))).toEqual({ block_id: block.id, ...body });
+        return new Response(JSON.stringify({ ok: true }), {
+          status: 200, headers: { "Content-Type": "application/json" },
+        });
+      }
+      return new Response("no route", { status: 404 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      const resp = await app.request(`/api/review/blocks/${block.id}/geometry-commit`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      expect(resp.status).toBe(200);
+      expect(await resp.json()).toEqual({ ok: true });
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it("POST /pages/:id/approve：关闭该页 pending 行；flat 文档同时调 /internal/embed-flat-page（失败不回滚行）", async () => {

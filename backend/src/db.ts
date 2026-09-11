@@ -12,7 +12,7 @@ export function getPool(databaseUrl: string): pg.Pool {
 
 /**
  * 测试用：重置 schema 并重放 pipeline 侧 migrations（Python 是 schema 唯一主人）。
- * 重放同时向 schema_migrations 记账，与 pipeline/kb/db.py 的 migrate() 语义一致，
+ * 重放同时向 schema_migrations 记账，与 pipeline/kb/core/db.py 的 migrate() 语义一致，
  * 保证之后 Python 侧 migrate() 判定无新 migration。
  */
 export async function resetDbForTest(databaseUrl: string): Promise<pg.Pool> {

@@ -2,7 +2,7 @@ import uuid
 
 import pytest
 
-from kb.config import Config
+from kb.core.config import Config
 
 _FENCE = "`" * 3
 
@@ -75,7 +75,7 @@ EXAM_JSON = _FENCE + "json\n" + (
 
 
 def test_split_sections_by_major_headings():
-    from kb.structure_exam import split_sections
+    from kb.rag.structure_exam import split_sections
 
     text = "卷首说明\n\n一、选择题\n\n1. 题一\n\n二、填空题\n\n2. 题二"
     sections = split_sections(text)
@@ -85,14 +85,14 @@ def test_split_sections_by_major_headings():
 
 
 def test_split_sections_no_headings():
-    from kb.structure_exam import split_sections
+    from kb.rag.structure_exam import split_sections
 
     assert split_sections("1. 唯一的题") == [("全卷", "1. 唯一的题")]
 
 
 def test_run_exam_structure_pdf(conn, cfg, pdf_exam):
     """PDF 试卷：拼 page_md（带【页N】标记）-> 拆题 -> 章/题目/答案配对/struct_mode。"""
-    from kb.structure_exam import run_exam_structure
+    from kb.rag.structure_exam import run_exam_structure
 
     out = run_exam_structure(conn, cfg, pdf_exam, client=_client_seq([EXAM_JSON]))
     assert out == {"mode": "exam", "sections": 1, "items": 2}
@@ -126,7 +126,7 @@ def test_run_exam_structure_docx(conn, cfg):
             " VALUES (%s,%s,1,'一、选择题','1. He ___ to school.')",
             (str(uuid.uuid4()), doc_id),
         )
-    from kb.structure_exam import run_exam_structure
+    from kb.rag.structure_exam import run_exam_structure
 
     out = run_exam_structure(conn, cfg, doc_id, client=_client_seq([EXAM_JSON]))
     assert out["items"] == 2
@@ -178,7 +178,7 @@ def test_run_exam_structure_section_failure_continues(conn, cfg):
     class Client:
         chat = Chat()
 
-    from kb.structure_exam import run_exam_structure
+    from kb.rag.structure_exam import run_exam_structure
 
     out = run_exam_structure(conn, cfg, doc_id, client=Client())
     assert out["items"] == 2
@@ -231,7 +231,7 @@ def test_run_exam_structure_rerun_heals_failed_section(conn, cfg):
     class Client:
         chat = Chat()
 
-    from kb.structure_exam import run_exam_structure
+    from kb.rag.structure_exam import run_exam_structure
 
     out1 = run_exam_structure(conn, cfg, doc_id, client=Client())
     assert out1["items"] == 2  # 只有「二、填空题」入库
@@ -248,14 +248,14 @@ def test_run_exam_structure_rerun_heals_failed_section(conn, cfg):
 
 
 def test_run_exam_structure_zero_questions_fails(conn, cfg, pdf_exam):
-    from kb.structure_exam import run_exam_structure
+    from kb.rag.structure_exam import run_exam_structure
 
     with pytest.raises(SystemExit, match="0 题"):
         run_exam_structure(conn, cfg, pdf_exam, client=_client_seq(["[]"]))
 
 
 def test_run_exam_structure_idempotent(conn, cfg, pdf_exam):
-    from kb.structure_exam import run_exam_structure
+    from kb.rag.structure_exam import run_exam_structure
 
     run_exam_structure(conn, cfg, pdf_exam, client=_client_seq([EXAM_JSON]))
     out = run_exam_structure(conn, cfg, pdf_exam, client=_client_seq([EXAM_JSON]))
@@ -264,7 +264,7 @@ def test_run_exam_structure_idempotent(conn, cfg, pdf_exam):
 
 def test_run_structure_routes_exam_by_doc_type(conn, cfg, pdf_exam):
     """doc_type='exam' 的文档跑 structure 自动走试卷拆题（无需 --exam）。"""
-    from kb.structure import run_structure
+    from kb.rag.structure import run_structure
 
     out = run_structure(conn, cfg, pdf_exam, client=_client_seq([EXAM_JSON]))
     assert out["mode"] == "exam"
@@ -275,7 +275,7 @@ def test_run_structure_routes_exam_by_doc_type(conn, cfg, pdf_exam):
 
 def test_run_structure_flat_flag_wins_over_exam(conn, cfg, pdf_exam):
     """显式 --flat 优先于 doc_type=exam（逃生门）。"""
-    from kb.structure import run_structure
+    from kb.rag.structure import run_structure
 
     out = run_structure(conn, cfg, pdf_exam, flat=True,
                         client=_client_seq([EXAM_JSON]))

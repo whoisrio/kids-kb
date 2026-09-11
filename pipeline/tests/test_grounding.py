@@ -10,7 +10,7 @@ import pytest
 
 
 def test_ungrounded_sentences_pure():
-    from kb.grounding import ungrounded_sentences
+    from kb.ocr.grounding import ungrounded_sentences
 
     src = ["例1 在下面的方框中填上合适的数字。由 9×4=36 推出除数个位为4"]
     # 逐字句 + 数学段（应跳过）-> 无检出
@@ -28,7 +28,7 @@ def test_ungrounded_sentences_pure():
 
 def test_inline_math_unwrapped_on_both_sides():
     """行内公式的字母内容参与比对（两侧一致解包），否则含变量的正常句被误报。"""
-    from kb.grounding import ungrounded_sentences
+    from kb.ocr.grounding import ungrounded_sentences
 
     src = ["如图, 将三角形 $ABC$ 绕点 $C$ 按顺时针方向旋转 $30^{\\circ}$, 得到三角形 $A'B'C$。"]
     # 同一内容的不同排版（item 侧）应判接地
@@ -38,9 +38,9 @@ def test_inline_math_unwrapped_on_both_sides():
 @pytest.fixture()
 def doc_item(conn, tmp_path):
     """1 页 1 块（源文本）+ 1 条 item 引用该块。"""
-    from kb.config import Config
-    from kb.layout import run_layout
-    from kb.render import render_document
+    from kb.core.config import Config
+    from kb.ocr.layout import run_layout
+    from kb.ocr.render import render_document
 
     cfg = Config(
         database_url="postgresql://localhost/kb_test",
@@ -73,7 +73,7 @@ def doc_item(conn, tmp_path):
 
 
 def test_run_grounding_flags_and_auto_closes(conn, doc_item):
-    from kb.grounding import run_grounding
+    from kb.ocr.grounding import run_grounding
 
     doc_id, item_id = doc_item
     with conn.cursor() as cur:  # 忠实内容 -> 不建行
@@ -102,7 +102,7 @@ def test_run_grounding_flags_and_auto_closes(conn, doc_item):
 
 def test_run_grounding_flags_item_without_source_blocks(conn, doc_item):
     """一个溯源块都没有的 item -> 无出处。"""
-    from kb.grounding import run_grounding
+    from kb.ocr.grounding import run_grounding
 
     doc_id, item_id = doc_item
     with conn.cursor() as cur:
@@ -117,7 +117,7 @@ def test_grounding_docx_item_uses_chapter_content(conn):
     """无溯源块的 docx 条目：接地面为 chapters.content_md，不误报 no_source。"""
     import uuid
 
-    from kb.grounding import sync_item_grounding
+    from kb.ocr.grounding import sync_item_grounding
 
     with conn.cursor() as cur:
         cur.execute("INSERT INTO documents (id, title, source_path) VALUES (%s,'t','/tmp/g.docx') RETURNING id",
@@ -144,7 +144,7 @@ def test_grounding_docx_item_uses_chapter_content(conn):
 
 def test_unbalanced_display_math_across_blocks():
     """源块逐块剥数学段：跨块的残缺 $$ 定界符不能吞掉中间的正常文字。"""
-    from kb.grounding import ungrounded_sentences
+    from kb.ocr.grounding import ungrounded_sentences
     # 块1 有未闭合的 $$，若先拼接再剥，块2 的正常文字会被当成公式吞掉
     src = ["$$\\begin{array}{r} 1+1 \\end{array}", "被除数末尾为7，竖式有余数为1，由此可以用倒推法"]
     assert ungrounded_sentences("被除数末尾为7，竖式有余数为1，由此可以用倒推法。", src) == []

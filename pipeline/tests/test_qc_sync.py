@@ -5,9 +5,9 @@ import pytest
 
 @pytest.fixture()
 def doc1(conn, tmp_path):
-    from kb.config import Config
-    from kb.layout import run_layout
-    from kb.render import render_document
+    from kb.core.config import Config
+    from kb.ocr.layout import run_layout
+    from kb.ocr.render import render_document
 
     cfg = Config(
         database_url="postgresql://localhost/kb_test",
@@ -30,7 +30,7 @@ def doc1(conn, tmp_path):
 
 
 def test_sync_block_reviews_create_then_resolve(conn, doc1):
-    from kb.qc import sync_block_reviews
+    from kb.ocr.qc import sync_block_reviews
 
     _doc_id, block_id = doc1
     assert sync_block_reviews(conn, block_id) == 0  # 好内容不建行
@@ -55,7 +55,7 @@ def test_sync_block_reviews_keeps_custom_reason(conn, doc1):
     """自定义原因（人工标注）永远不被同步逻辑关闭。"""
     import uuid
 
-    from kb.qc import sync_block_reviews
+    from kb.ocr.qc import sync_block_reviews
 
     _doc_id, block_id = doc1
     with conn.cursor() as cur:

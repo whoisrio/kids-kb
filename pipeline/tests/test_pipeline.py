@@ -1,6 +1,6 @@
 import pymupdf as fitz
 
-from kb.config import Config
+from kb.core.config import Config
 
 
 class FakeMessage:
@@ -25,7 +25,7 @@ class FakeClient:
 
 
 def test_ingest_end_to_end(conn, tmp_path):
-    from kb.pipeline import ingest
+    from kb.pdf_ingest import ingest
 
     cfg = Config(
         database_url="postgresql://localhost/kb_test",
@@ -33,6 +33,7 @@ def test_ingest_end_to_end(conn, tmp_path):
         vision_base_url="http://localhost:11434/v1",
         vision_api_key="ollama",
         vision_model="qwen3:4b",
+        layout_engine="whole_page",
     )
     p = tmp_path / "book.pdf"
     d = fitz.open()
@@ -54,8 +55,8 @@ def test_ingest_end_to_end(conn, tmp_path):
 
 def test_list_documents_status_query(conn, tmp_path):
     from kb.cli import list_documents
-    from kb.render import render_document
-    from kb.config import Config
+    from kb.ocr.render import render_document
+    from kb.core.config import Config
 
     cfg = Config(
         database_url="postgresql://localhost/kb_test",

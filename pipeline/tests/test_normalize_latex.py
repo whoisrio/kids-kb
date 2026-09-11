@@ -1,5 +1,5 @@
 """normalize_latex：把模型常用但 KaTeX 不支持的命令归一化为可渲染写法。"""
-from kb.parse import normalize_latex
+from kb.ocr.parse import normalize_latex
 
 
 def test_cline_to_hline():

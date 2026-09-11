@@ -73,7 +73,8 @@ export function reviewRoutes(pool: pg.Pool, deps: ReviewDeps): Hono {
         [c.req.param("id")]);
       if (!page) return c.json({ error: "page 不存在" }, 404);
       const { rows: blocks } = await pool.query(
-        `SELECT id::text, block_type, bbox, content_md, source_model
+        `SELECT id::text, block_type, bbox, content_md, source_model,
+                origin, geometry_revision, crop_pad
          FROM blocks WHERE page_id = $1 ORDER BY ordinal`, [page.id]);
       const blocksWithCrop = blocks.map((b) => ({ ...b, crop_url: `/api/review/blocks/${b.id}/crop` }));
       const blockIds = blocks.map((b) => b.id);
@@ -82,14 +83,75 @@ export function reviewRoutes(pool: pg.Pool, deps: ReviewDeps): Hono {
          FROM block_annotations WHERE block_id = ANY($1::uuid[]) ORDER BY created_at`, [blockIds]) : { rows: [] };
       const { rows: itemMappings } = await pool.query(
         `SELECT ib.block_id::text, i.id::text, i.label, i.content_type, ib.role,
-                i.content_md, i.qc_status
+                i.content_md, i.qc_status, i.paired_item_id::text
          FROM item_blocks ib
-         JOIN items i ON i.id = ib.item_id
-         WHERE ib.block_id = ANY($1::uuid[])`, [blockIds]);
+        JOIN items i ON i.id = ib.item_id
+        JOIN blocks b ON b.id = ib.block_id
+        WHERE ib.block_id = ANY($1::uuid[])
+        ORDER BY b.ordinal, i.created_at`, [blockIds]);
       const itemsByBlock = new Map<string, { id: string; label: string | null; content_type: string; role: string; content_md: string | null; qc_status: string }[]>();
       for (const m of itemMappings) {
         if (!itemsByBlock.has(m.block_id)) itemsByBlock.set(m.block_id, []);
         itemsByBlock.get(m.block_id)!.push({ id: m.id, label: m.label, content_type: m.content_type, role: m.role, content_md: m.content_md, qc_status: m.qc_status });
+      }
+      const itemParts = new Map<string, {
+        id: string; label: string | null; content_type: string;
+        content_md: string | null; qc_status: string;
+        block_ids: string[]; block_crops: string[];
+      }>();
+      for (const m of itemMappings) {
+        const part = itemParts.get(m.id) ?? {
+          id: m.id, label: m.label, content_type: m.content_type,
+          content_md: m.content_md, qc_status: m.qc_status,
+          block_ids: [], block_crops: [],
+        };
+        part.block_ids.push(m.block_id);
+        part.block_crops.push(`/api/review/blocks/${m.block_id}/crop`);
+        itemParts.set(m.id, part);
+      }
+      const questionIds = [...itemParts.values()]
+        .filter((item) => item.content_type !== "answer")
+        .map((item) => item.id);
+      const { rows: pairedAnswerRows } = questionIds.length ? await pool.query(
+        `SELECT a.paired_item_id::text AS question_id, a.id::text, a.content_md, a.qc_status,
+                ib.block_id::text
+         FROM items a
+         LEFT JOIN item_blocks ib ON ib.item_id = a.id
+         LEFT JOIN blocks b ON b.id = ib.block_id
+         LEFT JOIN pages p ON p.id = b.page_id
+         WHERE a.content_type = 'answer' AND a.paired_item_id = ANY($1::uuid[])
+           AND (ib.block_id IS NULL OR p.id = $2)
+         ORDER BY a.created_at, b.ordinal`, [questionIds, page.id]) : { rows: [] as {
+          question_id: string; id: string; content_md: string | null;
+          qc_status: string; block_id: string | null;
+        }[] };
+      const pairedAnswers = new Map<string, {
+        id: string; content_md: string | null; qc_status: string;
+        block_ids: string[]; block_crops: string[];
+      }>();
+      for (const row of pairedAnswerRows) {
+        const answer = pairedAnswers.get(row.question_id) ?? {
+          id: row.id, content_md: row.content_md, qc_status: row.qc_status,
+          block_ids: [], block_crops: [],
+        };
+        if (row.block_id) {
+          answer.block_ids.push(row.block_id);
+          answer.block_crops.push(`/api/review/blocks/${row.block_id}/crop`);
+        }
+        pairedAnswers.set(row.question_id, answer);
+      }
+      const shownAnswerIds = new Set<string>();
+      const questions = [...itemParts.values()]
+        .filter((item) => item.content_type !== "answer")
+        .map((item) => {
+          const answer = pairedAnswers.get(item.id) ?? null;
+          if (answer) shownAnswerIds.add(answer.id);
+          return { ...item, answer };
+        });
+      for (const item of itemParts.values()) {
+        if (item.content_type === "answer" && !shownAnswerIds.has(item.id)) {
+          questions.push({ ...item, answer: null });
+        }
       }
       const { rows: pendingRows } = await pool.query(
         `SELECT r.id::text, r.reason, r.block_id::text
@@ -120,7 +182,7 @@ export function reviewRoutes(pool: pg.Pool, deps: ReviewDeps): Hono {
         index_status: page.index_status,
         index_error: page.index_error,
         page_pending: pagePending,
-        items: [...new Map(itemMappings.map((m) => [m.id, { id: m.id, label: m.label, content_type: m.content_type, content_md: m.content_md, qc_status: m.qc_status, block_ids: itemMappings.filter((x) => x.id === m.id).map((x) => x.block_id), block_crops: itemMappings.filter((x) => x.id === m.id).map((x) => `/api/review/blocks/${x.block_id}/crop`) }])).values()],
+        questions,
       });
     } catch (err) {
       return invalidId(c, err) ?? (() => { throw err; })();
@@ -240,7 +302,7 @@ export function reviewRoutes(pool: pg.Pool, deps: ReviewDeps): Hono {
     try { return await c.req.json(); } catch { return null; }
   }
 
-app.patch("/blocks/:id", async (c) => {
+  app.patch("/blocks/:id", async (c) => {
     const body = await readJson(c);
     if (body === null) return c.json({ error: "请求体不是合法 JSON" }, 400);
     if (typeof body.content_md !== "string") return c.json({ error: "content_md 必填" }, 422);
@@ -271,6 +333,212 @@ app.patch("/blocks/:id", async (c) => {
       return c.json(b);
     } catch (err) {
       return invalidId(c, err) ?? (() => { throw err; })();
+    }
+  });
+
+  app.post("/blocks/merge", async (c) => {
+    const body = await readJson(c);
+    if (body === null) return c.json({ error: "请求体不是合法 JSON" }, 400);
+    const blockIds = Array.isArray(body.block_ids) ? body.block_ids : [];
+    if (blockIds.length < 2 || blockIds.some((id) => typeof id !== "string")) {
+      return c.json({ error: "至少两块才能合并" }, 422);
+    }
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const { rows: blocks } = await client.query(
+        `SELECT id::text, page_id::text, bbox, content_md, ordinal
+         FROM blocks WHERE id = ANY($1::uuid[]) ORDER BY ordinal`, [blockIds]);
+      if (blocks.length !== blockIds.length) {
+        await client.query("ROLLBACK");
+        return c.json({ error: "块不存在" }, 404);
+      }
+      if (new Set(blocks.map((block) => block.page_id)).size !== 1) {
+        await client.query("ROLLBACK");
+        return c.json({ error: "只能合并同页的块" }, 422);
+      }
+      const orderedIds = blocks.map((block) => block.id);
+      const newId = crypto.randomUUID();
+      const bbox = [
+        Math.min(...blocks.map((block) => block.bbox[0])),
+        Math.min(...blocks.map((block) => block.bbox[1])),
+        Math.max(...blocks.map((block) => block.bbox[2])),
+        Math.max(...blocks.map((block) => block.bbox[3])),
+      ];
+      const content = blocks.map((block) => block.content_md ?? "").filter(Boolean).join("\n\n");
+      await client.query(
+        `INSERT INTO blocks
+           (id, page_id, block_type, bbox, crop_path, content_md, ordinal, origin, parent_block_ids)
+         VALUES ($1, $2, 'text', $3,
+           (SELECT crop_path FROM blocks WHERE id = $4), $5, $6, 'merged', $7::uuid[])`,
+        [newId, blocks[0].page_id, JSON.stringify(bbox), blocks[0].id, content,
+          blocks[0].ordinal, orderedIds]);
+      await client.query(
+        `DELETE FROM item_blocks a USING item_blocks b
+         WHERE a.block_id = ANY($1::uuid[]) AND b.block_id = ANY($1::uuid[])
+           AND a.item_id = b.item_id AND a.role = b.role AND a.ctid < b.ctid`, [orderedIds]);
+      await client.query(
+        "UPDATE item_blocks SET block_id=$2 WHERE block_id = ANY($1::uuid[])", [orderedIds, newId]);
+      await client.query(
+        `UPDATE chunks SET source_block_ids = (
+           SELECT array_agg(DISTINCT x)
+           FROM unnest(
+             (SELECT array_agg(y) FROM unnest(source_block_ids) y WHERE y <> ALL($1::uuid[]))
+             || $2::uuid
+           ) x), state = 'stale'
+         WHERE source_block_ids && $1::uuid[]`, [orderedIds, newId]);
+      await client.query("DELETE FROM blocks WHERE id = ANY($1::uuid[])", [orderedIds]);
+      await client.query(
+        "UPDATE pages SET index_status='stale', index_error=NULL WHERE id=$1", [blocks[0].page_id]);
+      await client.query(
+        `INSERT INTO pipeline_events (run_id, document_id, page_id, stage, event_type, actor, summary, payload, status)
+         SELECT gen_random_uuid(), document_id, id, 'user_edit', 'block_merge', 'user', $2, $3, 'ok'
+         FROM pages WHERE id=$1`,
+        [blocks[0].page_id, `合并 ${blockIds.length} 块 → ${newId.slice(0, 8)}`,
+          JSON.stringify({ merged: orderedIds, into: newId, content })]);
+      await client.query("COMMIT");
+      fetch(`${deps.pipelineUrl}/internal/block-recrop`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ block_id: newId }),
+      }).catch((err) => console.warn("合并块重裁失败（可忽略，裁图滞后）", err));
+      return c.json({ id: newId });
+    } catch (err) {
+      await client.query("ROLLBACK").catch(() => {});
+      return invalidId(c, err) ?? (() => { throw err; })();
+    } finally {
+      client.release();
+    }
+  });
+
+  app.post("/blocks/:id/split", async (c) => {
+    const body = await readJson(c);
+    if (body === null) return c.json({ error: "请求体不是合法 JSON" }, 400);
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const { rows: [block] } = await client.query(
+        `SELECT id::text, page_id::text, bbox, content_md, ordinal, block_type
+         FROM blocks WHERE id=$1`, [c.req.param("id")]);
+      if (!block) {
+        await client.query("ROLLBACK");
+        return c.json({ error: "块不存在" }, 404);
+      }
+      const lines = (block.content_md ?? "").split("\n");
+      const lineIndex = body.line_index;
+      if (typeof lineIndex !== "number" || !Number.isInteger(lineIndex) || lineIndex < 1 || lineIndex > lines.length - 1) {
+        await client.query("ROLLBACK");
+        return c.json({ error: `line_index 须在 1..${lines.length - 1}` }, 422);
+      }
+      const [x0, y0, x1, y1] = block.bbox;
+      // 行比例近似切 bbox：UI 不掌握行级 y 坐标（spec §6.2 的可用近似）。
+      const ySplit = Math.round(y0 + (y1 - y0) * lineIndex / lines.length);
+      const firstId = crypto.randomUUID();
+      const secondId = crypto.randomUUID();
+      await client.query(
+        "UPDATE blocks SET ordinal=ordinal+1 WHERE page_id=$1 AND ordinal>$2",
+        [block.page_id, block.ordinal]);
+      const insertHalf = async (id: string, content: string, bbox: number[], ordinal: number) =>
+        client.query(
+          `INSERT INTO blocks (id, page_id, block_type, bbox, crop_path, content_md, ordinal, origin, parent_block_ids)
+           SELECT $1, page_id, block_type, $2, crop_path, $3, $4, 'split', ARRAY[$5::uuid]
+           FROM blocks WHERE id=$5`,
+          [id, JSON.stringify(bbox), content, ordinal, block.id]);
+      await insertHalf(firstId, lines.slice(0, lineIndex).join("\n"),
+        [x0, y0, x1, ySplit], block.ordinal);
+      await insertHalf(secondId, lines.slice(lineIndex).join("\n"),
+        [x0, ySplit, x1, y1], block.ordinal + 1);
+      const { rows: links } = await client.query(
+        `SELECT ib.item_id::text, ib.role, i.content_md FROM item_blocks ib
+         JOIN items i ON i.id = ib.item_id WHERE ib.block_id=$1`, [block.id]);
+      const normalize = (value: string) => value.replace(/\s+/g, "");
+      const firstText = normalize(lines.slice(0, lineIndex).join(""));
+      const secondText = normalize(lines.slice(lineIndex).join(""));
+      for (const link of links) {
+        const text = normalize(link.content_md ?? "");
+        const inFirst = text.length > 0 && firstText.includes(text);
+        const inSecond = text.length > 0 && secondText.includes(text);
+        const targets = inFirst && !inSecond ? [firstId]
+          : inSecond && !inFirst ? [secondId]
+          : [firstId, secondId];
+        await client.query(
+          "DELETE FROM item_blocks WHERE item_id=$1 AND block_id=$2 AND role=$3",
+          [link.item_id, block.id, link.role]);
+        for (const target of targets) {
+          await client.query(
+            `INSERT INTO item_blocks (item_id, block_id, role) VALUES ($1,$2,$3)
+             ON CONFLICT DO NOTHING`, [link.item_id, target, link.role]);
+        }
+      }
+      await client.query(
+        `UPDATE chunks SET source_block_ids =
+           array_remove(source_block_ids, $1::uuid) || $2::uuid || $3::uuid,
+           state='stale'
+         WHERE source_block_ids && ARRAY[$1::uuid]`, [block.id, firstId, secondId]);
+      await client.query("DELETE FROM blocks WHERE id=$1", [block.id]);
+      await client.query(
+        "UPDATE pages SET index_status='stale', index_error=NULL WHERE id=$1", [block.page_id]);
+      await client.query(
+        `INSERT INTO pipeline_events (run_id, document_id, page_id, stage, event_type, actor, summary, payload, status)
+         SELECT gen_random_uuid(), p.document_id, p.id, 'user_edit', 'block_split', 'user', $2, $3, 'ok'
+         FROM pages p WHERE p.id=$1`,
+        [block.page_id, `拆分块 ${block.id.slice(0, 8)} 于第 ${lineIndex} 行后`,
+          JSON.stringify({ from: block.id, into: [firstId, secondId], line_index: lineIndex })]);
+      await client.query("COMMIT");
+      for (const id of [firstId, secondId]) {
+        fetch(`${deps.pipelineUrl}/internal/block-recrop`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ block_id: id }),
+        }).catch((err) => console.warn("拆分块重裁失败（可忽略，裁图滞后）", err));
+      }
+      return c.json({ ids: [firstId, secondId] });
+    } catch (err) {
+      await client.query("ROLLBACK").catch(() => {});
+      return invalidId(c, err) ?? (() => { throw err; })();
+    } finally {
+      client.release();
+    }
+  });
+
+  app.delete("/blocks/:id", async (c) => {
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const { rows: [block] } = await client.query(
+        "SELECT id::text, page_id::text FROM blocks WHERE id=$1", [c.req.param("id")]);
+      if (!block) {
+        await client.query("ROLLBACK");
+        return c.json({ error: "块不存在" }, 404);
+      }
+      const { rows: [guard] } = await client.query(
+        "SELECT count(*)::int AS n FROM review_queue WHERE block_id=$1", [block.id]);
+      if (guard.n > 0) {
+        await client.query("ROLLBACK");
+        return c.json({ error: "该块有复核记录，先处理复核行再删" }, 409);
+      }
+      await client.query(
+        `UPDATE items SET qc_status='needs_review', updated_at=now()
+         WHERE id IN (SELECT item_id FROM item_blocks WHERE block_id=$1)`, [block.id]);
+      await client.query("DELETE FROM item_blocks WHERE block_id=$1", [block.id]);
+      await client.query(
+        `UPDATE chunks SET source_block_ids=array_remove(source_block_ids, $1::uuid), state='stale'
+         WHERE source_block_ids && ARRAY[$1::uuid]`, [block.id]);
+      await client.query("DELETE FROM blocks WHERE id=$1", [block.id]);
+      await client.query(
+        "UPDATE pages SET index_status='stale', index_error=NULL WHERE id=$1", [block.page_id]);
+      await client.query(
+        `INSERT INTO pipeline_events (run_id, document_id, page_id, stage, event_type, actor, summary, payload, status)
+         SELECT gen_random_uuid(), p.document_id, p.id, 'user_edit', 'block_delete', 'user', $2, $3, 'ok'
+         FROM pages p WHERE p.id=$1`,
+        [block.page_id, `删除块 ${block.id.slice(0, 8)}`, JSON.stringify({ block_id: block.id })]);
+      await client.query("COMMIT");
+      return c.json({ ok: true });
+    } catch (err) {
+      await client.query("ROLLBACK").catch(() => {});
+      return invalidId(c, err) ?? (() => { throw err; })();
+    } finally {
+      client.release();
     }
   });
 
@@ -442,6 +710,30 @@ app.patch("/blocks/:id", async (c) => {
       return c.json({ error: "内部服务不可达" }, 502);
     }
   }
+
+  app.post("/blocks/:id/geometry-preview", async (c) => {
+    const body = await readJson(c);
+    return forwardInternal(c, "/internal/block-geometry-preview", {
+      block_id: c.req.param("id"),
+      ...(body ?? {}),
+    });
+  });
+
+  app.post("/blocks/:id/geometry-commit", async (c) => {
+    const body = await readJson(c);
+    return forwardInternal(c, "/internal/block-geometry-commit", {
+      block_id: c.req.param("id"),
+      ...(body ?? {}),
+    });
+  });
+
+  app.post("/pages/:id/blocks", async (c) => {
+    const body = await readJson(c);
+    return forwardInternal(c, "/internal/block-create", {
+      page_id: c.req.param("id"),
+      ...(body ?? {}),
+    });
+  });
 
   app.post("/pages/:id/approve", async (c) => {
     try {

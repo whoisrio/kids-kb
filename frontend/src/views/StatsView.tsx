@@ -5,6 +5,7 @@ import {
   type PendingEntry,
   type StatsOverview,
 } from "../api/stats";
+import { generateQuiz } from "../api/quizzes";
 
 const pct = (rate: number | null) => (rate === null ? "—" : `${Math.round(rate * 100)}%`);
 const pp = (delta: number | null) =>
@@ -13,15 +14,19 @@ const pp = (delta: number | null) =>
 export function StatsView({
   childId,
   onToast,
+  onNavigate,
   fetchImpl = fetch,
 }: {
   childId: string | null;
   onToast?: (text: string) => void;
+  /** 出题成功后跳转练习页（App 注入 setView("quiz")） */
+  onNavigate?: () => void;
   fetchImpl?: typeof fetch;
 }) {
   const [data, setData] = useState<StatsOverview | null>(null);
   const [error, setError] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [generating, setGenerating] = useState(false);
 
   const load = useCallback(async () => {
     if (!childId) return;
@@ -48,6 +53,20 @@ export function StatsView({
       onToast?.(cause instanceof Error ? cause.message : "记录失败");
     } finally {
       setBusyId(null);
+    }
+  };
+
+  const makeQuiz = async () => {
+    if (!childId || generating) return;
+    setGenerating(true);
+    try {
+      await generateQuiz(childId, undefined, fetchImpl);
+      onNavigate?.();
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : "";
+      onToast?.(message === "no_weak_tags" ? "还没有薄弱知识点记录" : message || "出题失败");
+    } finally {
+      setGenerating(false);
     }
   };
 
@@ -111,7 +130,18 @@ export function StatsView({
         </section>
 
         <section className="panel">
-          <h3>薄弱知识点 <span className="sub">待重练的题</span></h3>
+          <h3 style={{ display: "flex", alignItems: "center" }}>
+            薄弱知识点 <span className="sub">待重练的题</span>
+            <button
+              type="button"
+              className="btn-ghost"
+              style={{ marginLeft: "auto", fontSize: 12, padding: "4px 12px" }}
+              disabled={generating || data.weakTags.length === 0}
+              onClick={() => void makeQuiz()}
+            >
+              {generating ? "出题中…" : "针对薄弱点出题"}
+            </button>
+          </h3>
           {data.weakTags.length === 0 && <div className="hint">暂无薄弱知识点</div>}
           <div className="tag-cloud">
             {data.weakTags.map((item) => (

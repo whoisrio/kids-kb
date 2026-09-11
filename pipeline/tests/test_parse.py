@@ -1,7 +1,7 @@
 import pymupdf as fitz
 import pytest
 
-from kb.config import Config
+from kb.core.config import Config
 
 
 def _cfg(tmp_path):
@@ -16,8 +16,8 @@ def _cfg(tmp_path):
 
 @pytest.fixture()
 def parsed_doc(conn, tmp_path):
-    from kb.layout import run_layout
-    from kb.render import render_document
+    from kb.ocr.layout import run_layout
+    from kb.ocr.render import render_document
 
     cfg = _cfg(tmp_path)
     p = tmp_path / "scan.pdf"
@@ -55,7 +55,7 @@ class FakeClient:
 
 
 def test_transcribe_image_calls_openai_compatible_api(tmp_path):
-    from kb.parse import transcribe_image
+    from kb.ocr.parse import transcribe_image
 
     img = tmp_path / "p.png"
     img.write_bytes(b"\x89PNG fake")
@@ -64,12 +64,40 @@ def test_transcribe_image_calls_openai_compatible_api(tmp_path):
     assert usage == (None, None)  # 假客户端无 usage 时容忍 None
 
 
+def test_transcribe_image_strips_reasoning_markers(tmp_path):
+    from kb.ocr.parse import transcribe_image
+
+    img = tmp_path / "p.png"
+    img.write_bytes(b"\x89PNG fake")
+
+    class ThinkMessage:
+        content = "<think>内部推理</think></think>最终转录"
+
+    class ThinkChoice:
+        message = ThinkMessage()
+
+    class ThinkResponse:
+        choices = [ThinkChoice()]
+
+    class ThinkChat:
+        class completions:
+            @staticmethod
+            def create(model, messages, max_tokens, **kwargs):
+                return ThinkResponse()
+
+    class ThinkClient:
+        chat = ThinkChat()
+
+    text, _usage = transcribe_image(ThinkClient(), "m", img)
+    assert text == "最终转录"
+
+
 def test_transcribe_image_downscales_oversized_image(tmp_path):
     """超大整页扫描图先降采样再送视觉模型：vision token 数与分辨率正相关，
     高分辨率会让思考型模型 reasoning 爆预算、content 被截空。"""
     import base64
 
-    from kb.parse import transcribe_image
+    from kb.ocr.parse import transcribe_image
 
     big = fitz.open()
     page = big.new_page(width=3000, height=4000)
@@ -98,7 +126,7 @@ def test_transcribe_image_downscales_oversized_image(tmp_path):
 def test_transcribe_image_disables_reasoning_and_falls_back(tmp_path):
     """思考型模型（qwen3.5）reasoning 会烧穿输出预算把 content 截空：
     默认带 reasoning_effort=none；服务端不认这个参数时降级为普通调用。"""
-    from kb.parse import transcribe_image
+    from kb.ocr.parse import transcribe_image
 
     img = tmp_path / "p.png"
     img.write_bytes(b"\x89PNG fake")
@@ -137,7 +165,7 @@ def test_transcribe_image_disables_reasoning_and_falls_back(tmp_path):
 
 
 def test_run_parse_fills_block_content_and_marks_page(conn, parsed_doc):
-    from kb.parse import run_parse
+    from kb.ocr.parse import run_parse
 
     doc_id, cfg = parsed_doc
     n = run_parse(conn, cfg, doc_id, client=FakeClient())
@@ -150,7 +178,7 @@ def test_run_parse_fills_block_content_and_marks_page(conn, parsed_doc):
 
 
 def test_run_parse_failure_marks_page_failed(conn, parsed_doc):
-    from kb.parse import run_parse
+    from kb.ocr.parse import run_parse
 
     class BoomChat:
         class completions:
@@ -174,7 +202,7 @@ def test_run_parse_empty_transcription_marks_page_failed(conn, parsed_doc):
     """空转录（思考型模型 reasoning 烧穿预算的典型产物）不是成功：
     页必须标 failed 留 parse_error，块内容保持 NULL 等重试，
     否则空串块会被自愈逻辑永久标记为 parsed。"""
-    from kb.parse import run_parse
+    from kb.ocr.parse import run_parse
 
     class EmptyChat:
         class completions:
@@ -200,7 +228,7 @@ def test_run_parse_empty_transcription_marks_page_failed(conn, parsed_doc):
 
 def test_run_parse_repairs_drifted_page_status(conn, parsed_doc):
     """历史 bug 可能把已解析页打回 rendered；run_parse 应按块内容自愈页状态。"""
-    from kb.parse import run_parse
+    from kb.ocr.parse import run_parse
 
     doc_id, cfg = parsed_doc
     with conn.cursor() as cur:  # 模拟状态漂移：内容在，状态被重置
@@ -214,7 +242,7 @@ def test_run_parse_repairs_drifted_page_status(conn, parsed_doc):
 
 def test_ocr_text_blocks_with_rapidocr(tmp_path):
     """rapidocr 真能认出渲染出来的文字（本地 ONNX，无需模型服务）。"""
-    from kb.parse import ocr_image
+    from kb.ocr.parse import ocr_image
 
     img = tmp_path / "t.png"
     d = fitz.open()
@@ -227,7 +255,7 @@ def test_ocr_text_blocks_with_rapidocr(tmp_path):
 
 def test_run_parse_routes_by_block_type(conn, parsed_doc):
     """text 块走 ocr（不调视觉模型），formula 块走视觉模型。"""
-    from kb.parse import run_parse
+    from kb.ocr.parse import run_parse
 
     doc_id, cfg = parsed_doc
     calls = []
@@ -270,7 +298,7 @@ def test_run_parse_routes_by_block_type(conn, parsed_doc):
 
 def test_run_parse_escalates_starred_ocr_to_vlm(conn, parsed_doc):
     """OCR 兜底产出多行星号/方框（竖式被拍扁）-> 升级视觉模型重转录。"""
-    from kb.parse import run_parse
+    from kb.ocr.parse import run_parse
 
     doc_id, cfg = parsed_doc
     with conn.cursor() as cur:
@@ -306,3 +334,55 @@ def test_run_parse_escalates_starred_ocr_to_vlm(conn, parsed_doc):
         assert "array" in content
         cur.execute("SELECT source_model FROM blocks WHERE id=%s", (b2,))
         assert cur.fetchone()[0] == "rapidocr"  # 正常文字不升级
+
+
+def test_run_parse_escalates_empty_ocr_to_vlm(conn, parsed_doc):
+    """OCR 对浅色文字返回空时，不能标页失败；应回退视觉模型重转录。"""
+    from kb.ocr.parse import run_parse
+
+    doc_id, cfg = parsed_doc
+    with conn.cursor() as cur:
+        cur.execute(
+                """SELECT id FROM blocks
+                   WHERE page_id IN (SELECT id FROM pages WHERE document_id=%s)
+                      AND content_md IS NULL
+                   ORDER BY created_at LIMIT 2""",
+            (doc_id,),
+        )
+        empty_block, normal_block = [r[0] for r in cur.fetchall()]
+        cur.execute("UPDATE blocks SET block_type='text' WHERE id IN (%s,%s)",
+                    (empty_block, normal_block))
+
+    class SpyChat:
+        class completions:
+            @staticmethod
+            def create(model, messages, max_tokens):
+                assert model == "qwen3:4b"
+
+                class VLMMessage:
+                    content = "转录结果 $1+1=2$"
+
+                class VLMChoice:
+                    message = VLMMessage()
+
+                class VLMResponse:
+                    choices = [VLMChoice()]
+
+                return VLMResponse()
+
+    class SpyClient:
+        chat = SpyChat()
+
+    texts = iter(["", "普通文字"])
+    n = run_parse(conn, cfg, doc_id, client=SpyClient(), ocr=lambda p: next(texts))
+
+    assert n == 2
+    with conn.cursor() as cur:
+        cur.execute("SELECT source_model, content_md FROM blocks WHERE id=%s", (empty_block,))
+        source, content = cur.fetchone()
+        assert source == "qwen3:4b"
+        assert content == "转录结果 $1+1=2$"
+        cur.execute("SELECT source_model, content_md FROM blocks WHERE id=%s", (normal_block,))
+        assert cur.fetchone() == ("rapidocr", "普通文字")
+        cur.execute("SELECT parse_status, parse_error FROM pages WHERE document_id=%s", (doc_id,))
+        assert cur.fetchall() == [("parsed", None), ("parsed", None)]

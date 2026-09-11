@@ -1,6 +1,6 @@
 """toc 条目规整：模型输出的 chapter_no/print_page 类型不定，落库前强校验。"""
 
-from kb.toc import normalize_toc_entries
+from kb.rag.toc import normalize_toc_entries
 
 
 def test_numeric_chapter_no_normalized():

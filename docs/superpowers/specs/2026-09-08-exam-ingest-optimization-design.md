@@ -502,10 +502,10 @@ revision 机制：
 |---|---|---|---|
 | 1 | 版面模型可配置（V2/V3 默认 V3 + ordinal 阅读顺序） | §3.1、§12 用例 14–20 | 已完成 |
 | 2 | 裁图 padding / clamp / 路径统一 | §5、§7.1、§12 用例 3–5 | 已完成 |
-| 3 | 块编辑四操作 + 引用重定向 + 复核/分块修正 UI | §4（血缘/几何部分）、§6、§11.1、§11.3、§12 用例 9–13 | 未开始 |
-| 4 | 答案字段化 + 卷末关联 + 答案关联 UI | §8、§11.4、§12 用例 1–2、8 | 未开始 |
-| 5 | 向量化 revision + caption + 拆题复核/入库/规则屏 | §7.2–7.3、§10、§11.2、§11.5、§11.6、§12 用例 6–7 | 未开始 |
+| 3 | 块编辑四操作 + 引用重定向 + 复核/分块修正 UI | §4（血缘/几何部分）、§6、§11.1、§11.3、§12 用例 9–13 | 已完成：`docs/superpowers/plans/2026-09-09-block-editing.md` |
+| 4 | 答案字段化 + 卷末关联 + 答案关联 UI | §8、§11.4、§12 用例 1–2、8 | **已出计划**：`docs/superpowers/plans/2026-09-10-answer-pairing.md`，未执行 |
+| 5 | 向量化 revision + caption + 拆题复核/入库/规则屏 | §7.2–7.3、§10、§11.2、§11.5、§11.6、§12 用例 6–7 | **已出计划**：`docs/superpowers/plans/2026-09-10-vector-revision-captions.md`，未执行 |
 
 顺序说明：1 是其余各块的地基（ordinal、切块默认启用）；2→3→4→5 大体按依赖递增排布，但 3/4 之间可并行。
 
-migration 编号约定：`0018_block_ordinal.sql` 已被子计划 1 占用（见计划一偏差说明）；原 §4 的 `0018_exam_ingest.sql` 顺延为 `0019`，并去掉其中的 ordinal 段（已随 0018 落地）。
+migration 编号约定：`0018_block_ordinal.sql` 已被子计划 1 占用（见计划一偏差说明）；`0019_crop_pad_paths.sql` 已被子计划 2 占用；§4 的血缘/几何列与 `chunks.state` 由子计划 3 的 `0020_block_editing.sql` 落地；`items.answer_*` 由子计划 4 的 `0021_answer_fields.sql` 落地；`items.revision`、`chunks.item_revision` 与 `blocks.caption/caption_source` 由子计划 5 的 `0022_vector_revision.sql` 落地。

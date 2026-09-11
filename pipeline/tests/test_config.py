@@ -1,6 +1,6 @@
 import pytest
 
-from kb.config import load_config
+from kb.core.config import load_config
 
 
 def test_load_config_defaults(tmp_path, monkeypatch):
@@ -23,7 +23,7 @@ def test_load_config_requires_database_url(tmp_path, monkeypatch):
 def test_load_config_layout_engine(tmp_path, monkeypatch):
     monkeypatch.setenv("KB_DATABASE_URL", "postgresql://localhost/kb_test")
     monkeypatch.delenv("KB_LAYOUT_ENGINE", raising=False)
-    assert load_config(tmp_path / "不存在.env").layout_engine == "whole_page"
+    assert load_config(tmp_path / "不存在.env").layout_engine == "paddleocr"
     monkeypatch.setenv("KB_LAYOUT_ENGINE", "paddleocr")
     assert load_config(tmp_path / "不存在.env").layout_engine == "paddleocr"
 
@@ -73,3 +73,20 @@ def test_load_config_chunk_defaults(tmp_path, monkeypatch):
     cfg = load_config(tmp_path / "不存在.env")
     assert cfg.chunk_max_chars == 800
     assert cfg.chunk_overlap_ratio == 0.2
+
+
+def test_load_config_layout_model(tmp_path, monkeypatch):
+    monkeypatch.setenv("KB_DATABASE_URL", "postgresql://localhost/kb_test")
+    monkeypatch.delenv("KB_LAYOUT_MODEL", raising=False)
+    assert load_config(tmp_path / "不存在.env").layout_model == "PP-DocLayoutV3"
+    monkeypatch.setenv("KB_LAYOUT_MODEL", "PP-DocLayoutV2")
+    assert load_config(tmp_path / "不存在.env").layout_model == "PP-DocLayoutV2"
+
+
+def test_load_config_layout_model_invalid(tmp_path, monkeypatch):
+    monkeypatch.setenv("KB_DATABASE_URL", "postgresql://localhost/kb_test")
+    monkeypatch.setenv("KB_LAYOUT_MODEL", "PP-DocLayoutV9")
+    with pytest.raises(SystemExit) as exc:
+        load_config(tmp_path / "不存在.env")
+    assert "PP-DocLayoutV2" in str(exc.value)
+    assert "PP-DocLayoutV3" in str(exc.value)

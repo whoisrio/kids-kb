@@ -3,7 +3,7 @@ import uuid
 
 import pytest
 
-from kb.config import Config
+from kb.core.config import Config
 
 
 @pytest.fixture()
@@ -33,7 +33,7 @@ class _FakeEmbed:
 
 
 def test_ingest_md_splits_chapters_and_embeds(conn, cfg, tmp_path):
-    from kb.text_ingest import ingest_md
+    from kb.rag.text_ingest import ingest_md
 
     md = tmp_path / "grammar.md"
     md.write_text(
@@ -63,7 +63,7 @@ def test_ingest_md_splits_chapters_and_embeds(conn, cfg, tmp_path):
 
 
 def test_ingest_md_idempotent_by_path(conn, cfg, tmp_path):
-    from kb.text_ingest import ingest_md
+    from kb.rag.text_ingest import ingest_md
 
     md = tmp_path / "same.md"
     md.write_text("# 唯一章\n\n内容\n", encoding="utf-8")

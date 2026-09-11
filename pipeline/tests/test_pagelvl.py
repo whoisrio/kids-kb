@@ -6,7 +6,7 @@ import pytest
 
 
 def _cfg(tmp_path):
-    from kb.config import Config
+    from kb.core.config import Config
     return Config(
         database_url="postgresql://localhost/kb_test",
         storage_dir=tmp_path / "storage",
@@ -20,8 +20,8 @@ def _cfg(tmp_path):
 def doc2(conn, tmp_path):
     """2 页文档：第 1 页有 2 条实质问题（bad_latex + layout_overlap），
     第 2 页只有页眉 empty（琐碎，不算实质问题）。"""
-    from kb.layout import run_layout
-    from kb.render import render_document
+    from kb.ocr.layout import run_layout
+    from kb.ocr.render import render_document
 
     cfg = _cfg(tmp_path)
     p = tmp_path / "s.pdf"
@@ -41,8 +41,8 @@ def doc2(conn, tmp_path):
                WHERE page_id IN (SELECT id FROM pages WHERE page_no=1)"""
         )
         cur.execute(
-            """INSERT INTO blocks (page_id, block_type, crop_path, content_md, bbox)
-               SELECT page_id, 'text', '/tmp/c2.png', '另一块', '[10,10,490,990]'::jsonb
+            """INSERT INTO blocks (page_id, block_type, crop_path, content_md, bbox, ordinal)
+               SELECT page_id, 'text', '/tmp/c2.png', '另一块', '[10,10,490,990]'::jsonb, 2
                FROM blocks WHERE page_id IN (SELECT id FROM pages WHERE page_no=1)"""
         )
         cur.execute(
@@ -92,7 +92,7 @@ class _Client:
 
 
 def test_transcribe_page_stores_md_and_meters(conn, doc2):
-    from kb.pagelvl import transcribe_page
+    from kb.ocr.pagelvl import transcribe_page
 
     doc_id, cfg = doc2
     with conn.cursor() as cur:
@@ -116,7 +116,7 @@ def test_transcribe_page_stores_md_and_meters(conn, doc2):
 
 def test_auto_trigger_threshold(conn, doc2):
     """实质问题 ≥2 的页自动整页转录；只有页眉 empty 的页不触发。"""
-    from kb.pagelvl import auto_page_vlm
+    from kb.ocr.pagelvl import auto_page_vlm
 
     doc_id, cfg = doc2
     n = auto_page_vlm(conn, cfg, doc_id, client=_Client())
@@ -129,7 +129,7 @@ def test_auto_trigger_threshold(conn, doc2):
 
 def test_run_qc_auto_triggers_page_vlm(conn, doc2):
     """run_qc 传入 cfg 时，实质问题 ≥2 的页自动整页转录。"""
-    from kb.qc import run_qc
+    from kb.ocr.qc import run_qc
 
     doc_id, cfg = doc2
     n = run_qc(conn, doc_id, cfg=cfg, vlm_client=_Client())

@@ -6,8 +6,8 @@ import uuid
 
 import pytest
 
-from kb.config import Config
-from kb.export_md import export_chapter_mds, export_page_mds
+from kb.core.config import Config
+from kb.rag.export_md import export_chapter_mds, export_page_mds
 
 
 @pytest.fixture()
@@ -39,8 +39,10 @@ def doc(conn, tmp_path):
         p2 = str(cur.fetchone()[0])
         for btype, content in [("header", "四年级上册 页眉"), ("text", "例1 题干"), ("text", "例1 解析")]:
             cur.execute(
-                "INSERT INTO blocks (id, page_id, block_type, crop_path, content_md) VALUES (%s,%s,%s,'/tmp/c.png',%s)",
-                (str(uuid.uuid4()), p2, btype, content),
+                """INSERT INTO blocks (id, page_id, block_type, crop_path, content_md, ordinal)
+                   VALUES (%s,%s,%s,'/tmp/c.png',%s,
+                           (SELECT coalesce(max(ordinal), 0) + 1 FROM blocks WHERE page_id=%s))""",
+                (str(uuid.uuid4()), p2, btype, content, p2),
             )
         cur.execute(
             """INSERT INTO pages (id, document_id, page_no, image_path, parse_status, page_md, adopted_source)

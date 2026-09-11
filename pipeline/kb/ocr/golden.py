@@ -91,7 +91,7 @@ def check(conn, cfg, doc_id: str, golden_dir: Path) -> float:
     rates = []
     for golden_file in sorted(golden_dir.glob("p*.md")):
         page_no = int(golden_file.stem[1:])
-        actual = transcribe_image(client, cfg.vision_model, pages[page_no])
+        actual, _usage = transcribe_image(client, cfg.vision_model, pages[page_no])
         rate = char_error_rate(golden_file.read_text(encoding="utf-8"), actual)
         rates.append(rate)
         print(f"page {page_no}: CER={rate:.3f}")

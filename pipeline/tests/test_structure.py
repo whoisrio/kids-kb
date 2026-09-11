@@ -7,7 +7,7 @@ def doc_with_chapter(conn, tmp_path):
     """1 本书 1 章（物理 2-3 页），页 2 有 例题块+公式块，页 3 有 练习块。"""
     import uuid
 
-    from kb.config import Config
+    from kb.core.config import Config
 
     cfg = Config(
         database_url="postgresql://localhost/kb_test",
@@ -39,8 +39,10 @@ def doc_with_chapter(conn, tmp_path):
             for btype, content in texts:
                 bid = str(uuid.uuid4())
                 cur.execute(
-                    "INSERT INTO blocks (id, page_id, block_type, crop_path, content_md) VALUES (%s,%s,%s,'/tmp/c.png',%s)",
-                    (bid, page_id, btype, content),
+                    """INSERT INTO blocks (id, page_id, block_type, crop_path, content_md, ordinal)
+                       VALUES (%s,%s,%s,'/tmp/c.png',%s,
+                               (SELECT coalesce(max(ordinal), 0) + 1 FROM blocks WHERE page_id=%s))""",
+                    (bid, page_id, btype, content, page_id),
                 )
                 blocks.append(bid)
     return doc_id, cfg, blocks
@@ -78,7 +80,7 @@ def _client(text):
 
 
 def test_structure_chapter_creates_items(conn, doc_with_chapter):
-    from kb.structure import structure_chapter
+    from kb.rag.structure import structure_chapter
 
     doc_id, cfg, blocks = doc_with_chapter
     n = structure_chapter(conn, cfg, doc_id, chapter_no=1, client=_client(ITEMS_JSON))
@@ -101,17 +103,44 @@ def test_structure_chapter_creates_items(conn, doc_with_chapter):
 
 
 def test_structure_chapter_skips_done(conn, doc_with_chapter):
-    from kb.structure import structure_chapter
+    from kb.rag.structure import structure_chapter
 
     doc_id, cfg, _blocks = doc_with_chapter
     assert structure_chapter(conn, cfg, doc_id, 1, client=_client(ITEMS_JSON)) == 2
     assert structure_chapter(conn, cfg, doc_id, 1, client=_client(ITEMS_JSON)) == 0  # 幂等
 
 
+def test_structure_chapter_accepts_string_block_ids(conn, doc_with_chapter):
+    """LLM 可能把块号输出为字符串；拆条必须归一化而不是崩溃。"""
+    from kb.rag.structure import structure_chapter
+
+    doc_id, cfg, blocks = doc_with_chapter
+    items_json = _FENCE + "json\n" + (
+        '[{"content_type": "exercise", "label": "1",'
+        ' "content_md": "在下面方框填上合适的数字。", "block_ids": ["1", "2"]}]'
+    ) + "\n" + _FENCE
+
+    n = structure_chapter(conn, cfg, doc_id, chapter_no=1, client=_client(items_json))
+
+    assert n == 1
+    with conn.cursor() as cur:
+        cur.execute(
+            """SELECT ib.role
+               FROM item_blocks ib
+               JOIN items i ON i.id=ib.item_id
+               JOIN blocks b ON b.id=ib.block_id
+               JOIN pages p ON p.id=b.page_id
+               WHERE i.document_id=%s
+               ORDER BY p.page_no, b.ordinal""",
+            (doc_id,),
+        )
+        assert [r[0] for r in cur.fetchall()] == ["stem", "figure"]
+
+
 def test_pair_items_links_answers(conn, doc_with_chapter):
     import uuid
 
-    from kb.structure import pair_items
+    from kb.rag.structure import pair_items
 
     doc_id, _cfg, _blocks = doc_with_chapter
     with conn.cursor() as cur:
@@ -134,8 +163,8 @@ def test_structure_chapter_uses_content_md(conn, tmp_path):
     """docx 章（content_md 非空、页码 NULL）：直接拆章稿，不再因 page_start NULL 跳过。"""
     import uuid
 
-    from kb.config import Config
-    from kb.structure import structure_chapter
+    from kb.core.config import Config
+    from kb.rag.structure import structure_chapter
 
     cfg = Config(
         database_url="postgresql://localhost/kb_test",
@@ -164,14 +193,14 @@ def test_structure_chapter_uses_content_md(conn, tmp_path):
 
 def test_structure_prompt_requires_fidelity():
     """拆条 prompt 必须含忠于原文约束（防模型改写/脑补续写）。"""
-    from kb.structure import STRUCTURE_PROMPT
+    from kb.rag.structure import STRUCTURE_PROMPT
     assert "忠于源块原文" in STRUCTURE_PROMPT
     assert "严禁改写" in STRUCTURE_PROMPT
 
 
 def test_structure_retries_on_connection_error(conn, doc_with_chapter):
     """远端断连（APIConnectionError 类）重试一次，不直接炸掉整章。"""
-    from kb.structure import structure_chapter
+    from kb.rag.structure import structure_chapter
 
     doc_id, cfg, _blocks = doc_with_chapter
     calls = []
@@ -201,11 +230,46 @@ def test_structure_retries_on_connection_error(conn, doc_with_chapter):
     assert n == 2 and len(calls) == 2
 
 
+def test_structure_disables_reasoning_with_fallback(conn, doc_with_chapter):
+    """拆条默认关闭 reasoning；端点不认识参数时降级为普通调用。"""
+    from kb.rag.structure import structure_chapter
+
+    doc_id, cfg, _blocks = doc_with_chapter
+    calls = []
+
+    class Chat:
+        class completions:
+            @staticmethod
+            def create(model, messages, max_tokens, **kwargs):
+                calls.append(kwargs)
+                if "extra_body" in kwargs:
+                    raise RuntimeError("reasoning_effort not supported")
+
+                class M:
+                    content = ITEMS_JSON
+
+                class C:
+                    message = M()
+
+                class R:
+                    choices = [C()]
+
+                return R()
+
+    class Client:
+        chat = Chat()
+
+    n = structure_chapter(conn, cfg, doc_id, 1, client=Client())
+
+    assert n == 2
+    assert calls == [{"extra_body": {"reasoning_effort": "none"}}, {}]
+
+
 def test_structure_uses_doc_ognize_model_when_set(conn, doc_with_chapter):
     """配置 doc_ognize_model 时拆条用它，否则回落 vision_model。"""
     import dataclasses
 
-    from kb.structure import structure_chapter
+    from kb.rag.structure import structure_chapter
 
     doc_id, cfg, _blocks = doc_with_chapter
     cfg = dataclasses.replace(cfg, doc_ognize_model="qwen3-32b")
@@ -237,7 +301,7 @@ def test_structure_uses_doc_ognize_model_when_set(conn, doc_with_chapter):
 
 def test_structure_uses_page_md_for_adopted_pages(conn, doc_with_chapter):
     """采用整页版的页：章节窗口用 page_md 替代该页块文本。"""
-    from kb.structure import structure_chapter
+    from kb.rag.structure import structure_chapter
 
     doc_id, cfg, blocks = doc_with_chapter
     with conn.cursor() as cur:  # 第 2 页（章首页）采用整页版

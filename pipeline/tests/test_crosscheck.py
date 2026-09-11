@@ -3,7 +3,7 @@ import pytest
 
 
 def _mk_cfg(tmp_path, compare_model="compare-model"):
-    from kb.config import Config
+    from kb.core.config import Config
     return Config(
         database_url="postgresql://localhost/kb_test",
         storage_dir=tmp_path / "storage",
@@ -16,8 +16,8 @@ def _mk_cfg(tmp_path, compare_model="compare-model"):
 
 @pytest.fixture()
 def doc_with_blocks(conn, tmp_path):
-    from kb.layout import run_layout
-    from kb.render import render_document
+    from kb.ocr.layout import run_layout
+    from kb.ocr.render import render_document
 
     cfg = _mk_cfg(tmp_path)
     p = tmp_path / "s.pdf"
@@ -55,7 +55,7 @@ def _client(text):
 
 
 def test_crosscheck_flags_divergent_formula_block(conn, doc_with_blocks):
-    from kb.crosscheck import run_llm_crosscheck
+    from kb.ocr.crosscheck import run_llm_crosscheck
 
     doc_id, cfg = doc_with_blocks
     n = run_llm_crosscheck(conn, cfg, doc_id, compare_client=_client("完全不同的内容"))
@@ -66,7 +66,7 @@ def test_crosscheck_flags_divergent_formula_block(conn, doc_with_blocks):
 
 
 def test_crosscheck_quiet_when_consistent(conn, doc_with_blocks):
-    from kb.crosscheck import run_llm_crosscheck
+    from kb.ocr.crosscheck import run_llm_crosscheck
 
     doc_id, cfg = doc_with_blocks
     n = run_llm_crosscheck(conn, cfg, doc_id, compare_client=_client("正确内容 $1+1=2$"))
@@ -75,7 +75,7 @@ def test_crosscheck_quiet_when_consistent(conn, doc_with_blocks):
 
 def test_llm_disagree_not_auto_closed(conn, doc_with_blocks):
     """llm_disagree 不在 CHECKABLE_REASONS：内容再编辑也不自动关闭。"""
-    from kb.qc import sync_block_reviews
+    from kb.ocr.qc import sync_block_reviews
 
     doc_id, cfg = doc_with_blocks
     with conn.cursor() as cur:
@@ -89,7 +89,7 @@ def test_llm_disagree_not_auto_closed(conn, doc_with_blocks):
 
 
 def test_crosscheck_skipped_without_compare_config(conn, tmp_path):
-    from kb.crosscheck import run_llm_crosscheck
+    from kb.ocr.crosscheck import run_llm_crosscheck
 
     cfg = _mk_cfg(tmp_path, compare_model=None)
     assert run_llm_crosscheck(conn, cfg, "任意doc") == 0

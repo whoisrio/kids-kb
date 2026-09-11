@@ -77,7 +77,9 @@ test("structure 自动回退 flat,approve 后页级可检索", async ({ page }) 
 
   // 4) UI:聊天问关键词,回复必须引用资料内容(须调 search_items)
   await page.goto("/");
-  await page.getByPlaceholder(/问点什么/).fill(`${KEYWORD} 讲的是什么?请先搜题库再回答。`);
+  await page.getByPlaceholder(/问点什么/).fill(
+    `${KEYWORD} 讲的是什么?请先搜题库再回答。检索 query 必须原样使用 "${KEYWORD}"，不要省略或改写。`,
+  );
   await page.getByRole("button", { name: "发送" }).click();
   await expect(page.locator(".chat-wrap")).toHaveAttribute("data-streaming", "false", {
     timeout: 240_000,

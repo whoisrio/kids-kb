@@ -59,7 +59,7 @@ _LABEL_MAP = {
 
 
 def map_block_label(label: str) -> str:
-    """PaddleOCR-VL 区块标签 -> 我们的 block_type；未知一律 text（不丢内容）。"""
+    """PP-DocLayout 区块标签 -> 我们的 block_type；未知一律 text（不丢内容）。"""
     return _LABEL_MAP.get((label or "").lower(), "text")
 
 
@@ -103,7 +103,7 @@ class PaddleOCRLayout:
 
     模型版本由 KB_LAYOUT_MODEL 配置（PP-DocLayoutV2 | PP-DocLayoutV3，默认 V3）。
     V2/V3 都带指针网络，返回 boxes 的顺序即阅读顺序。模型懒加载。
-    选型记录：完整 PaddleOCR-VL 实测 353s/页（CPU）；版面专用模型 V2 实测 ~5s/页，
+    选型记录：版面专用模型 V2 实测 ~5s/页，
     V3 按官方 1.6× 推算约 7~8s/页，与本架构分工吻合。
     """
 
@@ -113,11 +113,13 @@ class PaddleOCRLayout:
         model_name: str = "PP-DocLayoutV3",
         dpi: int = 200,
         pipeline=None,
+        qr_detector=None,
     ):
         self._blocks_dir = Path(blocks_dir)
         self._model_name = model_name
         self._dpi = dpi
         self._pipeline = pipeline  # 测试可注入假模型
+        self._qr_detector = qr_detector  # 测试可注入假识别器
 
     def _get_pipeline(self):
         if self._pipeline is None:
@@ -131,6 +133,29 @@ class PaddleOCRLayout:
                 ) from e
             self._pipeline = LayoutDetection(model_name=self._model_name)
         return self._pipeline
+
+    def _is_qrcode(self, crop_path: Path) -> bool:
+        """纯二维码图块默认无学习价值，layout 层直接丢弃。"""
+        try:
+            import cv2
+
+            if self._qr_detector is None:
+                self._qr_detector = cv2.QRCodeDetector()
+            image = cv2.imread(str(crop_path))
+            if image is None:
+                return False
+            data, points, _straight = self._qr_detector.detectAndDecode(image)
+            if data:
+                return True
+            detected, points = self._qr_detector.detect(image)
+            if not detected or points is None:
+                return False
+            corners = points.reshape(-1, 2)
+            width, height = corners.max(axis=0) - corners.min(axis=0)
+            qr_ratio = float(width * height) / float(image.shape[0] * image.shape[1])
+            return qr_ratio >= 0.5
+        except Exception:  # noqa: BLE001 - QR 检测失败不阻断版面切分
+            return False
 
     def analyze(self, page_id: str, image_path: str) -> list[BlockDraft]:
         output = self._get_pipeline().predict(str(image_path))
@@ -154,6 +179,9 @@ class PaddleOCRLayout:
             )
             crop = out_dir / f"b{i - 1:03d}.png"
             crop_image(image_path, padded, crop)
+            if self._is_qrcode(crop):
+                crop.unlink(missing_ok=True)
+                continue
             drafts.append(BlockDraft(
                 page_id=page_id,
                 block_type=block_type,
@@ -162,6 +190,8 @@ class PaddleOCRLayout:
                 ordinal=i,
                 crop_pad=pad,
             ))
+        for ordinal, draft in enumerate(drafts, start=1):
+            draft.ordinal = ordinal
         return drafts
 
 

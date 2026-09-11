@@ -3,7 +3,7 @@ import os
 import psycopg
 import pytest
 
-from kb.db import migrate
+from kb.core.db import migrate
 
 
 @pytest.fixture()
@@ -12,7 +12,7 @@ def clean_db():
 
     每个测试拿到全新 schema，天然隔离，无需 truncate 清表。
     """
-    from kb.db import ensure_test_database
+    from kb.core.db import ensure_test_database
 
     url = os.environ.get("KB_TEST_DATABASE_URL")
     if not url:

@@ -28,7 +28,7 @@ def test_documents_struct_mode_schema(conn):
 @pytest.fixture()
 def flat_doc(conn, tmp_path):
     """无目录练习册：3 页——页 1 块文本（含 header 干扰）、页 2 整页稿、页 3 无内容。"""
-    from kb.config import Config
+    from kb.core.config import Config
 
     png = tmp_path / "p.png"
     png.write_bytes(base64.b64decode(_TINY_PNG))
@@ -52,9 +52,10 @@ def flat_doc(conn, tmp_path):
                                        ("text", "一、口算 24+37="),
                                        ("text", "二、竖式 135÷5=")]:
                     cur.execute(
-                        "INSERT INTO blocks (id, page_id, block_type, crop_path, content_md) "
-                        "VALUES (%s,%s,%s,'/tmp/c.png',%s)",
-                        (str(uuid.uuid4()), page_id, btype, content),
+                        """INSERT INTO blocks (id, page_id, block_type, crop_path, content_md, ordinal)
+                           VALUES (%s,%s,%s,'/tmp/c.png',%s,
+                                   (SELECT coalesce(max(ordinal), 0) + 1 FROM blocks WHERE page_id=%s))""",
+                        (str(uuid.uuid4()), page_id, btype, content, page_id),
                     )
     cfg = Config(
         database_url="postgresql://localhost/kb_test",
@@ -67,7 +68,7 @@ def flat_doc(conn, tmp_path):
 
 
 def test_page_contents_adopts_and_skips(conn, flat_doc):
-    from kb.flat import page_contents
+    from kb.rag.flat import page_contents
 
     doc_id, _cfg = flat_doc
     with conn.cursor() as cur:
@@ -79,7 +80,7 @@ def test_page_contents_adopts_and_skips(conn, flat_doc):
 
 
 def test_page_contents_skips_excluded_pages(conn, flat_doc):
-    from kb.flat import page_contents
+    from kb.rag.flat import page_contents
 
     doc_id, _cfg = flat_doc
     with conn.cursor() as cur:
@@ -88,9 +89,9 @@ def test_page_contents_skips_excluded_pages(conn, flat_doc):
     assert [page_no for page_no, _text in contents] == [2]
 
 
-def test_page_contents_orders_blocks_with_equal_created_at(conn):
-    """同页块 created_at 相同时按 id 排序，避免 PostgreSQL 返回不确定顺序。"""
-    from kb.flat import page_contents
+def test_page_contents_orders_blocks_with_ordinal(conn):
+    """同页块按 ordinal 排序，不再依赖 created_at 或插入顺序。"""
+    from kb.rag.flat import page_contents
 
     doc_id = "00000000-0000-0000-0000-000000000001"
     page_id = "00000000-0000-0000-0000-000000000002"
@@ -105,14 +106,14 @@ def test_page_contents_orders_blocks_with_equal_created_at(conn):
                VALUES (%s,%s,1,'/tmp/flat-order.png','parsed','blocks')""",
             (page_id, doc_id),
         )
-        for block_id, content in [
-            ("00000000-0000-0000-0000-000000000004", "Z block"),
-            ("00000000-0000-0000-0000-000000000003", "A block"),
+        for block_id, content, ordinal in [
+            ("00000000-0000-0000-0000-000000000004", "Z block", 2),
+            ("00000000-0000-0000-0000-000000000003", "A block", 1),
         ]:
             cur.execute(
-                """INSERT INTO blocks (id, page_id, block_type, crop_path, content_md, created_at)
+                """INSERT INTO blocks (id, page_id, block_type, crop_path, content_md, ordinal)
                    VALUES (%s,%s,'text','/tmp/flat-order.png',%s,%s)""",
-                (block_id, page_id, content, created_at),
+                (block_id, page_id, content, ordinal),
             )
 
     with conn.cursor() as cur:
@@ -121,7 +122,7 @@ def test_page_contents_orders_blocks_with_equal_created_at(conn):
 
 
 def test_build_flat_chapter_idempotent(conn, flat_doc):
-    from kb.flat import build_flat_chapter
+    from kb.rag.flat import build_flat_chapter
 
     doc_id, _cfg = flat_doc
     ch1 = build_flat_chapter(conn, doc_id)
@@ -142,7 +143,7 @@ def test_build_flat_chapter_idempotent(conn, flat_doc):
 
 def test_build_flat_chapter_refuses_multi_chapter_doc(conn, flat_doc):
     """多章文档（已按目录拆章）不允许混用 flat（防止合成章覆盖真章）。"""
-    from kb.flat import build_flat_chapter
+    from kb.rag.flat import build_flat_chapter
 
     doc_id, _cfg = flat_doc
     with conn.cursor() as cur:
@@ -170,7 +171,7 @@ class _FakeEmbed:
 
 
 def test_embed_flat_pages_per_page_segments(conn, flat_doc):
-    from kb.flat import build_flat_chapter, embed_flat_pages
+    from kb.rag.flat import build_flat_chapter, embed_flat_pages
 
     doc_id, cfg = flat_doc
     build_flat_chapter(conn, doc_id)
@@ -194,7 +195,7 @@ def test_embed_flat_pages_per_page_segments(conn, flat_doc):
 
 def test_embed_flat_pages_rebuild_single_page(conn, flat_doc):
     """页级重建：只重嵌目标页（删旧插新），其他页 chunk 不动——复核编辑后重发的依据。"""
-    from kb.flat import build_flat_chapter, embed_flat_pages
+    from kb.rag.flat import build_flat_chapter, embed_flat_pages
 
     doc_id, cfg = flat_doc
     build_flat_chapter(conn, doc_id)
@@ -217,7 +218,7 @@ def test_embed_flat_pages_rebuild_single_page(conn, flat_doc):
 
 
 def test_embed_flat_pages_segments_long_page(conn, flat_doc):
-    from kb.flat import build_flat_chapter, embed_flat_pages
+    from kb.rag.flat import build_flat_chapter, embed_flat_pages
 
     doc_id, cfg = flat_doc
     build_flat_chapter(conn, doc_id)
@@ -239,7 +240,7 @@ def test_embed_flat_pages_segments_long_page(conn, flat_doc):
 
 def test_embed_flat_pages_removes_emptied_page(conn, flat_doc):
     """页级重建/全量重建都清理已变空页的旧向量，避免检索到过期内容。"""
-    from kb.flat import build_flat_chapter, embed_flat_pages
+    from kb.rag.flat import build_flat_chapter, embed_flat_pages
 
     doc_id, cfg = flat_doc
     build_flat_chapter(conn, doc_id)
@@ -256,7 +257,7 @@ def test_embed_flat_pages_removes_emptied_page(conn, flat_doc):
 
 
 def test_embed_flat_pages_writes_page_no_and_sources(conn, flat_doc):
-    from kb.flat import build_flat_chapter, embed_flat_pages
+    from kb.rag.flat import build_flat_chapter, embed_flat_pages
 
     doc_id, cfg = flat_doc
     build_flat_chapter(conn, doc_id)
@@ -279,7 +280,7 @@ def test_embed_flat_pages_writes_page_no_and_sources(conn, flat_doc):
 
 
 def test_embed_flat_pages_full_rebuild_removes_emptied_page(conn, flat_doc):
-    from kb.flat import build_flat_chapter, embed_flat_pages
+    from kb.rag.flat import build_flat_chapter, embed_flat_pages
 
     doc_id, cfg = flat_doc
     build_flat_chapter(conn, doc_id)
@@ -297,12 +298,12 @@ def test_embed_flat_pages_full_rebuild_removes_emptied_page(conn, flat_doc):
 
 def test_embed_flat_pages_guards(conn, flat_doc):
     """没建合成章 / 非 flat 文档 -> ValueError（internal 端点转 500）。"""
-    from kb.flat import embed_flat_pages
+    from kb.rag.flat import embed_flat_pages
 
     doc_id, cfg = flat_doc
     with pytest.raises(ValueError, match="先跑 structure"):
         embed_flat_pages(conn, cfg, doc_id, client=_FakeEmbed())
-    from kb.flat import build_flat_chapter
+    from kb.rag.flat import build_flat_chapter
     build_flat_chapter(conn, doc_id)
     with conn.cursor() as cur:
         cur.execute("UPDATE documents SET struct_mode='toc' WHERE id=%s", (doc_id,))
@@ -312,7 +313,7 @@ def test_embed_flat_pages_guards(conn, flat_doc):
 
 def test_resolve_mode(conn, flat_doc):
     """优先级：--flat 显式 > --toc-pages 显式 > 自动探测（前 15 页块文本含「目录」= toc）。"""
-    from kb.flat import resolve_mode
+    from kb.rag.flat import resolve_mode
 
     doc_id, _cfg = flat_doc
     with conn.cursor() as cur:
@@ -320,8 +321,9 @@ def test_resolve_mode(conn, flat_doc):
         assert resolve_mode(cur, doc_id, flat=False, toc_pages=[4]) == "toc"
         assert resolve_mode(cur, doc_id, flat=False, toc_pages=None) == "flat"  # 无目录块
         cur.execute(
-            """INSERT INTO blocks (id, page_id, block_type, crop_path, content_md)
-               SELECT %s, id, 'text', '/tmp/c.png', '目录 第 1 套' FROM pages
+            """INSERT INTO blocks (id, page_id, block_type, crop_path, content_md, ordinal)
+               SELECT %s, id, 'text', '/tmp/c.png', '目录 第 1 套',
+                      (SELECT coalesce(max(ordinal), 0) + 1 FROM blocks WHERE page_id=pages.id) FROM pages
                WHERE document_id=%s AND page_no=1""",
             (str(uuid.uuid4()), doc_id),
         )
@@ -361,7 +363,7 @@ def _client(*texts):
 
 def test_run_structure_flat_fallback(conn, flat_doc, capsys):
     """自动探测无目录 -> flat：合成 1 章、零 LLM 调用、struct_mode=flat。"""
-    from kb.structure import run_structure
+    from kb.rag.structure import run_structure
 
     doc_id, cfg = flat_doc
     out = run_structure(conn, cfg, doc_id)
@@ -380,13 +382,14 @@ def test_run_structure_flat_fallback(conn, flat_doc, capsys):
 
 def test_run_structure_flat_flag_overrides_toc(conn, flat_doc):
     """页 1 有「目录」块本会走 toc；--flat 强制 flat。"""
-    from kb.structure import run_structure
+    from kb.rag.structure import run_structure
 
     doc_id, cfg = flat_doc
     with conn.cursor() as cur:
         cur.execute(
-            """INSERT INTO blocks (id, page_id, block_type, crop_path, content_md)
-               SELECT %s, id, 'text', '/tmp/c.png', '目录' FROM pages
+            """INSERT INTO blocks (id, page_id, block_type, crop_path, content_md, ordinal)
+               SELECT %s, id, 'text', '/tmp/c.png', '目录',
+                      (SELECT coalesce(max(ordinal), 0) + 1 FROM blocks WHERE page_id=pages.id) FROM pages
                WHERE document_id=%s AND page_no=1""",
             (str(uuid.uuid4()), doc_id),
         )
@@ -396,13 +399,14 @@ def test_run_structure_flat_flag_overrides_toc(conn, flat_doc):
 def test_run_structure_toc_marks_mode(conn, flat_doc):
     """TOC 路径成功后置 struct_mode='toc'（approve 分流依据）。
     章标题在非目录页找不到 -> 校准 0、拆条跳过，恰好只消耗 1 次 VLM（TOC 抽取）。"""
-    from kb.structure import run_structure
+    from kb.rag.structure import run_structure
 
     doc_id, cfg = flat_doc
     with conn.cursor() as cur:
         cur.execute(
-            """INSERT INTO blocks (id, page_id, block_type, crop_path, content_md)
-               SELECT %s, id, 'text', '/tmp/c.png', '目录 第 1 讲 口算' FROM pages
+            """INSERT INTO blocks (id, page_id, block_type, crop_path, content_md, ordinal)
+               SELECT %s, id, 'text', '/tmp/c.png', '目录 第 1 讲 口算',
+                      (SELECT coalesce(max(ordinal), 0) + 1 FROM blocks WHERE page_id=pages.id) FROM pages
                WHERE document_id=%s AND page_no=1""",
             (str(uuid.uuid4()), doc_id),
         )
@@ -415,14 +419,15 @@ def test_run_structure_toc_marks_mode(conn, flat_doc):
 
 def test_run_structure_recovers_from_flat_to_toc(conn, flat_doc):
     """自动回退 flat 后可用目录模式恢复；未向量化的合成章可安全替换。"""
-    from kb.structure import run_structure
+    from kb.rag.structure import run_structure
 
     doc_id, cfg = flat_doc
     assert run_structure(conn, cfg, doc_id)["mode"] == "flat"
     with conn.cursor() as cur:
         cur.execute(
-            """INSERT INTO blocks (id, page_id, block_type, crop_path, content_md)
-               SELECT %s, id, 'text', '/tmp/c.png', '目录 第 1 讲 口算' FROM pages
+            """INSERT INTO blocks (id, page_id, block_type, crop_path, content_md, ordinal)
+               SELECT %s, id, 'text', '/tmp/c.png', '目录 第 1 讲 口算',
+                      (SELECT coalesce(max(ordinal), 0) + 1 FROM blocks WHERE page_id=pages.id) FROM pages
                WHERE document_id=%s AND page_no=1""",
             (str(uuid.uuid4()), doc_id),
         )
@@ -442,16 +447,17 @@ def test_run_structure_recovers_from_flat_to_toc(conn, flat_doc):
 
 def test_run_structure_toc_refuses_flat_with_content(conn, flat_doc):
     """flat 已向量化的文档拒绝切回目录模式（防误删已入库内容）；CLI 语义用 SystemExit。"""
-    from kb.flat import approve_flat_pages
-    from kb.structure import run_structure
+    from kb.rag.flat import approve_flat_pages
+    from kb.rag.structure import run_structure
 
     doc_id, cfg = flat_doc
     assert run_structure(conn, cfg, doc_id)["mode"] == "flat"
     approve_flat_pages(conn, cfg, doc_id, client=_FakeEmbed())  # 产生 chunks
     with conn.cursor() as cur:
         cur.execute(
-            """INSERT INTO blocks (id, page_id, block_type, crop_path, content_md)
-               SELECT %s, id, 'text', '/tmp/c.png', '目录 第 1 讲 口算' FROM pages
+            """INSERT INTO blocks (id, page_id, block_type, crop_path, content_md, ordinal)
+               SELECT %s, id, 'text', '/tmp/c.png', '目录 第 1 讲 口算',
+                      (SELECT coalesce(max(ordinal), 0) + 1 FROM blocks WHERE page_id=pages.id) FROM pages
                WHERE document_id=%s AND page_no=1""",
             (str(uuid.uuid4()), doc_id),
         )
@@ -460,7 +466,7 @@ def test_run_structure_toc_refuses_flat_with_content(conn, flat_doc):
 
 
 def test_approve_flat_pages_closes_rows_and_embeds(conn, flat_doc):
-    from kb.flat import approve_flat_pages, build_flat_chapter
+    from kb.rag.flat import approve_flat_pages, build_flat_chapter
 
     doc_id, cfg = flat_doc
     build_flat_chapter(conn, doc_id)
@@ -499,7 +505,7 @@ def test_approve_flat_pages_closes_rows_and_embeds(conn, flat_doc):
 
 
 def test_approve_flat_pages_is_idempotent(conn, flat_doc):
-    from kb.flat import approve_flat_pages, build_flat_chapter
+    from kb.rag.flat import approve_flat_pages, build_flat_chapter
 
     doc_id, cfg = flat_doc
     build_flat_chapter(conn, doc_id)
@@ -543,8 +549,8 @@ def test_approve_flat_pages_is_idempotent(conn, flat_doc):
 
 
 def test_approve_flat_pages_rolls_back_on_embedding_failure(conn, flat_doc, monkeypatch):
-    import kb.flat
-    from kb.flat import approve_flat_pages, build_flat_chapter
+    import kb.rag.flat
+    from kb.rag.flat import approve_flat_pages, build_flat_chapter
 
     doc_id, cfg = flat_doc
     build_flat_chapter(conn, doc_id)
@@ -566,7 +572,7 @@ def test_approve_flat_pages_rolls_back_on_embedding_failure(conn, flat_doc, monk
     def fail_embedding(*args, **kwargs):
         raise RuntimeError("embedding failed")
 
-    monkeypatch.setattr(kb.flat, "embed_flat_pages", fail_embedding)
+    monkeypatch.setattr(kb.rag.flat, "embed_flat_pages", fail_embedding)
     with pytest.raises(RuntimeError, match="embedding failed"):
         approve_flat_pages(conn, cfg, doc_id, client=_FakeEmbed())
     with conn.cursor() as cur:
@@ -579,7 +585,7 @@ def test_approve_flat_pages_rolls_back_on_embedding_failure(conn, flat_doc, monk
 
 
 def test_approve_flat_pages_guards(conn, flat_doc):
-    from kb.flat import approve_flat_pages
+    from kb.rag.flat import approve_flat_pages
 
     doc_id, cfg = flat_doc
     with pytest.raises(ValueError, match="非 flat"):

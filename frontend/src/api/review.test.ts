@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import { fetchRouter, jsonResponse } from "../test/support";
 import {
   adoptReviewPage, approveReviewItem, approveReviewPage, fetchReviewDocs, fetchReviewItems,
-  createBlockAnnotation, deleteBlockAnnotation, fetchReviewPage, fetchReviewPages, pageVlm,
+  commitBlockGeometry, createBlock, createBlockAnnotation, deleteBlock, deleteBlockAnnotation,
+  fetchReviewPage, fetchReviewPages, mergeBlocks, pageVlm, previewBlockGeometry, splitBlock,
   rejectReviewPage, reviewSearch, updateBlockAnnotation, updateReviewBlock, updateReviewPage,
   updateReviewItem,
 } from "./review";
@@ -38,6 +39,12 @@ describe("api/review", () => {
     await approveReviewPage("p1", fetchImpl);
     await approveReviewItem("i1", fetchImpl);
     await pageVlm("p1", fetchImpl);
+    await mergeBlocks(["b2", "b1"], fetchImpl);
+    await splitBlock("b1", 2, fetchImpl);
+    await deleteBlock("b1", fetchImpl);
+    await previewBlockGeometry("b1", [0, 0, 1, 1], fetchImpl);
+    await commitBlockGeometry("b1", [0, 0, 1, 1], "staging.png", "新文本", "rapidocr", fetchImpl);
+    await createBlock("p1", [0, 0, 1, 1], "text", fetchImpl);
     expect(calls.map((c) => `${c.method} ${c.url}`)).toEqual([
       "PATCH /api/review/blocks/b1",
       "PATCH /api/review/pages/p1",
@@ -50,10 +57,24 @@ describe("api/review", () => {
       "POST /api/review/pages/p1/approve",
       "POST /api/review/items/i1/approve",
       "POST /api/review/pages/p1/page-vlm",
+      "POST /api/review/blocks/merge",
+      "POST /api/review/blocks/b1/split",
+      "DELETE /api/review/blocks/b1",
+      "POST /api/review/blocks/b1/geometry-preview",
+      "POST /api/review/blocks/b1/geometry-commit",
+      "POST /api/review/pages/p1/blocks",
     ]);
     expect(calls[0].body).toEqual({ content_md: "改" });
     expect(calls[6].body).toEqual({ reason: "缺题" });
     expect(calls[7].body).toEqual({ source: "page_md" });
+    expect(calls[11].body).toEqual({ block_ids: ["b2", "b1"] });
+    expect(calls[12].body).toEqual({ line_index: 2 });
+    expect(calls[14].body).toEqual({ bbox: [0, 0, 1, 1] });
+    expect(calls[15].body).toEqual({
+      bbox: [0, 0, 1, 1], staging: "staging.png",
+      adopted_text: "新文本", source_model: "rapidocr",
+    });
+    expect(calls[16].body).toEqual({ bbox: [0, 0, 1, 1], block_type: "text" });
   });
 
   it("reviewSearch：q/subject 拼装；空 q 由调用方拦", async () => {

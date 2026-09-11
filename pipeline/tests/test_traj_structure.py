@@ -1,8 +1,8 @@
 """structure 编排：run 级阶段事件 + 拆条 llm_call。"""
 import uuid
 
-from kb.config import Config
-from kb.structure import run_structure
+from kb.core.config import Config
+from kb.rag.structure import run_structure
 
 
 class _FakeMessage:

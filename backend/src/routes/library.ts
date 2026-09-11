@@ -332,7 +332,7 @@ export function libraryRoutes(pool: pg.Pool, deps: LibraryDeps, cfg: BackendConf
       if (doc.kind === "pdf") {
         const { rows } = await pool.query(
           `SELECT p.page_no, p.adopted_source, p.page_md,
-                  (SELECT string_agg(b.content_md, E'\n\n' ORDER BY b.created_at)
+                  (SELECT string_agg(b.content_md, E'\n\n' ORDER BY b.ordinal)
                    FROM blocks b
                    WHERE b.page_id = p.id AND b.content_md IS NOT NULL
                      AND b.block_type NOT IN ('header','footer')) AS blocks_md

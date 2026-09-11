@@ -14,6 +14,7 @@ import pymupdf as fitz
 
 from kb.core.config import Config
 from kb.ocr.pad import pad_mm_for
+from kb.ocr.parse import strip_reasoning
 from kb.telemetry.metering import extract_usage, record_llm_call
 
 PAPER_VLM_PROMPT = """你是试卷解析助手。把这一页试卷拆成一道道独立的题,并识别批改痕迹。
@@ -135,7 +136,7 @@ def _vlm_call(client, model: str, image_path: str, feedback: str | None):
         }],
         max_tokens=_MAX_TOKENS,
     )
-    return resp.choices[0].message.content, extract_usage(resp)
+    return strip_reasoning(resp.choices[0].message.content), extract_usage(resp)
 
 
 def _recognize_page(conn, cfg: Config, paper_id: str, page_no: int,

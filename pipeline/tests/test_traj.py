@@ -4,8 +4,8 @@ import uuid
 
 import pytest
 
-from kb.config import Config
-from kb.traj import Recorder
+from kb.core.config import Config
+from kb.telemetry.traj import Recorder
 
 
 def _cfg(tmp_path, level):
@@ -102,7 +102,7 @@ def test_start_end_duration(conn, tmp_path):
 
 
 def test_record_llm_call_forwards_to_recorder(conn, tmp_path):
-    from kb.metering import record_llm_call
+    from kb.telemetry.metering import record_llm_call
 
     with conn.cursor() as cur:
         doc_id = _mk_doc(cur)
@@ -125,7 +125,7 @@ def test_record_llm_call_forwards_to_recorder(conn, tmp_path):
 
 
 def test_record_llm_call_without_recorder_unchanged(conn):
-    from kb.metering import record_llm_call
+    from kb.telemetry.metering import record_llm_call
 
     with conn.cursor() as cur:
         doc_id = _mk_doc(cur)

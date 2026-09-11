@@ -2,7 +2,7 @@ import pytest
 
 
 def test_migrate_creates_tables(clean_db):
-    from kb.db import migrate
+    from kb.core.db import migrate
     ran = migrate(clean_db)
     assert "0001_init.sql" in ran
     with clean_db.cursor() as cur:
@@ -22,13 +22,13 @@ def test_migrate_creates_tables(clean_db):
 
 
 def test_migrate_is_idempotent(clean_db):
-    from kb.db import migrate
+    from kb.core.db import migrate
     migrate(clean_db)
     assert migrate(clean_db) == []
 
 
 def test_blocks_accepts_title_after_0002(conn):
-    from kb.db import migrate
+    from kb.core.db import migrate
     migrate(conn)
     with conn.cursor() as cur:
         cur.execute(
@@ -41,13 +41,13 @@ def test_blocks_accepts_title_after_0002(conn):
         )
         page_id = cur.fetchone()[0]
         cur.execute(
-            "INSERT INTO blocks (page_id, block_type, crop_path) VALUES (%s, 'title', '/tmp/c.png')",
+            "INSERT INTO blocks (page_id, block_type, crop_path, ordinal) VALUES (%s, 'title', '/tmp/c.png', 1)",
             (page_id,),
         )
 
 
 def test_chapters_table_after_0003(conn):
-    from kb.db import migrate
+    from kb.core.db import migrate
     migrate(conn)
     with conn.cursor() as cur:
         cur.execute("INSERT INTO documents (title, source_path) VALUES ('t', '/tmp/x.pdf') RETURNING id")
@@ -108,8 +108,8 @@ def test_chapters_content_md_after_0010(conn):
 def test_library_index_controls_after_0016(clean_db):
     """0016 后：审核状态、排除页、批注和 chunk 来源可落库。"""
     import uuid
-    from kb.db import migrate
-    from kb.db import MIGRATIONS_DIR
+    from kb.core.db import migrate
+    from kb.core.db import MIGRATIONS_DIR
 
     with clean_db.cursor() as cur:
         cur.execute(
@@ -146,8 +146,8 @@ def test_library_index_controls_after_0016(clean_db):
         cur.execute("SELECT id FROM pages")
         page_id = str(cur.fetchone()[0])
         cur.execute(
-            """INSERT INTO blocks (page_id, block_type, crop_path, content_md)
-               VALUES (%s, 'text', '/tmp/b1.png', '24 + 37 = 61') RETURNING id""",
+            """INSERT INTO blocks (page_id, block_type, crop_path, content_md, ordinal)
+               VALUES (%s, 'text', '/tmp/b1.png', '24 + 37 = 61', 1) RETURNING id""",
             (page_id,),
         )
         block_id = str(cur.fetchone()[0])
@@ -219,9 +219,55 @@ def test_chunks_chapter_ref_after_0013(conn):
                 (str(uuid.uuid4()), ch_id, doc_id, vec))
 
 
+def test_quizzes_after_0021(conn):
+    """0021 后：quizzes/quiz_questions 可落库；attempts 接受 quiz_question_id 来源；
+    三种来源全空仍被 CHECK 拒绝；同卷同题号唯一。"""
+    import pytest
+    with conn.cursor() as cur:
+        cur.execute("INSERT INTO children (name) VALUES ('小宝') RETURNING id")
+        child_id = str(cur.fetchone()[0])
+        cur.execute(
+            "INSERT INTO quizzes (child_id, title, tags) VALUES (%s,'薄弱点强化',ARRAY['倒推法']) RETURNING id",
+            (child_id,),
+        )
+        quiz_id = str(cur.fetchone()[0])
+        cur.execute(
+            """INSERT INTO quiz_questions (quiz_id, seq, type, question, options, answer, points)
+               VALUES (%s,1,'single','1+1=?','[{"value":"A","label":"1"},{"value":"B","label":"2"}]'::jsonb,
+                       ARRAY['B'],10) RETURNING id""",
+            (quiz_id,),
+        )
+        q_id = str(cur.fetchone()[0])
+        cur.execute(
+            """INSERT INTO quiz_questions (quiz_id, seq, type, question, analysis, comment_prompt, points)
+               VALUES (%s,2,'short_answer','说说为什么','参考：因为……','要点1 占四成',20)""",
+            (quiz_id,),
+        )
+        # attempts 第三种来源
+        cur.execute(
+            "INSERT INTO attempts (child_id, quiz_question_id, result) VALUES (%s,%s,'correct')",
+            (child_id, q_id),
+        )
+        # 三种来源全空被拒
+        with pytest.raises(Exception):
+            cur.execute("INSERT INTO attempts (child_id, result) VALUES (%s,'wrong')", (child_id,))
+        # 同卷同题号唯一
+        with pytest.raises(Exception):
+            cur.execute(
+                "INSERT INTO quiz_questions (quiz_id, seq, type, question) VALUES (%s,1,'single','重复题号')",
+                (quiz_id,),
+            )
+        # 非法题型被拒
+        with pytest.raises(Exception):
+            cur.execute(
+                "INSERT INTO quiz_questions (quiz_id, seq, type, question) VALUES (%s,3,'judge','判断题')",
+                (quiz_id,),
+            )
+
+
 def test_ensure_test_database_rejects_production_db(monkeypatch):
     """KB_TEST_DATABASE_URL 与 KB_DATABASE_URL 同库时,DROP SCHEMA 前置守卫必须拒绝。"""
-    from kb.db import ensure_test_database
+    from kb.core.db import ensure_test_database
 
     monkeypatch.setenv("KB_DATABASE_URL", "postgresql://localhost/kb")
     with pytest.raises(RuntimeError, match="拒绝"):
@@ -233,26 +279,26 @@ def test_ensure_test_database_rejects_production_db(monkeypatch):
 
 def test_ensure_test_database_reads_dotenv(monkeypatch, tmp_path):
     """环境变量未设时回落读 pipeline/.env 的 KB_DATABASE_URL。"""
-    from kb.db import ensure_test_database
+    from kb.core.db import ensure_test_database
 
     env = tmp_path / ".env"
     env.write_text("KB_DATABASE_URL=postgresql://localhost/prod_kb\n", encoding="utf-8")
     monkeypatch.delenv("KB_DATABASE_URL", raising=False)
-    monkeypatch.setattr("kb.db._ENV_FILE", env)  # 测试可注入 env 文件路径
+    monkeypatch.setattr("kb.core.db._ENV_FILE", env)  # 测试可注入 env 文件路径
     with pytest.raises(RuntimeError):
         ensure_test_database("postgresql://localhost/prod_kb")
 
 
 def test_env_file_points_to_pipeline_dotenv():
     """回退读的 .env 在仓库 pipeline/ 下(kb/ 上上级),不是 kb/ 内不存在的文件。"""
-    from kb.db import _ENV_FILE
+    from kb.core.db import _ENV_FILE
 
     assert _ENV_FILE.name == ".env" and _ENV_FILE.parent.name == "pipeline"
 
 
 def test_0012_dedup_ties_same_timestamp(clean_db, tmp_path):
     """0012 对 created_at 完全相同的重复行也能去重(ctid 决胜),唯一索引必成。"""
-    from kb.db import migrate
+    from kb.core.db import migrate
     from pathlib import Path
 
     migrate(clean_db)  # 先全量建好(含 0012),再构造 0012 之前的状态

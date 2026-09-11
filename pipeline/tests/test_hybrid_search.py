@@ -8,9 +8,9 @@ import pytest
 @pytest.fixture()
 def three_chunks(conn, tmp_path):
     """3 条 chunk：A 含'倒推法'但语义远，B 语义近但不含该词，C 两者皆弱。返回 (conn, cfg)。"""
-    from kb.config import Config
-    from kb.layout import run_layout
-    from kb.render import render_document
+    from kb.core.config import Config
+    from kb.ocr.layout import run_layout
+    from kb.ocr.render import render_document
 
     cfg = Config(
         database_url="postgresql://localhost/kb_test",
@@ -48,7 +48,7 @@ def three_chunks(conn, tmp_path):
 
 def test_bm25_exact_term_wins(three_chunks):
     """BM25：含查询词'倒推法'的 A 必须排第一（纯字符二元分词，无需 jieba）。"""
-    from kb.lexical import bm25_search
+    from kb.rag.lexical import bm25_search
 
     conn, _cfg = three_chunks
     hits = bm25_search(conn, "倒推法 竖式", top_k=3)
@@ -58,7 +58,7 @@ def test_bm25_exact_term_wins(three_chunks):
 
 def test_hybrid_rrf_fuses_lexical_and_vector(three_chunks):
     """RRF：A 是 BM25 第一、向量最远；B 向量最近、BM25 弱。融合后 A、B 都压过双弱的 C。"""
-    from kb.embed import search
+    from kb.rag.embed import search
 
     conn, cfg = three_chunks
 
@@ -85,7 +85,7 @@ def test_hybrid_rrf_fuses_lexical_and_vector(three_chunks):
 
 def test_rerank_reorders_by_cross_encoder(three_chunks):
     """rerank：注入假 cross-encoder 把 C 打到第一 -> 结果按 rerank 分排序。"""
-    from kb.embed import search
+    from kb.rag.embed import search
 
     conn, cfg = three_chunks
 

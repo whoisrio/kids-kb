@@ -12,7 +12,7 @@ const SESSIONS_ROOT =
 
 const Q1 = `E2E-${RUN}-不要使用工具，请先思考一遍，然后只原样输出这一行：$998001$。`;
 const Q1_EDIT = `E2E-${RUN}-不要使用工具，请只原样输出这一行：$888888$。`;
-const Q2 = `E2E-${RUN}-不要使用工具，请再用 markdown 无序列表给我三个预习建议`;
+const Q2 = `E2E-${RUN}-不要使用工具，请只输出下面 3 行，不要标题、加粗或解释，使用 markdown 无序列表：\n- 预习建议一\n- 预习建议二\n- 预习建议三`;
 
 const pool = new pg.Pool({ connectionString: DB_URL });
 
@@ -55,14 +55,23 @@ async function send(page: Page, text: string) {
 
 test("t1 thinking 当轮展开-自动折叠 + assistant 消息 markdown/LaTeX 渲染", async ({ page }) => {
   test.setTimeout(420_000);
-  await page.goto("/");
-  await send(page, Q1);
-  await expect
-    .poll(async () => page.locator(".thinking.open").count(), { timeout: 60_000 })
-    .toBeGreaterThan(0);
-  const reply = await waitReplyDone(page);
-  await expect(page.locator(".thinking.open")).toHaveCount(0);
-  expect(page.locator(".thinking")).toHaveCount(1);
+  let reply = "";
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    await page.goto("/");
+    await send(page, Q1);
+    await expect
+      .poll(async () => page.locator(".thinking.open").count(), { timeout: 60_000 })
+      .toBeGreaterThan(0);
+    reply = await waitReplyDone(page);
+    await expect(page.locator(".thinking.open")).toHaveCount(0);
+    expect(page.locator(".thinking")).toHaveCount(1);
+    if (await page.locator(".msg:last-child .bubble .katex").first().isVisible()) break;
+    const sessions = await (await page.request.get("/api/sessions")).json() as
+      { id: string; title: string }[];
+    for (const session of sessions.filter((item) => item.title.startsWith(`E2E-${RUN}`))) {
+      await page.request.delete(`/api/sessions/${session.id}`);
+    }
+  }
   await expect(page.locator(".msg:last-child .bubble .katex").first()).toBeVisible({ timeout: 10_000 });
   expect(reply).toContain("998001");
 

@@ -18,6 +18,8 @@ import { paperQuestionsRoutes } from "./routes/paperQuestions.js";
 import { reviewRoutes } from "./routes/review.js";
 import { trajectoryRoutes } from "./routes/trajectory.js";
 import { libraryRoutes } from "./routes/library.js";
+import { quizRoutes } from "./routes/quizzes.js";
+import { makeCallText } from "./llm.js";
 import { redriveWhenPipelineReady, type PaperJobDeps } from "./papers/jobs.js";
 
 export function createApp(
@@ -66,6 +68,7 @@ export function createApp(
   }));
   app.route("/api", trajectoryRoutes(pool));
   app.route("/api/library", libraryRoutes(pool, { pipelineUrl: cfg.pipelineUrl, search }, cfg));
+  app.route("/api/quizzes", quizRoutes(pool, { callText: makeCallText(cfg) }));
   return app;
 }
 

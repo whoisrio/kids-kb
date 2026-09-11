@@ -179,6 +179,40 @@ def test_analyze_empty_boxes_returns_no_drafts(tmp_path):
     assert layout.analyze("p1", str(src)) == []
 
 
+def test_analyze_skips_qrcode_figure(tmp_path):
+    """PP-DocLayout 没有 QR 标签；检测到二维码图块时默认丢弃。"""
+    from kb.ocr.layout import PaddleOCRLayout
+
+    class _FakeOutput:
+        json = {"res": {"boxes": [
+            {"label": "text", "coordinate": [0, 0, 100, 50]},
+            {"label": "figure", "coordinate": [0, 100, 100, 200]},
+        ]}}
+
+    class FakePipeline:
+        def predict(self, _path):
+            return [_FakeOutput()]
+
+    class FakeQRDetector:
+        def detectAndDecode(self, image):
+            shape = getattr(image, "shape", (0, 0, 0))
+            is_figure = shape[0] >= 90 and shape[1] >= 90
+            return ("https://example.com", None, None) if is_figure else ("", None, None)
+
+    src = tmp_path / "page.png"
+    _write_test_page(src)
+    layout = PaddleOCRLayout(
+        blocks_dir=tmp_path / "blocks", pipeline=FakePipeline(),
+        qr_detector=FakeQRDetector(),
+    )
+
+    drafts = layout.analyze("p1", str(src))
+
+    assert [draft.ordinal for draft in drafts] == [1]
+    assert drafts[0].block_type == "text"
+    assert not (tmp_path / "blocks" / "p1" / "b001.png").exists()
+
+
 def _write_blank_a4_png(path):
     import pymupdf as fitz
 

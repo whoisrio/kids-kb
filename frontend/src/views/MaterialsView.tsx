@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   fetchReviewDocs, fetchReviewItems, fetchReviewPages, fetchReviewItem,
   fetchReviewChapters, reviewSearch, type ReviewChapter, type ReviewDoc, type ReviewItemDetail, type ReviewItemSummary,
@@ -35,18 +35,25 @@ export function MaterialsView({ fetchImpl = fetch, initialDocId }: { fetchImpl?:
     try { setDocs(await fetchReviewDocs(fetchImpl)); } catch (e) { console.error(e); }
   }, [fetchImpl]);
 
+  const blockReqSeq = useRef(0);
   const reloadBlock = useCallback(async () => {
+    // 切文档/切板块时旧请求可能后返回：过期响应直接丢弃，避免列表被回灌
+    const seq = ++blockReqSeq.current;
     setError("");
     try {
       if (block === "pending" || block === "approved") {
-        setPages((await fetchReviewPages(docId || undefined, block, fetchImpl)).pages);
+        const result = (await fetchReviewPages(docId || undefined, block, fetchImpl)).pages;
+        if (seq === blockReqSeq.current) setPages(result);
       } else if (block === "chapters") {
-        setChapters((await fetchReviewChapters(docId || undefined, fetchImpl)).chapters);
+        const result = (await fetchReviewChapters(docId || undefined, fetchImpl)).chapters;
+        if (seq === blockReqSeq.current) setChapters(result);
       } else if (block === "items") {
-        setItems((await fetchReviewItems(docId || undefined, "pending", fetchImpl)).items);
+        const result = (await fetchReviewItems(docId || undefined, "pending", fetchImpl)).items;
+        if (seq === blockReqSeq.current) setItems(result);
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      if (seq === blockReqSeq.current)
+        setError(e instanceof Error ? e.message : String(e));
     }
   }, [block, docId, fetchImpl]);
 

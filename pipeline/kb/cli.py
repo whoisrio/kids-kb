@@ -10,9 +10,9 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from kb.config import load_config
-from kb.db import connect, migrate
-from kb.pipeline import ingest
+from kb.core.config import load_config
+from kb.core.db import connect, migrate
+from kb.pdf_ingest import ingest
 
 
 def list_documents(conn) -> list[tuple]:
@@ -63,10 +63,6 @@ def main() -> None:
                           help="整卷按页模式：不抽目录不拆条，页级通过后按页向量化（无目录页的试卷集合）")
     p_struct.add_argument("--exam", action="store_true",
                           help="试卷拆题模式：LLM 按题提取成条目（doc_type=exam 时自动启用）")
-    p_repro = sub.add_parser("reprocess",
-                             help="PaddleOCR-VL 整管线重处理指定页（破坏性：删旧块+相交章节 items）")
-    p_repro.add_argument("doc_id")
-    p_repro.add_argument("--pages", required=True, help="物理页码范围，如 9-15 或 9,10,11")
     p_embed = sub.add_parser("embed", help="approved 条目 + 未拆条章节向量化补跑（bge-m3 -> pgvector）")
     p_embed.add_argument("doc_id", nargs="?", default=None)
     p_approve = sub.add_parser("approve", help="批量通过条目并自动向量化(可限章)")
@@ -96,11 +92,11 @@ def main() -> None:
         migrate(conn)
         lower = str(args.pdf).lower()
         if lower.endswith(".docx"):
-            from kb.docx_ingest import ingest_docx
+            from kb.rag.docx_ingest import ingest_docx
             doc_id = ingest_docx(conn, cfg, args.pdf, args.title,
                                  subject=args.subject, grade=args.grade, doc_type=args.doc_type)
         elif lower.endswith(".md"):
-            from kb.text_ingest import ingest_md
+            from kb.rag.text_ingest import ingest_md
             doc_id = ingest_md(conn, cfg, args.pdf, args.title,
                                subject=args.subject, grade=args.grade, doc_type=args.doc_type)
         else:
@@ -112,39 +108,28 @@ def main() -> None:
         for title, status, parsed, total in list_documents(conn):
             print(f"{title}\t{status}\t{parsed}/{total} 页已解析")
     elif args.cmd == "golden-extract":
-        from kb.golden import extract
+        from kb.ocr.golden import extract
         out = extract(conn, args.doc_id, Path(args.dir))
         print(f"导出 {len(out)} 页黄金稿，请人工校对: {args.dir}/{args.doc_id}/")
     elif args.cmd == "golden-check":
-        from kb.golden import check, check_blocks
+        from kb.ocr.golden import check, check_blocks
         if args.level == "block":
             check_blocks(conn, args.doc_id, Path(args.dir))
         else:
             check(conn, cfg, args.doc_id, Path(args.dir))
     elif args.cmd == "golden-annotate":
-        from kb.golden import annotate
+        from kb.ocr.golden import annotate
         out = annotate(conn, args.doc_id, Path(args.dir))
         print(f"导出 {len(out)} 页区块标注底稿，请人工校对: {args.dir}/{args.doc_id}/")
     elif args.cmd == "structure":
-        from kb.structure import run_structure
+        from kb.rag.structure import run_structure
 
         toc_pages = [int(x) for x in args.toc_pages.split(",")] if args.toc_pages else None
         run_structure(conn, cfg, args.doc_id, toc_pages=toc_pages, flat=args.flat,
                       exam=args.exam)
-    elif args.cmd == "reprocess":
-        from kb.reprocess import reprocess_pages_paddleocr
-
-        if "-" in args.pages:
-            a, b = args.pages.split("-", 1)
-            page_nos = list(range(int(a), int(b) + 1))
-        else:
-            page_nos = [int(x) for x in args.pages.split(",")]
-        stats = reprocess_pages_paddleocr(conn, cfg, args.doc_id, page_nos)
-        print(f"重处理页 {page_nos[0]}-{page_nos[-1]}: {stats['blocks']} 块入库, "
-              f"{stats['items_deleted']} 条旧 item 已删（请重跑 structure 重建）")
     elif args.cmd == "approve":
-        from kb.embed import approve_items
-        from kb.flat import approve_flat_pages
+        from kb.rag.embed import approve_items
+        from kb.rag.flat import approve_flat_pages
         with conn.cursor() as cur:
             cur.execute("SELECT struct_mode FROM documents WHERE id=%s", (args.doc_id,))
             row = cur.fetchone()
@@ -157,19 +142,19 @@ def main() -> None:
             out = approve_items(conn, cfg, args.doc_id, chapter_no=args.chapter)
             print(f"通过 {out['approved']} 条,新增向量 {out['embedded']} 条")
     elif args.cmd == "embed":
-        from kb.embed import embed_approved_items, embed_chapters
+        from kb.rag.embed import embed_approved_items, embed_chapters
         n = embed_approved_items(conn, cfg, args.doc_id)
         n += embed_chapters(conn, cfg, args.doc_id)
         print(f"新增向量: {n} 条(条目+章节)")
     elif args.cmd == "export":
-        from kb.export_md import export_chapter_mds, export_page_mds
+        from kb.rag.export_md import export_chapter_mds, export_page_mds
         print(f"落盘: {export_page_mds(conn, cfg, args.doc_id)} 页 md, "
               f"{export_chapter_mds(conn, cfg, args.doc_id)} 章 md")
     elif args.cmd == "search":
-        from kb.embed import search
+        from kb.rag.embed import search
         reranker = None
         if args.rerank:
-            from kb.rerank import get_reranker
+            from kb.rag.rerank import get_reranker
             reranker = get_reranker()
         for h in search(conn, cfg, args.query, top_k=args.top_k,
                         mode=args.mode, reranker=reranker):

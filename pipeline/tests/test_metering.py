@@ -85,26 +85,6 @@ def test_parse_records_source_and_tokens(conn, parsed_doc):
         assert cur.fetchall() == [("transcribe", "qwen3:4b", 1200, 80)]
 
 
-def test_reprocess_marks_paddleocr_source(conn, tmp_path):
-    """PaddleOCR-VL 整管线产出的块标记本地引擎来源。"""
-    from kb.ocr.layout import run_layout
-    from kb.ocr.render import render_document
-    from kb.ocr.reprocess import reprocess_pages_paddleocr
-    from tests.test_reprocess import FAKE_BLOCKS, FakeVL
-
-    cfg = _cfg(tmp_path)
-    p = tmp_path / "b.pdf"
-    d = fitz.open()
-    d.new_page()
-    d.save(p)
-    doc_id = render_document(conn, cfg, p, title="t")
-    run_layout(conn, doc_id, cfg=cfg)
-    reprocess_pages_paddleocr(conn, cfg, doc_id, [1], pipeline=FakeVL(FAKE_BLOCKS))
-    with conn.cursor() as cur:
-        cur.execute("SELECT DISTINCT source_model FROM blocks")
-        assert cur.fetchall() == [("paddleocr-vl-1.5",)]
-
-
 def test_record_llm_call_paper_fields(conn):
     from kb.telemetry.metering import record_llm_call
 

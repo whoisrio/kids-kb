@@ -1,6 +1,6 @@
 /** 双路召回:向量(pgvector)+ BM25(内存)→ RRF k=60 融合 → 同章抑制 → 可选重排。
     chunks 有两类单元:条目(item_id)与章节分段(chapter_id,docx/md 未拆条内容的检索底座)。
-    行为对齐 pipeline/kb/embed.py 的 search(mode='hybrid')。 */
+    行为对齐 pipeline/kb/rag/embed.py 的 search(mode='hybrid')。 */
 import type pg from "pg";
 import { bm25Score } from "./bm25.js";
 

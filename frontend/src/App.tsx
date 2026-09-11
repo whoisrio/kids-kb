@@ -6,6 +6,7 @@ import { SessionsSidebar } from "./components/SessionsSidebar";
 import { useChat } from "./hooks/useChat";
 import { ChatView } from "./views/ChatView";
 import { LibraryView } from "./views/LibraryView";
+import { QuizView } from "./views/QuizView";
 import { ReviewView } from "./views/ReviewView";
 import { StatsView } from "./views/StatsView";
 import { UsageView } from "./views/UsageView";
@@ -16,6 +17,7 @@ const VIEW_NAMES = {
   library: "资料库",
   review: "复核",
   stats: "统计",
+  quiz: "练习",
   usage: "用量",
 } as const;
 
@@ -128,6 +130,11 @@ export function App() {
                   <span className="hint">错题、错因与订正</span>
                   {kidSwitch}
                 </>
+              ) : view === "quiz" ? (
+                <>
+                  <span className="hint">针对薄弱知识点的专项练习</span>
+                  {kidSwitch}
+                </>
               ) : (
                 <span className="hint">模型 token 消耗与调用流水</span>
               )}
@@ -154,8 +161,10 @@ export function App() {
             : view === "review"
               ? <ReviewView initialDocId={reviewDocId ?? undefined} />
               : view === "stats"
-                ? <StatsView childId={childId} onToast={showToast} />
-                : <UsageView />}
+                ? <StatsView childId={childId} onToast={showToast} onNavigate={() => setView("quiz")} />
+                : view === "quiz"
+                  ? <QuizView childId={childId} />
+                  : <UsageView />}
       </main>
       {toast && <div className="toast" role="status">{toast}</div>}
       {confirmDelete && (

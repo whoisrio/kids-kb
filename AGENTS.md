@@ -38,6 +38,15 @@
 - 运行：`cd e2e && npm test`。Playwright 自动拉起缺失的服务（在跑的复用），需本机 ollama 与 PostgreSQL 就绪。
 - 前置：模型切换用例需 ≥2 个注册模型（config 里 CHAT_MODELS，e2e 默认 `qwen3.5:4b-32k,qwen3.5:2b`）。
 
+## 出题（薄弱点强化练习）
+
+统计页「针对薄弱点出题」→ LLM 按弱知识点（stats 同口径 top5 tag + 题库 approved 例题做参考）出题 → 练习页（?view=quiz）作答 → 判分（选择题本地集合相等判分；简答 AI 判分，解析失败半分兜底）→ 逐题写 attempts（quiz_question_id 来源，result ≥80% correct / >0 partial / 否则 wrong，实得分存 note）→ 统计/待重练自动更新。
+
+- 出题/判分 prompt 与判分逻辑移植自 openMAIC（MIT）：出题模板 `backend/src/quiz/prompts.ts`、判分 `backend/src/quiz/grading.ts`、归一化 `backend/src/quiz/normalize.ts`（兼容 LLM 输出的 string options / correctAnswer 写法）。
+- 生成的题落 quizzes/quiz_questions（0021），**不回写 items**（不污染精校题库、不向量化）。
+- backend 一次性非流式 LLM 调用走 `src/llm.ts` makeCallText（chatBaseUrl + chatModels[0]），计量 purpose='quiz'。
+- 练习页样式 scoped 在 `.qz-root`（`frontend/src/quiz.css`，openMAIC 风 token：品牌紫 #722ed1），不碰 theme.css。
+
 ## 边界纪律
 
 - schema 只能由 pipeline/kb/migrations/ 变更。

@@ -4,8 +4,8 @@ import uuid
 import pymupdf
 import pytest
 
-from kb.config import Config
-from kb.pipeline import ingest
+from kb.core.config import Config
+from kb.pdf_ingest import ingest
 
 
 class _FakeMessage:

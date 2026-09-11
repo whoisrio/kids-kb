@@ -66,7 +66,7 @@ def test_approve_doc_dispatches_flat_document(monkeypatch):
         calls.append((conn, doc_id, client))
         return {"pages": 2, "chunks": 4, "resolved": 1}
 
-    monkeypatch.setattr("kb.flat.approve_flat_pages", fake_approve)
+    monkeypatch.setattr("kb.rag.flat.approve_flat_pages", fake_approve)
     client = TestClient(create_internal_app(
         get_conn=lambda: FakeConn("flat", True, True, True), cfg=object(), embed_client="embed"))
     resp = client.post("/internal/approve-doc", json={"doc_id": "doc1"})
@@ -83,7 +83,7 @@ def test_approve_doc_dispatches_structured_document(monkeypatch):
         calls.append((conn, doc_id, chapter_no, client))
         return {"approved": 3, "embedded": 6}
 
-    monkeypatch.setattr("kb.embed.approve_items", fake_approve)
+    monkeypatch.setattr("kb.rag.embed.approve_items", fake_approve)
     client = TestClient(create_internal_app(
         get_conn=lambda: FakeConn("toc", True, True, True), cfg=object(), embed_client="embed"))
     resp = client.post("/internal/approve-doc", json={"doc_id": "doc1"})
@@ -114,8 +114,8 @@ def test_approve_doc_structures_unprepared_document(monkeypatch):
         approve_calls.append((conn, doc_id, client))
         return {"pages": 1, "chunks": 2, "resolved": 0}
 
-    monkeypatch.setattr("kb.structure.run_structure", fake_structure)
-    monkeypatch.setattr("kb.flat.approve_flat_pages", fake_approve)
+    monkeypatch.setattr("kb.rag.structure.run_structure", fake_structure)
+    monkeypatch.setattr("kb.rag.flat.approve_flat_pages", fake_approve)
     client = TestClient(create_internal_app(
         get_conn=lambda: FakeConn(None, True, True, True), cfg=object(), embed_client="embed"))
     resp = client.post("/internal/approve-doc", json={"doc_id": "doc1"})
@@ -138,8 +138,8 @@ def test_approve_doc_rebuilds_missing_flat_chapter(monkeypatch):
         approve_calls.append((conn, doc_id, client))
         return {"pages": 1, "chunks": 2, "resolved": 0}
 
-    monkeypatch.setattr("kb.flat.build_flat_chapter", fake_build)
-    monkeypatch.setattr("kb.flat.approve_flat_pages", fake_approve)
+    monkeypatch.setattr("kb.rag.flat.build_flat_chapter", fake_build)
+    monkeypatch.setattr("kb.rag.flat.approve_flat_pages", fake_approve)
     client = TestClient(create_internal_app(
         get_conn=lambda: FakeConn("flat", False, False, True), cfg=object(), embed_client="embed"))
     resp = client.post("/internal/approve-doc", json={"doc_id": "doc1"})
@@ -162,8 +162,8 @@ def test_approve_doc_recovers_empty_text_document(monkeypatch):
         approve_calls.append((conn, doc_id, chapter_no, client))
         return {"approved": 0, "embedded": 3}
 
-    monkeypatch.setattr("kb.docx_ingest.ingest_docx", fake_recover)
-    monkeypatch.setattr("kb.embed.approve_items", fake_approve)
+    monkeypatch.setattr("kb.rag.docx_ingest.ingest_docx", fake_recover)
+    monkeypatch.setattr("kb.rag.embed.approve_items", fake_approve)
     client = TestClient(create_internal_app(get_conn=lambda: FakeConn(
         None, True, False, False, "/tmp/source.docx", "语法二阶"
     ), cfg=object(), embed_client="embed"))
@@ -182,7 +182,7 @@ def test_approve_doc_uses_chapter_flow_for_text_documents(monkeypatch):
         approve_calls.append((conn, doc_id, chapter_no, client))
         return {"approved": 0, "embedded": 0}
 
-    monkeypatch.setattr("kb.embed.approve_items", fake_approve)
+    monkeypatch.setattr("kb.rag.embed.approve_items", fake_approve)
     client = TestClient(create_internal_app(get_conn=lambda: FakeConn(
         None, True, True, False, "/tmp/source.md", "语法讲义"
     ), cfg=object(), embed_client="embed"))
@@ -206,8 +206,8 @@ def test_approve_doc_routes_exam_text_document_to_structure(monkeypatch):
         approve_calls.append((doc_id, chapter_no, client))
         return {"approved": 2, "embedded": 4}
 
-    monkeypatch.setattr("kb.structure.run_structure", fake_structure)
-    monkeypatch.setattr("kb.embed.approve_items", fake_approve)
+    monkeypatch.setattr("kb.rag.structure.run_structure", fake_structure)
+    monkeypatch.setattr("kb.rag.embed.approve_items", fake_approve)
     client = TestClient(create_internal_app(get_conn=lambda: FakeConn(
         None, True, True, False, "/tmp/source.docx", "语法期末卷", doc_type="exam"
     ), cfg=object(), embed_client="embed"))
@@ -223,7 +223,7 @@ def test_approve_doc_rejects_document_without_ingestable_content(monkeypatch):
     def fake_approve(_conn, _cfg, _doc_id, client=None):
         return {"pages": 0, "chunks": 0, "resolved": 0}
 
-    monkeypatch.setattr("kb.flat.approve_flat_pages", fake_approve)
+    monkeypatch.setattr("kb.rag.flat.approve_flat_pages", fake_approve)
     client = TestClient(create_internal_app(get_conn=lambda: FakeConn(
         "flat", True, False, False, "/tmp/source.pdf"
     ), cfg=object(), embed_client="embed"))

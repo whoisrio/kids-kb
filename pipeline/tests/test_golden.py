@@ -1,4 +1,4 @@
-from kb.golden import char_error_rate, normalize
+from kb.ocr.golden import char_error_rate, normalize
 
 
 def test_normalize_strips_whitespace():
@@ -11,14 +11,14 @@ def test_char_error_rate():
 
 
 def test_iou():
-    from kb.golden import iou
+    from kb.ocr.golden import iou
     assert iou((0, 0, 10, 10), (0, 0, 10, 10)) == 1.0
     assert iou((0, 0, 10, 10), (20, 20, 30, 30)) == 0.0
     assert 0.3 < iou((0, 0, 10, 10), (5, 0, 15, 10)) < 0.4  # 交 5x10 / 并 15x10 = 1/3
 
 
 def test_match_blocks_greedy():
-    from kb.golden import match_blocks
+    from kb.ocr.golden import match_blocks
     golden = [
         {"block_type": "title", "bbox": [0, 0, 10, 5]},
         {"block_type": "text", "bbox": [0, 6, 10, 20]},

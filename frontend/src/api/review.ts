@@ -15,6 +15,16 @@ export interface ReviewBlock {
   crop_url?: string;
   items?: { id: string; label: string | null; content_type: string; role: string }[];
   annotations: { id: string; block_id: string; author: string; body: string; created_at: string; updated_at: string }[];
+  origin?: string;
+  geometry_revision?: number;
+  crop_pad?: number[];
+}
+
+export interface BlockGeometryPreview {
+  text: string;
+  source_model: string;
+  crop_pad: [number, number];
+  staging: string;
 }
 
 export interface ReviewPageDetail {
@@ -23,7 +33,7 @@ export interface ReviewPageDetail {
   adopted_source: "blocks" | "page_md";
   blocks: ReviewBlock[];
   page_pending: { id: string; reason: string }[];
-  items?: ReviewPageItem[];
+  questions?: ReviewPageQuestion[];
   review_status: string;
   auto_review_status: string;
   manual_review_status: string;
@@ -32,10 +42,14 @@ export interface ReviewPageDetail {
   index_status: string;
 }
 
-export interface ReviewPageItem {
+export interface ReviewPageQuestion {
   id: string; label: string | null; content_type: string;
   content_md: string | null; qc_status: string;
   block_ids: string[]; block_crops: string[];
+  answer: {
+    id: string; content_md: string | null; qc_status: string;
+    block_ids: string[]; block_crops: string[];
+  } | null;
 }
 
 export interface ReviewItemSummary {
@@ -120,6 +134,40 @@ export function fetchReviewItem(id: string, fetchImpl: FetchLike = fetch): Promi
 
 export function updateReviewBlock(id: string, contentMd: string, fetchImpl: FetchLike = fetch) {
   return req(`/api/review/blocks/${encodeURIComponent(id)}`, fetchImpl, json("PATCH", { content_md: contentMd }));
+}
+
+export function mergeBlocks(blockIds: string[], fetchImpl: FetchLike = fetch) {
+  return req<{ id: string }>("/api/review/blocks/merge", fetchImpl, json("POST", { block_ids: blockIds }));
+}
+
+export function splitBlock(id: string, lineIndex: number, fetchImpl: FetchLike = fetch) {
+  return req<{ ids: string[] }>(
+    `/api/review/blocks/${encodeURIComponent(id)}/split`, fetchImpl, json("POST", { line_index: lineIndex }));
+}
+
+export function deleteBlock(id: string, fetchImpl: FetchLike = fetch) {
+  return req<{ ok: boolean }>(
+    `/api/review/blocks/${encodeURIComponent(id)}`, fetchImpl, { method: "DELETE" });
+}
+
+export function previewBlockGeometry(id: string, bbox: number[], fetchImpl: FetchLike = fetch) {
+  return req<BlockGeometryPreview>(
+    `/api/review/blocks/${encodeURIComponent(id)}/geometry-preview`, fetchImpl, json("POST", { bbox }));
+}
+
+export function commitBlockGeometry(
+  id: string, bbox: number[], staging: string, adoptedText: string, sourceModel: string,
+  fetchImpl: FetchLike = fetch,
+) {
+  return req<{ ok: boolean }>(
+    `/api/review/blocks/${encodeURIComponent(id)}/geometry-commit`, fetchImpl,
+    json("POST", { bbox, staging, adopted_text: adoptedText, source_model: sourceModel }));
+}
+
+export function createBlock(pageId: string, bbox: number[], blockType: string, fetchImpl: FetchLike = fetch) {
+  return req<{ block: ReviewBlock }>(
+    `/api/review/pages/${encodeURIComponent(pageId)}/blocks`, fetchImpl,
+    json("POST", { bbox, block_type: blockType }));
 }
 
 export function updateReviewPage(id: string, pageMd: string, fetchImpl: FetchLike = fetch) {

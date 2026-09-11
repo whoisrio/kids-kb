@@ -4,7 +4,7 @@ import uuid
 
 import pytest
 
-from kb.config import Config
+from kb.core.config import Config
 
 pandoc_missing = pytest.mark.skipif(
     subprocess.run(["which", "pandoc"], capture_output=True).returncode != 0,
@@ -53,7 +53,7 @@ class _FakeEmbed:
 
 @pandoc_missing
 def test_ingest_docx_splits_chapters(conn, cfg, docx_file):
-    from kb.docx_ingest import ingest_docx
+    from kb.rag.docx_ingest import ingest_docx
 
     doc_id = ingest_docx(conn, cfg, docx_file, title="语法一阶 期末测试",
                          subject="英语", doc_type="exam", client=_FakeEmbed())
@@ -83,7 +83,7 @@ def test_ingest_docx_splits_chapters(conn, cfg, docx_file):
 @pandoc_missing
 def test_ingest_docx_idempotent(conn, cfg, docx_file):
     """同一 docx 重复入库：复用既有 doc_id，章节不翻倍，source_path 为绝对路径。"""
-    from kb.docx_ingest import ingest_docx
+    from kb.rag.docx_ingest import ingest_docx
 
     kwargs = dict(title="语法一阶 期末测试", subject="英语", doc_type="exam",
                   client=_FakeEmbed())
@@ -99,7 +99,7 @@ def test_ingest_docx_idempotent(conn, cfg, docx_file):
 
 def test_split_chapters_no_heading():
     """无标题文档整份为单章。"""
-    from kb.docx_ingest import split_chapters
+    from kb.rag.docx_ingest import split_chapters
 
     chapters = split_chapters("纯文字没有标题\n第二行", "文档标题")
     assert chapters == [("文档标题", "纯文字没有标题\n第二行")]

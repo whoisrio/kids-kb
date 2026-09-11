@@ -8,9 +8,9 @@ import pytest
 @pytest.fixture()
 def doc_chapter(conn, tmp_path):
     """1 书 1 章（页 1-2）：页 1 两块，页 2 采用整页版。两条 item（一条 approved）。"""
-    from kb.config import Config
-    from kb.layout import run_layout
-    from kb.render import render_document
+    from kb.core.config import Config
+    from kb.ocr.layout import run_layout
+    from kb.ocr.render import render_document
 
     cfg = Config(
         database_url="postgresql://localhost/kb_test",
@@ -50,7 +50,7 @@ def doc_chapter(conn, tmp_path):
 
 def test_assemble_chapter_mixed_sources(conn, doc_chapter):
     """章节组装：采用整页版的页用 page_md，其余页用块文本，页间带页码标记。"""
-    from kb.assemble import assemble_chapter
+    from kb.rag.assemble import assemble_chapter
 
     doc_id, _cfg = doc_chapter
     md = assemble_chapter(conn, doc_id, 1)
@@ -59,7 +59,7 @@ def test_assemble_chapter_mixed_sources(conn, doc_chapter):
 
 
 def test_embed_only_approved_and_idempotent(conn, doc_chapter):
-    from kb.embed import embed_approved_items
+    from kb.rag.embed import embed_approved_items
 
     doc_id, cfg = doc_chapter
     n = embed_approved_items(conn, cfg, doc_id, client=_FakeEmbed())
@@ -75,7 +75,7 @@ def test_embed_only_approved_and_idempotent(conn, doc_chapter):
 
 def test_edit_invalidates_chunk(conn, doc_chapter):
     """条目内容被改 -> 旧向量失效删除，等下次 embed 重建。"""
-    from kb.embed import embed_approved_items, invalidate_chunk
+    from kb.rag.embed import embed_approved_items, invalidate_chunk
 
     doc_id, cfg = doc_chapter
     embed_approved_items(conn, cfg, doc_id, client=_FakeEmbed())
@@ -90,7 +90,7 @@ def test_edit_invalidates_chunk(conn, doc_chapter):
 
 def test_search_returns_nearest_with_meta(conn, doc_chapter):
     """向量检索：近的排前，带条目 meta。"""
-    from kb.embed import embed_approved_items, search
+    from kb.rag.embed import embed_approved_items, search
 
     doc_id, cfg = doc_chapter
     embed_approved_items(conn, cfg, doc_id, client=_FakeEmbed())
@@ -131,7 +131,7 @@ class _FakeEmbed:
 
 
 def test_segment_chapter_packs_paragraphs():
-    from kb.embed import segment_chapter
+    from kb.rag.embed import segment_chapter
 
     paras = "\n\n".join(f"段落{i}" + "字" * 20 for i in range(10))  # 每段约 22 字
     segs = segment_chapter(paras, max_chars=60)
@@ -144,7 +144,7 @@ def test_segment_chapter_packs_paragraphs():
 
 
 def test_embed_chapters_segments_and_idempotent(conn, doc_chapter):
-    from kb.embed import embed_chapters
+    from kb.rag.embed import embed_chapters
 
     doc_id, cfg = doc_chapter
     content = "\n\n".join(f"# 小节{i}\n内容{i}" + "字" * 30 for i in range(5))
@@ -173,7 +173,7 @@ def test_embed_chapters_segments_and_idempotent(conn, doc_chapter):
 
 def test_search_hybrid_keeps_chapter_hits_separate(conn, doc_chapter):
     """章节命中各自成行(不被 None item_id 合并),条目命中保留——供 CLI 调试与复核页试搜。"""
-    from kb.embed import embed_approved_items, embed_chapters, search
+    from kb.rag.embed import embed_approved_items, embed_chapters, search
 
     doc_id, cfg = doc_chapter
     embed_approved_items(conn, cfg, doc_id, client=_FakeEmbed())
@@ -192,7 +192,7 @@ def test_search_hybrid_keeps_chapter_hits_separate(conn, doc_chapter):
 
 
 def test_approve_items_bulk_and_embed(conn, doc_chapter):
-    from kb.embed import approve_items, embed_chapters
+    from kb.rag.embed import approve_items, embed_chapters
 
     doc_id, cfg = doc_chapter
     # doc_chapter 已有:例1(approved) 与 1-1(pending);补 needs_review 与 rejected
@@ -224,7 +224,7 @@ def test_approve_items_bulk_and_embed(conn, doc_chapter):
 
 
 def test_approve_items_chapter_filter(conn, doc_chapter):
-    from kb.embed import approve_items
+    from kb.rag.embed import approve_items
 
     doc_id, cfg = doc_chapter
     with conn.cursor() as cur:
@@ -246,7 +246,7 @@ def test_approve_items_chapter_filter(conn, doc_chapter):
 
 def test_segment_chapter_default_unchanged():
     """默认参数保持 1600/无重叠（flat 页向量化路径不受影响）。"""
-    from kb.embed import segment_chapter
+    from kb.rag.embed import segment_chapter
 
     segs = segment_chapter("甲" * 5000)
     assert [len(s) for s in segs] == [1600, 1600, 1600, 200]
@@ -254,7 +254,7 @@ def test_segment_chapter_default_unchanged():
 
 def test_segment_chapter_paragraph_aggregation_500():
     """空行分段落、按序聚合到 500 字符切 chunk。"""
-    from kb.embed import segment_chapter
+    from kb.rag.embed import segment_chapter
 
     paras = [f"第{i}段 " + "字" * 180 for i in range(6)]
     segs = segment_chapter("\n\n".join(paras), max_chars=500)
@@ -264,7 +264,7 @@ def test_segment_chapter_paragraph_aggregation_500():
 
 def test_segment_chapter_overlap():
     """overlap_chars：相邻 chunk 携带上一段尾部重叠。"""
-    from kb.embed import segment_chapter
+    from kb.rag.embed import segment_chapter
 
     text = "\n\n".join(["甲" * 300, "乙" * 300, "丙" * 300])
     segs = segment_chapter(text, max_chars=400, overlap_chars=50)
@@ -275,8 +275,8 @@ def test_segment_chapter_overlap():
 
 def test_embed_chapters_uses_chunk_config(conn, tmp_path):
     """embed_chapters 按 cfg.chunk_max_chars/overlap 分段。"""
-    from kb.config import Config
-    from kb import embed as embed_mod
+    from kb.core.config import Config
+    from kb.rag import embed as embed_mod
 
     cfg = Config(
         database_url="postgresql://localhost/kb_test",

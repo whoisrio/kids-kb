@@ -25,6 +25,22 @@ TRANSCRIBE_PROMPT = (
 )
 
 
+_THINK_PAIR_RE = re.compile(r"<think>.*?</think>", re.DOTALL | re.IGNORECASE)
+_THINK_TAG_RE = re.compile(r"</?think>", re.IGNORECASE)
+
+
+def strip_reasoning(content: str) -> str:
+    """剥掉思考型模型的 reasoning 残留：成对 <think>…</think>、未闭合 <think>
+    （reasoning 截断，整段丢弃）、孤立 </think>。不剥会把标签存进库、染上复核页。"""
+    if not content:
+        return content
+    out = _THINK_PAIR_RE.sub("", content)
+    unclosed = re.search(r"<think>", out, re.IGNORECASE)
+    if unclosed:
+        out = out[: unclosed.start()]
+    return _THINK_TAG_RE.sub("", out).strip()
+
+
 def normalize_latex(content: str) -> str:
     """把模型常用但 KaTeX 不支持的命令归一化为可渲染写法（确定性，不进复核队列）。"""
     out = re.sub(r"\\cline\{[^}]*\}", r"\\hline", content)
@@ -60,7 +76,7 @@ def transcribe_image(client, model: str, image_path, prompt: str = TRANSCRIBE_PR
         resp = client.chat.completions.create(
             model=model, messages=messages, max_tokens=12288,
         )
-    return resp.choices[0].message.content, extract_usage(resp)
+    return strip_reasoning(resp.choices[0].message.content), extract_usage(resp)
 
 
 _MAX_IMAGE_DIM = 2000
@@ -135,7 +151,8 @@ def run_parse(conn, cfg: Config, doc_id: str, client=None, ocr=None,
             try:
                 if block_type in _OCRABLE_TYPES:
                     text, source, usage = ocr(crop_path), "rapidocr", (None, None)
-                    if starred_math(text):  # OCR 把竖式拍成星号 -> 升级视觉模型
+                    # OCR 把竖式拍成星号，或对浅色文字返回空 -> 升级视觉模型
+                    if starred_math(text) or not text.strip():
                         t0 = time.monotonic()
                         text, usage = transcribe_image(client, cfg.vision_model, crop_path)
                         source = cfg.vision_model

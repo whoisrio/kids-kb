@@ -2,9 +2,10 @@
 import pytest
 from fastapi.testclient import TestClient
 
-from kb.db import connect
+from kb.core.db import connect
 from kb.internal_api import create_internal_app
 from tests.test_flat import _FakeEmbed, flat_doc
+from tests.test_block_edit import doc1
 
 
 class _FakeReranker:
@@ -48,7 +49,7 @@ def child(conn):
 
 @pytest.fixture()
 def cfg(tmp_path):
-    from kb.config import Config
+    from kb.core.config import Config
     return Config(
         database_url="postgresql://localhost/kb_test",
         storage_dir=tmp_path / "storage",
@@ -137,7 +138,7 @@ class TestPaperEndpoints:
 
 class TestEmbedFlatPage:
     def test_rebuild_one_specified_page(self, conn, flat_doc):
-        from kb.flat import build_flat_chapter
+        from kb.rag.flat import build_flat_chapter
 
         doc_id, cfg = flat_doc
         build_flat_chapter(conn, doc_id)
@@ -166,7 +167,7 @@ class TestEmbedFlatPage:
 
 class TestIndexPreviewAndExclusion:
     def test_index_preview_does_not_embed(self, conn, flat_doc):
-        from kb.flat import build_flat_chapter
+        from kb.rag.flat import build_flat_chapter
 
         doc_id, cfg = flat_doc
         build_flat_chapter(conn, doc_id)
@@ -184,7 +185,7 @@ class TestIndexPreviewAndExclusion:
         assert data["chunks"][0]["content_preview"].startswith("一、口算")
 
     def test_page_exclusion_removes_flat_chunks_and_rebuilds_chapter(self, conn, flat_doc):
-        from kb.flat import build_flat_chapter, embed_flat_pages
+        from kb.rag.flat import build_flat_chapter, embed_flat_pages
 
         doc_id, cfg = flat_doc
         build_flat_chapter(conn, doc_id)
@@ -224,8 +225,8 @@ class _ConnSpy:
 
 def test_endpoints_close_connection(conn, cfg):
     """ingest-paper 端点用后即关(不再靠 GC);失败路径也关。"""
-    from kb.db import connect
-    from kb.config import Config as C
+    from kb.core.db import connect
+    from kb.core.config import Config as C
     from kb.internal_api import create_internal_app
 
     spy_holder = []
@@ -264,7 +265,8 @@ class TestApproveItem:
             )
             block_id = str(uuid.uuid4())
             cur.execute(
-                "INSERT INTO blocks (id, page_id, block_type, crop_path, content_md) VALUES (%s,%s,'text','/tmp/c.png','例题内容')",
+                """INSERT INTO blocks (id, page_id, block_type, crop_path, content_md, ordinal)
+                   VALUES (%s,%s,'text','/tmp/c.png','例题内容',1)""",
                 (block_id, page_id),
             )
             item_id = str(uuid.uuid4())
@@ -281,7 +283,7 @@ class TestApproveItem:
     def test_approve_item_通过并即时向量化(self, conn, cfg, doc_item):
         """approve 单一事实来源：qc_status=approved + 关 pending 行 + 即时向量化。"""
         from fastapi.testclient import TestClient
-        from kb.db import connect
+        from kb.core.db import connect
 
         _doc_id, item_id, _block_id = doc_item
         app = create_internal_app(get_conn=lambda: connect(cfg.database_url), cfg=cfg,
@@ -299,7 +301,7 @@ class TestApproveItem:
     def test_approve_item_向量化失败不阻断(self, conn, cfg, doc_item):
         """embedding 抛错：approve 与关行已落库，embedded=None（可 kb.cli embed 补跑）。"""
         from fastapi.testclient import TestClient
-        from kb.db import connect
+        from kb.core.db import connect
 
         class _Boom:
             class embeddings:
@@ -318,7 +320,7 @@ class TestApproveItem:
 
     def test_approve_item_不存在_404(self, conn, cfg):
         from fastapi.testclient import TestClient
-        from kb.db import connect
+        from kb.core.db import connect
         app = create_internal_app(get_conn=lambda: connect(cfg.database_url), cfg=cfg)
         r = TestClient(app).post("/internal/approve-item",
                                  params={"item_id": "00000000-0000-0000-0000-000000000000"})
@@ -372,3 +374,70 @@ class TestPageVlm:
         r = TestClient(app).post("/internal/page-vlm",
                                  json={"page_id": "00000000-0000-0000-0000-000000000000"})
         assert r.status_code == 404
+
+
+class TestBlockGeometry:
+    def test_preview_commit_and_recrop_endpoints(self, conn, doc1, monkeypatch):
+        from fastapi.testclient import TestClient
+
+        _doc_id, cfg = doc1
+        app = create_internal_app(get_conn=lambda: conn, cfg=cfg)
+        client = TestClient(app)
+        monkeypatch.setattr("kb.ocr.block_edit.ocr_image", lambda _path: "新文本")
+        with conn.cursor() as cur:
+            cur.execute("SELECT id::text FROM blocks ORDER BY ordinal LIMIT 1")
+            (block_id,) = cur.fetchone()
+
+        preview = client.post("/internal/block-geometry-preview", json={
+            "block_id": block_id, "bbox": [90, 95, 510, 210],
+        })
+        assert preview.status_code == 200
+        preview_body = preview.json()
+        assert preview_body["text"] == "新文本"
+        assert preview_body["source_model"] == "rapidocr"
+
+        commit = client.post("/internal/block-geometry-commit", json={
+            "block_id": block_id,
+            "bbox": [90, 95, 510, 210],
+            "staging": preview_body["staging"],
+            "adopted_text": "确认后的新文本",
+            "source_model": preview_body["source_model"],
+        })
+        assert commit.status_code == 200
+        assert commit.json()["crop_pad"] == [6, 4]
+
+        recrop = client.post("/internal/block-recrop", json={"block_id": block_id})
+        assert recrop.status_code == 200
+        assert recrop.json()["crop_pad"] == [6, 4]
+
+    def test_missing_block_returns_404(self, conn, cfg):
+        from fastapi.testclient import TestClient
+
+        app = create_internal_app(get_conn=lambda: conn, cfg=cfg)
+        client = TestClient(app)
+        missing_id = "00000000-0000-0000-0000-000000000000"
+        assert client.post("/internal/block-recrop", json={"block_id": missing_id}).status_code == 404
+        assert client.post("/internal/block-geometry-preview", json={
+            "block_id": missing_id, "bbox": [0, 0, 1, 1],
+        }).status_code == 404
+        assert client.post("/internal/block-geometry-commit", json={
+            "block_id": missing_id, "bbox": [0, 0, 1, 1], "staging": "missing.png",
+            "adopted_text": "text", "source_model": "rapidocr",
+        }).status_code == 404
+
+    def test_create_block_endpoint(self, conn, doc1, monkeypatch):
+        from fastapi.testclient import TestClient
+
+        doc_id, cfg = doc1
+        app = create_internal_app(get_conn=lambda: conn, cfg=cfg)
+        client = TestClient(app)
+        monkeypatch.setattr("kb.ocr.block_edit.ocr_image", lambda _path: "补画内容")
+        with conn.cursor() as cur:
+            cur.execute("SELECT id::text FROM pages WHERE document_id=%s", (doc_id,))
+            (page_id,) = cur.fetchone()
+        response = client.post("/internal/block-create", json={
+            "page_id": page_id, "bbox": [100, 220, 500, 280], "block_type": "text",
+        })
+        assert response.status_code == 200
+        assert response.json()["block"]["origin"] == "manual"
+        assert response.json()["block"]["content_md"] == "补画内容"

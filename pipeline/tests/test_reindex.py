@@ -39,7 +39,7 @@ def flat_doc(conn, tmp_path):
 
 def test_reindex_page(conn, flat_doc):
     """页 index_status stale → reindex 后恢复 indexed。"""
-    from kb.config import Config
+    from kb.core.config import Config
 
     cfg = Config(
         database_url="postgresql://localhost/kb_test",
@@ -73,7 +73,7 @@ def test_reindex_page(conn, flat_doc):
 
 def test_reindex_chapter(conn, flat_doc):
     """章节 index_status stale → reindex 后恢复 indexed。"""
-    from kb.config import Config
+    from kb.core.config import Config
 
     cfg = Config(
         database_url="postgresql://localhost/kb_test",
@@ -138,7 +138,7 @@ def test_reindex_chapter(conn, flat_doc):
 def test_reindex_chapter(conn, flat_doc):
     """章节 index_status stale → reindex 后恢复 indexed。"""
     from kb.internal_api import create_internal_app
-    from kb.config import Config
+    from kb.core.config import Config
 
     cfg = Config(
         database_url="postgresql://localhost/kb_test",

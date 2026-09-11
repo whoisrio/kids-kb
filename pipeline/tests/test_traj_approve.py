@@ -1,8 +1,8 @@
 """approve：approve 条数 + 向量化条数进 trajectory。"""
 import uuid
 
-from kb.config import Config
-from kb.embed import approve_items
+from kb.core.config import Config
+from kb.rag.embed import approve_items
 
 
 class FakeEmbedClient:

@@ -45,21 +45,44 @@ class ReindexRequest(BaseModel):
     id: str
 
 
+class BlockRecropRequest(BaseModel):
+    block_id: str
+
+
+class BlockGeometryPreviewRequest(BaseModel):
+    block_id: str
+    bbox: list[float]
+
+
+class BlockGeometryCommitRequest(BaseModel):
+    block_id: str
+    bbox: list[float]
+    staging: str
+    adopted_text: str
+    source_model: str
+
+
+class BlockCreateRequest(BaseModel):
+    page_id: str
+    bbox: list[float]
+    block_type: str = "text"
+
+
 def create_internal_app(reranker_factory=None, get_conn=None, cfg=None,
                         vlm_client=None, embed_client=None) -> FastAPI:
     """reranker_factory / get_conn / cfg / vlm_client 均可注入假实现；默认懒加载真实依赖。"""
     if reranker_factory is None:
         def reranker_factory():
-            from kb.rerank import get_reranker
+            from kb.rag.rerank import get_reranker
             return get_reranker()
     if cfg is None:
-        from kb.config import load_config
+        from kb.core.config import load_config
         cfg = load_config()
 
     def _conn():
         if get_conn is not None:
             return get_conn()
-        from kb.db import connect
+        from kb.core.db import connect
         return connect(cfg.database_url)
 
     def _cfg():
@@ -122,7 +145,7 @@ def create_internal_app(reranker_factory=None, get_conn=None, cfg=None,
     @app.post("/internal/embed-flat-page")
     def embed_flat_page_ep(body: EmbedFlatPageRequest):
         """复核页全量通过后 flat 单页向量化；重建式幂等。"""
-        from kb.flat import embed_flat_pages
+        from kb.rag.flat import embed_flat_pages
 
         with conn_ctx() as conn:
             try:
@@ -138,7 +161,7 @@ def create_internal_app(reranker_factory=None, get_conn=None, cfg=None,
         """条目人工确认：qc_status=approved + 关 pending 复核行 + 即时向量化。
         approve 与向量化单一事实来源（CLI approve 与 React 复核页共用同一实现）。
         向量化失败不阻断（embedded=None，可 kb.cli embed 补跑）。"""
-        from kb.embed import embed_approved_items
+        from kb.rag.embed import embed_approved_items
         conn = _conn()
         try:
             with conn.cursor() as cur:
@@ -185,10 +208,10 @@ def create_internal_app(reranker_factory=None, get_conn=None, cfg=None,
                 if lower_source.endswith((".docx", ".md")):
                     if not has_content and not has_pages:
                         if lower_source.endswith(".docx"):
-                            from kb.docx_ingest import ingest_docx
+                            from kb.rag.docx_ingest import ingest_docx
                             ingest_docx(conn, _cfg(), source_path, title, client=embed_client)
                         else:
-                            from kb.text_ingest import ingest_md
+                            from kb.rag.text_ingest import ingest_md
                             ingest_md(conn, _cfg(), source_path, title, client=embed_client)
                     if doc_type != "exam":  # 试卷走下方 run_structure 拆题，不直接批准章节
                         with conn.cursor() as cur:
@@ -205,7 +228,7 @@ def create_internal_app(reranker_factory=None, get_conn=None, cfg=None,
                                     status_code=409,
                                     detail="文档没有可入库内容，请重新上传或检查源文件",
                                 )
-                        from kb.embed import approve_items
+                        from kb.rag.embed import approve_items
                         out = approve_items(conn, _cfg(), body.doc_id, client=embed_client)
                         with conn.cursor() as cur:
                             cur.execute(
@@ -223,13 +246,13 @@ def create_internal_app(reranker_factory=None, get_conn=None, cfg=None,
                             )
                         return {"doc_id": body.doc_id, **out}
                 if struct_mode is None:
-                    from kb.structure import run_structure
+                    from kb.rag.structure import run_structure
                     struct_mode = run_structure(conn, _cfg(), body.doc_id)["mode"]
                 if struct_mode == "flat" and not has_chapter:
-                    from kb.flat import build_flat_chapter
+                    from kb.rag.flat import build_flat_chapter
                     build_flat_chapter(conn, body.doc_id)
                 if struct_mode == "flat":
-                    from kb.flat import approve_flat_pages
+                    from kb.rag.flat import approve_flat_pages
                     out = approve_flat_pages(conn, _cfg(), body.doc_id, client=embed_client)
                     if not out.get("pages"):
                         raise HTTPException(
@@ -237,7 +260,7 @@ def create_internal_app(reranker_factory=None, get_conn=None, cfg=None,
                             detail="文档没有可入库内容，请重新上传或检查源文件",
                         )
                 elif struct_mode in ("toc", "exam"):
-                    from kb.embed import approve_items
+                    from kb.rag.embed import approve_items
                     out = approve_items(conn, _cfg(), body.doc_id, client=embed_client)
                     with conn.cursor() as cur:
                         cur.execute(
@@ -277,14 +300,14 @@ def create_internal_app(reranker_factory=None, get_conn=None, cfg=None,
     def page_vlm_ep(body: PageVlmRequest):
         """页级 VLM 重跑（复核页「远端整页解析」）：覆盖旧 page_md，采用版本仍由 adopt 决定。
         镜像不在此刷新（B3：镜像改由 export 重算）。"""
-        from kb.pagelvl import transcribe_page
+        from kb.ocr.pagelvl import transcribe_page
         conn = _conn()
         try:
             with conn.cursor() as cur:
                 cur.execute("SELECT 1 FROM pages WHERE id=%s", (body.page_id,))
                 if not cur.fetchone():
                     raise HTTPException(status_code=404, detail="page 不存在")
-            from kb.traj import Recorder
+            from kb.telemetry.traj import Recorder
             with conn.cursor() as cur:
                 cur.execute("SELECT document_id FROM pages WHERE id=%s", (body.page_id,))
                 doc_id = str(cur.fetchone()[0])
@@ -304,8 +327,8 @@ def create_internal_app(reranker_factory=None, get_conn=None, cfg=None,
     @app.post("/internal/index-preview")
     def index_preview_ep(body: IndexPreviewRequest):
         """预览单页 chunk 切分，不调用 embedding。"""
-        from kb.embed import segment_chapter
-        from kb.flat import page_contents, page_source_blocks
+        from kb.rag.embed import segment_chapter
+        from kb.rag.flat import page_contents, page_source_blocks
 
         with conn_ctx() as conn, conn.cursor() as cur:
             cur.execute(
@@ -356,7 +379,7 @@ def create_internal_app(reranker_factory=None, get_conn=None, cfg=None,
                     )
                     deleted_chunks = cur.rowcount
                     if struct_mode == "flat":
-                        from kb.flat import build_flat_chapter
+                        from kb.rag.flat import build_flat_chapter
                         build_flat_chapter(conn, doc_id)
                     else:
                         cur.execute(
@@ -376,7 +399,7 @@ def create_internal_app(reranker_factory=None, get_conn=None, cfg=None,
         with conn_ctx() as conn:
             try:
                 if body.type == "page":
-                    from kb.flat import embed_flat_pages
+                    from kb.rag.flat import embed_flat_pages
                     with conn.cursor() as cur:
                         cur.execute(
                             "SELECT page_no FROM pages WHERE id=%s AND document_id=%s",
@@ -391,7 +414,7 @@ def create_internal_app(reranker_factory=None, get_conn=None, cfg=None,
                             "UPDATE pages SET index_status='indexed' WHERE id=%s", (body.id,))
                     return {"chunks": 1}
                 if body.type == "chapter":
-                    from kb.embed import embed_chapters
+                    from kb.rag.embed import embed_chapters
                     with conn.cursor() as cur:
                         cur.execute("SELECT 1 FROM chapters WHERE id=%s AND document_id=%s",
                                     (body.id, body.doc_id))
@@ -406,6 +429,60 @@ def create_internal_app(reranker_factory=None, get_conn=None, cfg=None,
                 raise HTTPException(status_code=422, detail="type 取值: page|chapter")
             except HTTPException:
                 raise
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=str(e)) from e
+
+    @app.post("/internal/block-recrop")
+    def block_recrop(body: BlockRecropRequest):
+        from kb.ocr.block_edit import recrop_block
+
+        with conn_ctx() as conn:
+            try:
+                return recrop_block(conn, _cfg(), body.block_id)
+            except KeyError as e:
+                raise HTTPException(status_code=404, detail="block 不存在") from e
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=str(e)) from e
+
+    @app.post("/internal/block-geometry-preview")
+    def block_geometry_preview(body: BlockGeometryPreviewRequest):
+        from kb.ocr.block_edit import preview_block_geometry
+
+        with conn_ctx() as conn:
+            try:
+                return preview_block_geometry(conn, _cfg(), body.block_id, body.bbox, client=vlm_client)
+            except KeyError as e:
+                raise HTTPException(status_code=404, detail="block 不存在") from e
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=str(e)) from e
+
+    @app.post("/internal/block-geometry-commit")
+    def block_geometry_commit(body: BlockGeometryCommitRequest):
+        from kb.ocr.block_edit import commit_block_geometry
+
+        with conn_ctx() as conn:
+            try:
+                return commit_block_geometry(
+                    conn, _cfg(), body.block_id, body.bbox, body.staging,
+                    body.adopted_text, body.source_model,
+                )
+            except KeyError as e:
+                raise HTTPException(status_code=404, detail="block 不存在") from e
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=str(e)) from e
+
+    @app.post("/internal/block-create")
+    def block_create(body: BlockCreateRequest):
+        from kb.ocr.block_edit import create_block
+
+        with conn_ctx() as conn:
+            try:
+                return create_block(conn, _cfg(), body.page_id, body.bbox, body.block_type,
+                                    client=vlm_client)
+            except KeyError as e:
+                raise HTTPException(status_code=404, detail="page 不存在") from e
+            except ValueError as e:
+                raise HTTPException(status_code=422, detail=str(e)) from e
             except Exception as e:
                 raise HTTPException(status_code=500, detail=str(e)) from e
 

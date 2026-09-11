@@ -3,7 +3,7 @@ import pytest
 
 
 def _cfg(tmp_path):
-    from kb.config import Config
+    from kb.core.config import Config
     return Config(
         database_url="postgresql://localhost/kb_test",
         storage_dir=tmp_path / "storage",
@@ -16,8 +16,8 @@ def _cfg(tmp_path):
 @pytest.fixture()
 def doc_with_toc(conn, tmp_path):
     """1 本书：第 1 页是目录（块文本含"目录"），共 3 页。"""
-    from kb.layout import run_layout
-    from kb.render import render_document
+    from kb.ocr.layout import run_layout
+    from kb.ocr.render import render_document
 
     cfg = _cfg(tmp_path)
     p = tmp_path / "book.pdf"
@@ -66,14 +66,14 @@ def _client(text):
 
 
 def test_parse_json_array_strips_code_fence():
-    from kb.toc import _parse_json_array
+    from kb.rag.toc import _parse_json_array
     data = _parse_json_array(TOC_JSON)
     assert data[0]["title"] == "乘除法竖式谜"
     assert data[1]["tags"] == ["构造思想"]
 
 
 def test_extract_toc_writes_chapters(conn, doc_with_toc):
-    from kb.toc import extract_toc
+    from kb.rag.toc import extract_toc
 
     doc_id, cfg = doc_with_toc
     n = extract_toc(conn, cfg, doc_id, client=_client(TOC_JSON))
@@ -86,7 +86,7 @@ def test_extract_toc_writes_chapters(conn, doc_with_toc):
 
 def test_extract_toc_auto_detects_toc_page(conn, doc_with_toc):
     """不显式给 toc_pages 时，应自动找到块文本含"目录"的第 1 页（只调用 1 次模型）。"""
-    from kb.toc import extract_toc
+    from kb.rag.toc import extract_toc
 
     doc_id, cfg = doc_with_toc
     calls = []
@@ -107,7 +107,7 @@ def test_extract_toc_auto_detects_toc_page(conn, doc_with_toc):
 
 
 def test_calibrate_pages_maps_print_to_physical(conn, doc_with_toc):
-    from kb.toc import calibrate_pages, extract_toc
+    from kb.rag.toc import calibrate_pages, extract_toc
 
     doc_id, cfg = doc_with_toc
     extract_toc(conn, cfg, doc_id, client=_client(TOC_JSON))
@@ -128,7 +128,7 @@ def test_calibrate_pages_maps_print_to_physical(conn, doc_with_toc):
 
 def test_calibrate_pages_skips_toc_page(conn, doc_with_toc):
     """回归：目录页块文本含所有章节标题时，校准必须跳过目录页（真实数据踩过：全命中目录页导致 5->4 空区间）。"""
-    from kb.toc import calibrate_pages, extract_toc
+    from kb.rag.toc import calibrate_pages, extract_toc
 
     doc_id, cfg = doc_with_toc
     extract_toc(conn, cfg, doc_id, client=_client(TOC_JSON))
@@ -152,7 +152,7 @@ def test_calibrate_pages_skips_toc_page(conn, doc_with_toc):
 
 
 def test_calibrate_pages_leaves_null_when_not_found(conn, doc_with_toc):
-    from kb.toc import calibrate_pages, extract_toc
+    from kb.rag.toc import calibrate_pages, extract_toc
 
     doc_id, cfg = doc_with_toc
     extract_toc(conn, cfg, doc_id, client=_client(TOC_JSON))
@@ -164,7 +164,7 @@ def test_calibrate_pages_leaves_null_when_not_found(conn, doc_with_toc):
 
 def test_parse_json_array_tolerates_latex_backslashes():
     """模型在 JSON 字符串里直接写 LaTeX（\\square 等非法转义）时，清洗后仍能解析。"""
-    from kb.toc import _parse_json_array
+    from kb.rag.toc import _parse_json_array
     raw = '[{"content_md": "$\\\\square 7$"}, {"content_md": "正常"}]'
     # 模拟模型输出：\\square 写成了单反斜杠（非法 JSON 转义）
     raw = raw.replace("\\\\square", "\\square")
