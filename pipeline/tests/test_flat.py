@@ -225,17 +225,17 @@ def test_embed_flat_pages_segments_long_page(conn, flat_doc):
     with conn.cursor() as cur:
         cur.execute(
             "UPDATE pages SET page_md=%s WHERE document_id=%s AND page_no=2",
-            ("退位减法 " * 400, doc_id),
+            ("退位减法 " * 400, doc_id),  # 2000 字：按 cfg.chunk_max_chars=500 硬切 4 段
         )
     n = embed_flat_pages(conn, cfg, doc_id, page_no=2, client=_FakeEmbed())
-    assert n == 2
+    assert n == 4
     with conn.cursor() as cur:
         cur.execute(
             """SELECT seg_no FROM chunks
                WHERE chapter_id IS NOT NULL AND meta->>'page_no'='2'
                ORDER BY seg_no""",
         )
-        assert [row[0] for row in cur.fetchall()] == [2001, 2002]
+        assert [row[0] for row in cur.fetchall()] == [2001, 2002, 2003, 2004]
 
 
 def test_embed_flat_pages_removes_emptied_page(conn, flat_doc):

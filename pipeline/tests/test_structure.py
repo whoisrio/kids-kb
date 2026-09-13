@@ -110,6 +110,26 @@ def test_structure_chapter_skips_done(conn, doc_with_chapter):
     assert structure_chapter(conn, cfg, doc_id, 1, client=_client(ITEMS_JSON)) == 0  # 幂等
 
 
+def test_structure_chapter_tolerates_malformed_entries(conn, doc_with_chapter):
+    """模型返回单个对象（非数组）或数组里混有字符串时，跳过坏条目不炸整章。
+    （真实踩过：TypeError: string indices must be integers 中断整章拆条）"""
+    from kb.rag.structure import structure_chapter
+
+    doc_id, cfg, _ = doc_with_chapter
+    mixed = ('[{"content_type": "example", "label": "例1", "content_md": "题干", "block_ids": [1]},'
+             ' "这不是条目", 42]')
+    assert structure_chapter(conn, cfg, doc_id, 1, client=_client(mixed)) == 1
+
+
+def test_structure_chapter_accepts_single_object(conn, doc_with_chapter):
+    """模型把单条结果直接输出为对象（而非数组）时按一条处理。"""
+    from kb.rag.structure import structure_chapter
+
+    doc_id, cfg, _ = doc_with_chapter
+    single = '{"content_type": "example", "label": "例1", "content_md": "题干", "block_ids": [1]}'
+    assert structure_chapter(conn, cfg, doc_id, 1, client=_client(single)) == 1
+
+
 def test_structure_chapter_accepts_string_block_ids(conn, doc_with_chapter):
     """LLM 可能把块号输出为字符串；拆条必须归一化而不是崩溃。"""
     from kb.rag.structure import structure_chapter
@@ -340,3 +360,17 @@ def test_structure_uses_page_md_for_adopted_pages(conn, doc_with_chapter):
         block_text = cur.fetchone()[0]
     if block_text:
         assert block_text not in seen[0]
+
+
+def test_chapter_blocks_skip_excluded_pages(conn, doc_with_chapter):
+    """章节拆条输入跳过被排除的页——广告/目录页不进 LLM 拆题窗口。"""
+    from kb.rag.structure import _chapter_blocks
+
+    doc_id, _cfg, _blocks = doc_with_chapter
+    with conn.cursor() as cur:
+        cur.execute(
+            "UPDATE pages SET excluded_from_index=true WHERE document_id=%s AND page_no=2",
+            (doc_id,),
+        )
+        blocks = _chapter_blocks(cur, doc_id, 2, 3)
+    assert [content for _bid, _btype, content in blocks] == ["1. 盼望祖国早日统一 算式谜"]

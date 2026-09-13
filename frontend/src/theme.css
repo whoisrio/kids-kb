@@ -378,6 +378,14 @@ main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .qcard-paper .stem { font-size: 15px; margin-bottom: 6px; }
 .qcard-paper .muted { color: var(--text-3); font-size: 13px; }
 .qcard-paper .match-line { font-size: 13px; color: var(--ok); margin-top: 6px; }
+/* 比对呈现：题库条目块混合渲染（文字 Markdown + 公式/图/表用原书裁图，原比例只缩不放） */
+.match-compare { margin-top: 10px; border-top: 1px dashed var(--border); padding-top: 8px; }
+.match-compare h4 { font-size: 12.5px; color: var(--text-3); font-weight: 500; margin: 0 0 6px; }
+.ibp-block { margin-bottom: 6px; }
+.ibp-crop { display: block; max-width: 100%; height: auto;
+  border: 1px solid var(--border); border-radius: var(--r-md); background: #fff; }
+.ibp-md { font-size: 13.5px; }
+.cand .cand-crops { display: block; margin-bottom: 4px; }
 .verdict { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .verdict .tip { font-family: var(--display); font-weight: 600; }
 .verdict button.w, .verdict button.r, .verdict button.h {
@@ -515,6 +523,10 @@ button.metric-card { cursor: pointer; width: 100%; }
 .sc-status { border: 1px solid; }
 .sc-status.ok { background: var(--ok-soft); color: var(--ok); border-color: var(--ok-border); }
 .sc-status.pending { background: #fffbeb; color: var(--amber-deep); border-color: var(--amber-border); }
+/* 资料检测态徽标：queued=待检测（灰）、detecting=检测中（琥珀）、failed=检测失败（红） */
+.sc-status.queued { background: var(--surface-dim); color: var(--text-2); border-color: var(--border); }
+.sc-status.detecting { background: var(--amber-soft); color: var(--amber-deep); border-color: var(--amber-border); }
+.sc-status.failed { background: var(--err-soft); color: var(--err-deep); border-color: var(--err-border); }
 .sc-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; display: inline-block; }
 .sc-main { display: flex; gap: 14px; align-items: flex-start; }
 .sc-cover {
@@ -628,14 +640,15 @@ button.metric-card { cursor: pointer; width: 100%; }
 }
 .badge.auto-pending, .badge.manual-unreviewed, .badge.index-stale, .badge.stale,
 .badge.review-pending, .badge.qc-pending, .badge.idx-stale,
-.badge.pending, .badge.needs_review, .badge.unreviewed {
+.badge.pending, .badge.needs_review, .badge.unreviewed, .badge.parse-parsing {
   color: var(--amber-deep); background: var(--amber-soft); border-color: var(--amber-border);
 }
 .badge.auto-failed, .badge.manual-rejected,
 .badge.review-rejected, .badge.qc-rejected,
-.badge.failed, .badge.rejected {
+.badge.failed, .badge.rejected, .badge.parse-failed {
   color: var(--err-deep); background: var(--err-soft); border-color: var(--err-border);
 }
+/* .badge.parse-pending（待检测）沿用 badge 默认灰底，无需额外规则 */
 .badge.review-auto_passed, .badge.qc-auto_passed, .badge.auto_passed {
   color: var(--primary); background: var(--primary-soft); border-color: var(--primary-border);
 }
@@ -665,6 +678,8 @@ button.metric-card { cursor: pointer; width: 100%; }
 .itemcard.approved { border-color: var(--ok-border); }
 .itemcard.rejected { border-color: var(--err-border); }
 .itemcard .bt { font-size: 12.5px; color: var(--text-3); display: flex; gap: 6px; align-items: center; }
+/* 题卡标题行的确认按钮：右对齐、比常规 btn-ghost 更紧凑 */
+.itemcard .bt .btn-ghost { margin-left: auto; padding: 2px 8px; font-size: 11.5px; }
 .itemcard .bc { font-size: 13.5px; margin: 6px 0; }
 .itemcard .blocks-in-item { display: flex; gap: 4px; flex-wrap: wrap; }
 .itemcard .question-answer { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); }
@@ -736,17 +751,13 @@ button.metric-card { cursor: pointer; width: 100%; }
   cursor: pointer; background: transparent; padding: 0; }
 .pd-image .bbox:hover { border-color: var(--primary); background: rgba(29, 78, 216, .06); }
 .pd-image .bbox.has-issue { border: 2px solid var(--err); background: rgba(239, 68, 68, .07); }
-.pd-image .bbox.selected { border: 2.5px solid var(--primary); background: rgba(29, 78, 216, .1); }
-.pd-image .bbox .bbox-tag { position: absolute; top: -18px; left: 0;
-  font-size: 10px; font-weight: 600; padding: 1px 6px; border-radius: var(--r-sm) var(--r-sm) 0 0;
-  color: #fff; background: rgba(29, 78, 216, .85); white-space: nowrap; pointer-events: none; }
-.pd-image .bbox .bbox-tag.role-figure { background: rgba(5, 150, 105, .85); }
-.pd-image .bbox .bbox-tag.role-solution { background: rgba(217, 119, 6, .85); }
-.pd-image .bbox.has-issue .bbox-tag { background: rgba(239, 68, 68, .85); }
+.pd-image .bbox.hover { border-color: var(--primary); background: rgba(29, 78, 216, .06); }
 .pd-panel { display: flex; flex-direction: column; gap: 10px; overflow-y: auto; min-height: 0; }
 .chunk-preview { border: 1px solid var(--primary-border); border-radius: var(--r-lg);
   background: var(--primary-softer); padding: 10px; }
-.chunk-preview .meta { font-size: 12px; color: var(--text-2); margin-bottom: 6px; }
+.chunk-preview .meta { font-size: 12px; color: var(--text-2); margin-bottom: 6px;
+  display: flex; align-items: center; justify-content: space-between; }
+.chunk-preview .cp-close { padding: 0 6px; line-height: 18px; }
 .chunk-preview .chunk-line { max-height: 280px; overflow-y: auto; }
 .pd-pagemd { border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--surface); padding: 10px; }
 .pd-pagemd .meta { font-size: 12px; color: var(--text-3); margin-bottom: 6px; }
@@ -760,7 +771,22 @@ button.metric-card { cursor: pointer; width: 100%; }
 .blockitem.has-issue { border-color: var(--err); }
 .blockitem.selected { border-color: var(--primary); background: rgb(29 78 216 / 5%);
   box-shadow: 0 0 0 1px var(--primary); }
-.blockitem .bt { font-size: 11.5px; color: var(--text-3); margin-bottom: 4px; }
+.blockitem .bt { font-size: 11.5px; color: var(--text-3); margin-bottom: 4px;
+  display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.blockmenu { position: relative; flex-shrink: 0; }
+.bt-more { border: 1px solid transparent; background: transparent; color: var(--text-3);
+  border-radius: var(--r-sm); padding: 0 6px; font-size: 13px; line-height: 18px; cursor: pointer; }
+.bt-more:hover { background: var(--surface-dim); color: var(--text); border-color: var(--border); }
+.blockmenu .menu { position: absolute; right: 0; top: calc(100% + 4px); z-index: 40;
+  display: flex; flex-direction: column; min-width: 108px; padding: 4px;
+  border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface);
+  box-shadow: 0 8px 24px rgba(15, 23, 42, .14); }
+.blockmenu .menu button { border: 0; background: transparent; text-align: left; padding: 6px 10px;
+  border-radius: var(--r-sm); font-size: 12.5px; cursor: pointer; color: var(--text); white-space: nowrap; }
+.blockmenu .menu button:hover:not(:disabled) { background: var(--surface-dim); }
+.blockmenu .menu button.danger { color: var(--err); }
+.blockitem .annotation-editor { align-items: center; }
+.blockitem .annotation-editor input { flex: 1; margin-top: 0; }
 .blockitem .bc { font-size: 13px; white-space: pre-wrap; }
 .blockitem textarea { width: 100%; min-height: 56px; border: 1px solid var(--border-strong);
   border-radius: var(--r-md); padding: 6px; font: inherit; }
@@ -920,8 +946,9 @@ button.metric-card { cursor: pointer; width: 100%; }
 }
 .badge.error { color: var(--err-deep); }
 
-/* Block editing semantics */
-.bbox.focus { border: 2px solid var(--primary); box-shadow: 0 0 0 2px rgb(15 23 42 / 8%); z-index: 3; }
+/* Block editing semantics：focus 光晕加亮——页码等小框也能一眼定位 */
+.bbox.focus { border: 2px solid var(--primary); background: rgb(29 78 216 / 10%);
+  box-shadow: 0 0 0 3px rgb(29 78 216 / 35%); z-index: 3; }
 .bbox.edited { border-color: #d97706; }
 .bbox.manual { border: 2px dashed #7c3aed; background: rgb(124 58 237 / 6%); z-index: 2; }
 .bbox-tag.manual-tag { position: absolute; top: -18px; left: -1px; background: #7c3aed; color: white; font-size: 9px; font-weight: 700; padding: 1px 4px; border-radius: 4px; }
@@ -937,6 +964,21 @@ button.metric-card { cursor: pointer; width: 100%; }
 .legend-swatch.issue { border-color: var(--danger); border-width: 2px; }
 .legend-swatch.edited { border-color: #d97706; border-width: 2px; }
 .legend-swatch.manual { border: 2px dashed #7c3aed; }
+/* 处理阶段条：解析 → 复核 → 索引（绿=done / 琥珀=待处理 / 红=失败 / 灰=idle） */
+.pd-stages { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.stage-chip { display: inline-flex; align-items: center; border-radius: var(--r-sm);
+  padding: 1px 8px; font-size: 11px; font-weight: 600; white-space: nowrap;
+  border: 1px solid var(--border); background: var(--surface-dim); color: var(--text-2); }
+.stage-chip.done { color: var(--ok); background: var(--ok-soft); border-color: var(--ok-border); }
+.stage-chip.warn { color: var(--amber-deep); background: var(--amber-soft); border-color: var(--amber-border); }
+.stage-chip.err { color: var(--err-deep); background: var(--err-soft); border-color: var(--err-border); }
+.stage-arrow { color: var(--text-3); font-size: 11px; }
+.stage-error { color: var(--err-deep); font-size: 12px; }
+.blockitem.hover { border-color: var(--primary); }
+.itemcard.has-focus { border-color: var(--primary); box-shadow: 0 0 0 1px var(--primary); }
+.pd-fullpage { border: 1px solid var(--border); border-radius: var(--r-lg);
+  background: var(--surface); padding: 10px; }
+.pd-fullpage .meta { font-size: 12px; color: var(--text-3); margin-bottom: 6px; }
 .block-geometry-diff { min-width: min(720px, 92vw); }
 .block-geometry-markdown { min-height: 120px; max-height: min(56vh, 520px); overflow-y: auto; }
 .block-geometry-markdown > :first-child { margin-top: 0; }
@@ -954,7 +996,12 @@ button.metric-card { cursor: pointer; width: 100%; }
 .block-geometry-markdown .katex-display { margin: 8px 0; overflow-x: auto; }
 .diff-header, .diff-body { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .diff-header { font-size: 12px; font-weight: 700; margin-bottom: 8px; }
-.diff-body > div { min-height: 88px; padding: 10px; border: 1px solid var(--border); border-radius: 8px; white-space: pre-wrap; }
-.diff-body textarea { width: 100%; min-height: 72px; }
+/* 长文本防撑爆：两栏各自限高滚动，超长行（如单行 LaTeX）折行 */
+.diff-body > div { min-height: 88px; max-height: min(56vh, 520px); overflow-y: auto;
+  overflow-wrap: anywhere; padding: 10px; border: 1px solid var(--border);
+  border-radius: 8px; white-space: pre-wrap; }
+.diff-body textarea { width: 100%; min-height: 72px; max-height: min(52vh, 480px);
+  field-sizing: content; }
+.dialog.block-geometry-diff { max-height: 92vh; overflow-y: auto; }
 .removed { background: var(--danger-bg, #fee2e2); color: var(--danger, #dc2626); padding: 1px 3px; border-radius: 3px; }
 .added { background: #f0fdf4; color: #15803d; padding: 1px 3px; border-radius: 3px; }

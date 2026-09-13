@@ -14,6 +14,7 @@ export interface LibraryDoc extends LibraryCounts {
   parse_status: string; review_status: string; uploaded_by: string | null;
   created_at: string; struct_mode: string | null;
   total_pages: number; total_chapters: number; total_units: number;
+  pages_parsed: number; pages_failed: number;
 }
 
 export interface LibrarySummary {
@@ -97,6 +98,25 @@ export async function fetchLibraryDocs(
 
 export async function fetchLibrarySummary(fetchImpl: FetchLike = fetch): Promise<LibrarySummary> {
   return req("/api/library/summary", fetchImpl);
+}
+
+/** 上传资料入库（multipart）：后端建档后自动驱动 pipeline parse（检测），
+    文档依次呈现 parse_status pending → parsing → parsed/failed。 */
+export async function uploadLibraryDoc(
+  form: { file: File; title: string; subject: string; doc_type: "workbook" | "exam" },
+  fetchImpl: FetchLike = fetch,
+): Promise<LibraryDoc> {
+  const fd = new FormData();
+  fd.append("file", form.file);
+  fd.append("title", form.title);
+  fd.append("subject", form.subject);
+  fd.append("doc_type", form.doc_type);
+  const res = await fetchImpl("/api/library/docs", { method: "POST", body: fd });
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(body.error ?? `请求失败: ${res.status}`);
+  }
+  return res.json();
 }
 
 export async function fetchLibraryDoc(

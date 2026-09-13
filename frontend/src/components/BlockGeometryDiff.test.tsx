@@ -35,4 +35,20 @@ describe("BlockGeometryDiff", () => {
     expect(screen.getByText("加粗").tagName).toBe("STRONG");
     expect(document.querySelector(".block-geometry-markdown .katex")).not.toBeNull();
   });
+
+  it("长文本完整渲染在限高栏内（防撑爆的结构保障）", () => {
+    const longOld = Array.from({ length: 200 }, (_, i) => `旧第${i}行`).join("\n");
+    const longNew = Array.from({ length: 200 }, (_, i) => `新第${i}行`).join("\n");
+    render(<BlockGeometryDiff
+      oldText={longOld} newText={longNew}
+      onConfirm={vi.fn()} onCancel={vi.fn()}
+    />);
+    // 所有行都进 DOM（滚动由 CSS 负责）；操作区始终可用
+    expect(screen.getByText("旧第199行")).toBeInTheDocument();
+    expect(screen.getByText(/新第199行/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "采用新文本" })).toBeInTheDocument();
+    // 编辑态 textarea 也不随内容无限撑高（field-sizing: content + max-height）
+    fireEvent.click(screen.getByRole("button", { name: "手动改" }));
+    expect(screen.getByRole("textbox", { name: "手动改文本" })).toHaveValue(longNew);
+  });
 });

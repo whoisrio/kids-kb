@@ -14,7 +14,7 @@ from psycopg.types.json import Jsonb
 from kb.core.paths import resolve_storage_path, storage_rel
 from kb.ocr.layout import crop_image
 from kb.ocr.pad import padded_px_bbox
-from kb.ocr.parse import ocr_image, starred_math, transcribe_image
+from kb.ocr.parse import mathy_text, normalize_latex, ocr_image, starred_math, transcribe_image
 
 _OCRABLE_TYPES = {"text", "title", "header", "footer"}
 
@@ -55,12 +55,14 @@ def _recognize(cfg, block_type: str, crop_path: Path, client, ocr):
         client = OpenAI(base_url=cfg.vision_base_url, api_key=cfg.vision_api_key)
     if block_type in _OCRABLE_TYPES:
         text = ocr(str(crop_path))
-        if starred_math(text):
+        # 疑似公式/算式或识别为空必须升级 VLM：rapidocr 不产 LaTeX，
+        # 与「公式一律 LaTeX」（parse.TRANSCRIBE_PROMPT）同口径；VLM 输出过归一化
+        if starred_math(text) or mathy_text(text) or not text.strip():
             text, _usage = transcribe_image(client, cfg.vision_model, str(crop_path))
-            return text, cfg.vision_model
+            return normalize_latex(text), cfg.vision_model
         return text, "rapidocr"
     text, _usage = transcribe_image(client, cfg.vision_model, str(crop_path))
-    return text, cfg.vision_model
+    return normalize_latex(text), cfg.vision_model
 
 
 def preview_block_geometry(
@@ -129,7 +131,10 @@ def commit_block_geometry(
                 """UPDATE blocks SET bbox=%s, crop_pad=%s, content_md=%s, source_model=%s,
                        geometry_revision=geometry_revision+1
                    WHERE id=%s""",
-                (Jsonb([float(value) for value in bbox]), Jsonb(padding), adopted_text,
+                (Jsonb([float(value) for value in bbox]), Jsonb(padding),
+                 # 落库前归一化：adopted_text 含 KaTeX 不支持的写法（@{...} 列声明、
+                 # \cline 等）也要修掉，否则前端渲染不出来
+                 normalize_latex(adopted_text),
                  source_model, block_id),
             )
             cur.execute(

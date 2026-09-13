@@ -283,3 +283,61 @@ def test_label_map_covers_doclayout_v3_labelset():
     }
     missing = v3_labels - set(_LABEL_MAP)
     assert not missing, f"V3 标签无显式映射（会静默归 text）: {missing}"
+
+
+class _ThreeBoxOutput:
+    json = {"res": {"boxes": [
+        {"label": "text", "coordinate": [0, 0, 100, 50]},
+        {"label": "figure", "coordinate": [0, 100, 50, 150]},      # 50x50=0.0625% 页面积：小图标
+        {"label": "text", "coordinate": [0, 160, 20, 180]},        # 小块但非 figure：不受影响
+        {"label": "figure", "coordinate": [0, 200, 400, 500]},     # 400x300=3%：正常插图
+    ]}}
+
+
+class _ThreeBoxPipeline:
+    def predict(self, _path):
+        return [_ThreeBoxOutput()]
+
+
+def test_analyze_drops_tiny_figure_blocks(tmp_path):
+    """小图标/装饰图块（figure 面积占比 < 阈值）在 layout 层直接丢弃，连裁图都不生成。"""
+    from kb.ocr.layout import PaddleOCRLayout
+
+    src = tmp_path / "page.png"
+    _write_test_page(src)  # 2000x2000 px
+    layout = PaddleOCRLayout(blocks_dir=tmp_path / "blocks", pipeline=_ThreeBoxPipeline(),
+                             min_figure_ratio=0.005)
+    drafts = layout.analyze("p1", str(src))
+    assert [d.block_type for d in drafts] == ["text", "text", "figure"]
+    assert [d.ordinal for d in drafts] == [1, 2, 3]
+    assert not (tmp_path / "blocks" / "p1" / "b001.png").exists()  # 小图标未生成裁图
+
+
+def test_analyze_min_figure_ratio_zero_keeps_all(tmp_path):
+    """阈值设 0 关闭过滤，小图块保留。"""
+    from kb.ocr.layout import PaddleOCRLayout
+
+    src = tmp_path / "page.png"
+    _write_test_page(src)
+    layout = PaddleOCRLayout(blocks_dir=tmp_path / "blocks", pipeline=_ThreeBoxPipeline(),
+                             min_figure_ratio=0.0)
+    drafts = layout.analyze("p1", str(src))
+    assert [d.block_type for d in drafts] == ["text", "figure", "text", "figure"]
+
+
+def test_make_layout_analyzer_passes_min_figure_ratio(tmp_path):
+    """make_layout_analyzer 把 cfg.layout_min_figure_ratio 透传给分析器。"""
+    from kb.core.config import Config
+    from kb.ocr.layout import PaddleOCRLayout, make_layout_analyzer
+
+    cfg = Config(
+        database_url="postgresql://localhost/kb_test",
+        storage_dir=tmp_path,
+        vision_base_url="http://localhost:11434/v1",
+        vision_api_key="ollama",
+        vision_model="qwen3:4b",
+        layout_min_figure_ratio=0.01,
+    )
+    analyzer = make_layout_analyzer(cfg)
+    assert isinstance(analyzer, PaddleOCRLayout)
+    assert analyzer._min_figure_ratio == 0.01

@@ -1,5 +1,5 @@
 import { execSync } from "node:child_process";
-import { readdirSync } from "node:fs";
+import { mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -14,6 +14,14 @@ const RUN = Date.now().toString(36);
 const TITLE = `E2E-${RUN}-期中卷`;
 const DB_URL = process.env.KB_E2E_DATABASE_URL ?? "postgresql://localhost/kb";
 const Q2_TEXT = "135 ÷ 5 =";  // 与种子 item 同文(自动匹配用例)
+const PNG_1PX = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+  "base64",
+);
+const E2E_DIR = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
+// 种子题库裁图落在 pipeline/storage 下(backend 裁图端点按相对路径解析)
+const SEED_REL = path.join("e2e-seed", RUN);
+const SEED_DIR = path.join(E2E_DIR, "..", "pipeline", "storage", SEED_REL);
 
 test.describe.configure({ mode: "serial" });
 
@@ -26,9 +34,8 @@ let seedItemId = "";
 
 test.beforeAll(async () => {
   // 1) 生成 3 张合成试卷图(借 pipeline 的 pymupdf)
-  const e2eDir = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
   const outDir = path.join(tmpdir(), `kb-e2e-paper-${RUN}`);
-  execSync(`uv run --project ../pipeline python fixtures/make_paper.py ${outDir}`, { cwd: e2eDir });
+  execSync(`uv run --project ../pipeline python fixtures/make_paper.py ${outDir}`, { cwd: E2E_DIR });
   // 2) 种子孩子 + 同文题库 item(bge-m3 embedding 直插 chunks)
   const { rows: [child] } = await pool.query(
     `INSERT INTO children (name, grade) VALUES ($1,'三年级') RETURNING id::text`, [`E2E-${RUN}-小宝`]);
@@ -49,6 +56,20 @@ test.beforeAll(async () => {
     `INSERT INTO chunks (item_id, document_id, content_md, meta, embedding) VALUES
       ($1,$2,$3,'{"subject":"数学","label":"1","chapter":null,"doc_title":null}'::jsonb,$4::vector)`,
     [seedItemId, seedDocId, Q2_TEXT, `[${emb.data[0].embedding.join(",")}]`]);
+  // 3) 种子 item 的块裁图(裁图对照呈现用):页 + 块 + item_blocks,裁图文件真实落盘
+  mkdirSync(SEED_DIR, { recursive: true });
+  writeFileSync(path.join(SEED_DIR, "crop.png"), PNG_1PX);
+  const { rows: [pgRow] } = await pool.query(
+    `INSERT INTO pages (document_id, page_no, image_path) VALUES ($1,1,$2) RETURNING id::text`,
+    [seedDocId, path.join(SEED_REL, "page.png")]);
+  // formula 块走裁图呈现（text 块渲染 Markdown，断言不到 img）
+  const { rows: [blk] } = await pool.query(
+    `INSERT INTO blocks (page_id, block_type, crop_path, content_md, ordinal)
+     VALUES ($1,'formula',$2,$3,1) RETURNING id::text`,
+    [pgRow.id, path.join(SEED_REL, "crop.png"), Q2_TEXT]);
+  await pool.query(
+    `INSERT INTO item_blocks (item_id, block_id, role) VALUES ($1,$2,'stem')`,
+    [seedItemId, blk.id]);
   // 存 outDir 供测试体用
   (globalThis as { __paperDir?: string }).__paperDir = outDir;
 });
@@ -58,8 +79,10 @@ test.afterAll(async () => {
   if (paperId) await pool.query("DELETE FROM papers WHERE id=$1", [paperId]);
   if (seedDocId) {
     await pool.query("DELETE FROM attempts WHERE item_id=$1", [seedItemId]);
-    await pool.query("DELETE FROM documents WHERE id=$1", [seedDocId]);  // 级联 items/chunks
+    await pool.query("DELETE FROM documents WHERE id=$1", [seedDocId]);  // 级联 items/chunks/pages/blocks
   }
+  rmSync(path.join(E2E_DIR, "..", "pipeline", "storage", "e2e-seed", RUN),
+         { recursive: true, force: true });
   await pool.end();
 });
 
@@ -123,6 +146,43 @@ test("t2 自动匹配:同文题已关联(matched_item_id = 种子)", async () =>
      WHERE paper_id=$1 AND content_md LIKE '%135%'`, [paperId]);
   expect(rows[0].matched_item_id).toBe(seedItemId);
   expect(rows[0].match_score).toBeGreaterThan(0.88);
+});
+
+test("t2b 裁图对照:candidates 带题库块裁图;QuestionCard/MatchPicker 呈现裁图", async ({ page }) => {
+  // API 层:已匹配题的候选带 blocks[].crop_url
+  const { rows: [q2] } = await pool.query(
+    `SELECT id::text FROM paper_questions WHERE paper_id=$1 AND content_md LIKE '%135%'`, [paperId]);
+  const cand = await page.request.get(`/api/paper-questions/${q2.id}/candidates`);
+  expect(cand.ok()).toBe(true);
+  const { candidates } = await cand.json() as {
+    candidates: { item_id: string; blocks: { block_id: string; crop_url: string }[] }[];
+  };
+  const top = candidates.find((c) => c.item_id === seedItemId);
+  expect(top).toBeTruthy();
+  expect(top!.blocks[0].crop_url).toContain("/api/review/blocks/");
+
+  // UI 层:已匹配的 q2 在 QuestionCard 出现「题库原题对照」裁图
+  await page.goto("/");
+  await page.getByRole("button", { name: "复核" }).click();
+  await page.getByRole("button", { name: TITLE }).click();
+  await page.locator(".qnav button").nth(1).click();
+  await expect(page.locator(".match-compare")).toBeVisible();
+  await expect(page.locator('.match-compare img[src*="api/review/blocks"]')).toBeVisible();
+
+  // MatchPicker:清除匹配后可打开,候选卡内呈现裁图;点选第 1 候选恢复匹配(不破坏后续用例状态)
+  await page.request.put(`/api/paper-questions/${q2.id}/match`, { data: { item_id: null } });
+  await page.reload();
+  await page.getByRole("button", { name: "复核" }).click();
+  await page.getByRole("button", { name: TITLE }).click();
+  await page.locator(".qnav button").nth(1).click();
+  await page.getByRole("button", { name: "待匹配 · 选择题库条目" }).click();
+  const dialog = page.getByRole("dialog", { name: "选择题库条目" });
+  await expect(dialog.locator('.cand img[src*="api/review/blocks"]').first()).toBeVisible();
+  await dialog.locator(".cand").first().click();
+  await expect(page.locator(".match-compare")).toBeVisible();
+  const { rows: [rematch] } = await pool.query(
+    `SELECT matched_item_id::text FROM paper_questions WHERE id=$1`, [q2.id]);
+  expect(rematch.matched_item_id).toBe(seedItemId);  // 点选恢复了种子匹配
 });
 
 test("t3 键盘确认 3 题 -> attempts 逐字段 -> done", async ({ page }) => {

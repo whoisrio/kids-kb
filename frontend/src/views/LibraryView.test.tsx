@@ -21,7 +21,7 @@ const doc = {
   id: "d1", title: "数学练习册", subject: "数学", file_type: "pdf",
   doc_type: "workbook", cover_url: "/api/review/pages/p1/image",
   parse_status: "parsed", review_status: "pending", created_at: "2026-01-01",
-  total_units: 10, total_pages: 10, total_chapters: 0,
+  total_units: 10, total_pages: 10, total_chapters: 0, pages_parsed: 10, pages_failed: 0,
   auto_review: { pending: 2, passed: 8, needs_review: 0, failed: 0 },
   manual_review: { unreviewed: 2, approved: 8, rejected: 0 },
   index: { indexed: 8, stale: 1, not_indexed: 1, excluded: 1 },
@@ -127,11 +127,68 @@ describe("LibraryView", () => {
     ));
   });
 
-  it("上传按钮打开上传弹窗", async () => {
+  it("上传按钮打开资料上传弹窗", async () => {
     const user = userEvent.setup();
-    render(<LibraryView kids={[{ id: "c1", name: "小宝" }]} />);
+    render(<LibraryView />);
     await user.click(screen.getByRole("button", { name: /上传新教辅/ }));
-    expect(screen.getByRole("dialog", { name: "上传试卷" })).toBeInTheDocument();
+    const dialog = screen.getByRole("dialog", { name: "上传资料" });
+    // 资料库入库无「孩子」字段，有类型选择
+    expect(dialog).toBeInTheDocument();
+    expect(screen.getByLabelText("类型")).toHaveValue("workbook");
+  });
+
+  it("检测中（parsing）显示进度徽标并轮询刷新，出检测态后停止", async () => {
+    // shouldAdvanceTime：waitFor/userEvent 的内部计时器仍走真实时间，手动 advance 只驱动轮询
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const parsingDoc = {
+        ...doc, id: "d2", title: "新教辅", parse_status: "parsing",
+        total_pages: 8, pages_parsed: 3, pages_failed: 0,
+        auto_review: { pending: 0, passed: 0, needs_review: 0, failed: 0 },
+      };
+      const parsedDoc = { ...parsingDoc, parse_status: "parsed", pages_parsed: 8 };
+      let calls = 0;
+      fetchLibraryDocs.mockImplementation(async () => {
+        calls++;
+        // 第一轮检测中，第二轮起检测完成
+        return {
+          documents: [calls === 1 ? parsingDoc : parsedDoc],
+          pagination: { page: 1, pageSize: 20, total: 1, totalPages: 1 },
+        };
+      });
+      render(<LibraryView />);
+      await waitFor(() => expect(screen.getByText("检测中 3/8 页")).toBeInTheDocument());
+      // 检测态下原待确认/就绪徽标让位
+      expect(screen.queryByText("全部就绪")).toBeNull();
+      // 4s 后轮询触发一次 reload
+      const before = calls;
+      await vi.advanceTimersByTimeAsync(4000);
+      expect(calls).toBe(before + 1);
+      // 出检测态后不再轮询
+      await waitFor(() => expect(screen.queryByText(/检测中/)).toBeNull());
+      const settled = calls;
+      await vi.advanceTimersByTimeAsync(8000);
+      expect(calls).toBe(settled);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("检测失败（failed）显示红徽标且不轮询；待检测（pending）灰徽标", async () => {
+    fetchLibraryDocs.mockResolvedValue({
+      documents: [
+        { ...doc, id: "d3", title: "坏资料", parse_status: "failed",
+          auto_review: { pending: 0, passed: 0, needs_review: 0, failed: 0 } },
+        { ...doc, id: "d4", title: "排队资料", parse_status: "pending", cover_url: null,
+          auto_review: { pending: 0, passed: 0, needs_review: 0, failed: 0 } },
+      ],
+      pagination: { page: 1, pageSize: 20, total: 2, totalPages: 1 },
+    });
+    render(<LibraryView />);
+    await waitFor(() => expect(screen.getByText("检测失败")).toBeInTheDocument());
+    expect(screen.getByText("待检测")).toBeInTheDocument();
+    expect(screen.queryByText("全部就绪")).toBeNull();
+    expect(screen.queryByText(/页待确认/)).toBeNull();
   });
 
   it("切到明细表格视图：审核与索引计数、查看入口", async () => {

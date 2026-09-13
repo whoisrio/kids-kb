@@ -67,7 +67,7 @@ test.afterAll(async () => {
   await pool.end();
 });
 
-test("题目视图聚合题干与解析；条目标签只在选中块显示", async ({ page }) => {
+test("题目视图聚合题干与解析；聚焦框不带标题且左右联动", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("button", { name: "复核", exact: true }).click();
   await page.getByRole("button", { name: "资料", exact: true }).click();
@@ -76,9 +76,11 @@ test("题目视图聚合题干与解析；条目标签只在选中块显示", as
   await page.locator(".page-card").click();
   await expect(page.getByAltText("第 1 页")).toBeVisible();
 
+  // 聚焦框是纯蓝框：任何时刻都不渲染 #标签
   await expect(page.locator(".bbox-tag.role-stem")).toHaveCount(0);
   await page.getByRole("button", { name: `块 ${stemBlockId}` }).click();
-  await expect(page.getByText("#例 1")).toBeVisible();
+  await expect(page.locator(".pd-image .bbox.focus")).toHaveCount(1);
+  await expect(page.getByText("#例 1")).toHaveCount(0);
 
   await page.getByRole("button", { name: "题目视图" }).click();
   const card = page.locator(".itemcard");
@@ -86,6 +88,12 @@ test("题目视图聚合题干与解析；条目标签只在选中块显示", as
   await expect(card).toContainText("题目 · 例 1");
   await expect(card).toContainText("题干：24+37=61");
   await expect(card.locator(".question-answer")).toContainText("解析：61");
+  // 题目视图联动：选中块所属题卡高亮
+  await expect(card).toHaveClass(/has-focus/);
+
+  // mini-block 点击与块列表一致：左图对应框聚焦
+  await card.locator(".mini-block").first().click();
+  await expect(page.getByRole("button", { name: `块 ${stemBlockId}` })).toHaveClass(/focus/);
 
   const db = await pool.query(
     `SELECT q.content_md, a.content_md AS answer_md, a.paired_item_id

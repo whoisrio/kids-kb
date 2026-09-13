@@ -46,6 +46,35 @@ def test_load_config_doc_ognize(tmp_path, monkeypatch):
     assert cfg.doc_ognize_api_key == "sk-x"
 
 
+def test_load_config_heading(tmp_path, monkeypatch):
+    """标题层级判定的模型走 HEADING_* 配置，留空回落 DOC_OGNIZE_* → KB_VISION_*。"""
+    monkeypatch.setenv("KB_DATABASE_URL", "postgresql://localhost/kb_test")
+    for v in ("HEADING_MODEL", "HEADING_BASE_URL", "HEADING_API_KEY",
+              "DOC_OGNIZE_MODEL", "DOC_OGNIZE_BASE_URL", "DOC_OGNIZE_API_KEY"):
+        monkeypatch.delenv(v, raising=False)
+    cfg = load_config(tmp_path / "不存在.env")
+    assert cfg.heading_model is None
+    assert cfg.heading_base_url is None
+    assert cfg.heading_api_key is None
+    # 全留空：逐项回落到 vision 渠道
+    assert cfg.heading_endpoint() == (
+        cfg.vision_base_url, cfg.vision_api_key, cfg.vision_model)
+    # doc_ognize 配了而 heading 没配：回落 doc_ognize 渠道
+    monkeypatch.setenv("DOC_OGNIZE_BASE_URL", "https://api.example.com/v1")
+    monkeypatch.setenv("DOC_OGNIZE_API_KEY", "sk-x")
+    monkeypatch.setenv("DOC_OGNIZE_MODEL", "qwen3-32b")
+    cfg = load_config(tmp_path / "不存在.env")
+    assert cfg.heading_endpoint() == ("https://api.example.com/v1", "sk-x", "qwen3-32b")
+    # heading 显式配置优先，且逐项回落
+    monkeypatch.setenv("HEADING_MODEL", "qwen3:4b")
+    cfg = load_config(tmp_path / "不存在.env")
+    assert cfg.heading_endpoint() == ("https://api.example.com/v1", "sk-x", "qwen3:4b")
+    monkeypatch.setenv("HEADING_BASE_URL", "http://localhost:11434/v1")
+    monkeypatch.setenv("HEADING_API_KEY", "ollama")
+    cfg = load_config(tmp_path / "不存在.env")
+    assert cfg.heading_endpoint() == ("http://localhost:11434/v1", "ollama", "qwen3:4b")
+
+
 def test_trajectory_level_default_simple(monkeypatch, tmp_path):
     monkeypatch.setenv("KB_DATABASE_URL", "postgresql://localhost/kb")
     monkeypatch.delenv("KB_TRAJECTORY_LEVEL", raising=False)
@@ -90,3 +119,14 @@ def test_load_config_layout_model_invalid(tmp_path, monkeypatch):
         load_config(tmp_path / "不存在.env")
     assert "PP-DocLayoutV2" in str(exc.value)
     assert "PP-DocLayoutV3" in str(exc.value)
+
+
+def test_load_config_min_figure_ratio(tmp_path, monkeypatch):
+    """小图块过滤阈值：默认 0.005（图块面积占比 <0.5% 丢弃），0 关闭。"""
+    monkeypatch.setenv("KB_DATABASE_URL", "postgresql://localhost/kb_test")
+    monkeypatch.delenv("KB_LAYOUT_MIN_FIGURE_RATIO", raising=False)
+    assert load_config(tmp_path / "不存在.env").layout_min_figure_ratio == 0.005
+    monkeypatch.setenv("KB_LAYOUT_MIN_FIGURE_RATIO", "0.01")
+    assert load_config(tmp_path / "不存在.env").layout_min_figure_ratio == 0.01
+    monkeypatch.setenv("KB_LAYOUT_MIN_FIGURE_RATIO", "0")
+    assert load_config(tmp_path / "不存在.env").layout_min_figure_ratio == 0.0

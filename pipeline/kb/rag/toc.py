@@ -77,11 +77,13 @@ def _parse_json_array(text: str) -> list[dict]:
 
 
 def detect_toc_pages(cur, doc_id: str) -> list[int]:
-    """自动探测目录页：前 15 页里块文本含「目录」的页。"""
+    """自动探测目录页：前 15 页里块文本含「目录」的页。
+    目录横幅常是艺术字，OCR 会拆成「目\\n录」——剥掉空白后再匹配。"""
     cur.execute(
         """SELECT DISTINCT p.page_no FROM pages p
            JOIN blocks b ON b.page_id = p.id
-           WHERE p.document_id=%s AND p.page_no <= 15 AND b.content_md LIKE %s
+           WHERE p.document_id=%s AND p.page_no <= 15
+             AND regexp_replace(b.content_md, '\\s', '', 'g') LIKE %s
            ORDER BY p.page_no""",
         (doc_id, "%目录%"),
     )
@@ -129,32 +131,62 @@ def extract_toc(conn, cfg: Config, doc_id: str, client=None,
 
 
 def calibrate_pages(conn, doc_id: str) -> int:
-    """把印刷页码换算为物理页范围：章节标题在已解析块文本中的首次出现页为首页。
-    找不到的章节留 NULL（页面未入库，放量重跑时自动补上）。返回成功定位数。"""
+    """把印刷页码换算为物理页范围，返回成功定位数。两条路径：
+
+    1. 页脚偏移（优先）：footer 块的纯数字内容是印刷页码，拟合 物理页-印刷页
+       偏移众数，print_page+offset 即物理首页。章节横幅是艺术字、OCR 不可靠
+       （真实事故：「乘除法竖式谜」被 OCR 成「乘\\n除法竖式识\\n式谜\\n金」），
+       而页脚页码是纯数字，稳定得多。
+    2. 标题首次出现（兜底）：找不到页脚偏移时按标题文本搜首次出现页。
+
+    目录页识别双判据：剥空白后含「目录」（横幅艺术字被 OCR 拆成「目\\n录」也能中），
+    或标题密度（命中 ≥半数且 ≥2 个章节标题，应对横幅是纯图片 OCR 不出的情况）。
+    只靠搜「目录」字面量曾导致全书章节都定位到目录页（page_start=5, page_end=4）。
+    找不到的章节留 NULL（页面未入库，放量重跑时自动补上）。"""
     with conn.cursor() as cur:
         cur.execute(
-            "SELECT id, title FROM chapters WHERE document_id=%s ORDER BY chapter_no",
+            "SELECT id, title, print_page FROM chapters WHERE document_id=%s ORDER BY chapter_no",
             (doc_id,),
         )
         chapters = cur.fetchall()
-        located = []  # (chapter_id, page_start)
-        for cid, title in chapters:
-            # 排除目录页：目录页包含所有章节标题，直接搜"首次出现页"会全命中目录
-            cur.execute(
-                """SELECT p.page_no FROM pages p
-                   JOIN blocks b ON b.page_id = p.id
-                   WHERE p.document_id=%s AND b.content_md LIKE %s
-                     AND NOT EXISTS (SELECT 1 FROM blocks b2
-                                     WHERE b2.page_id = p.id
-                                       AND b2.content_md LIKE %s)
-                   ORDER BY p.page_no LIMIT 1""",
-                (doc_id, f"%{title}%", "%目录%"),
-            )
-            row = cur.fetchone()
-            if row:
-                located.append((cid, row[0]))
         cur.execute("SELECT max(page_no) FROM pages WHERE document_id=%s", (doc_id,))
         max_page = cur.fetchone()[0] or 0
+        offset = _print_page_offset(cur, doc_id)
+        located = []  # (chapter_id, page_start)
+        if offset is not None:
+            for cid, _title, print_page in chapters:
+                if print_page is None:
+                    continue
+                start = print_page + offset
+                if start <= max_page:  # 物理页未入库的章留 NULL
+                    located.append((cid, start))
+        else:
+            cur.execute(
+                """SELECT p.page_no, string_agg(b.content_md, '\\n') FROM pages p
+                   JOIN blocks b ON b.page_id = p.id
+                   WHERE p.document_id=%s AND b.content_md IS NOT NULL
+                   GROUP BY p.page_no""",
+                (doc_id,),
+            )
+            page_text = cur.fetchall()
+            n_ch = len(chapters)
+            toc_pages = set()
+            for page_no, text in page_text:
+                text = text or ""
+                # 判据一：剥空白后含「目录」（横幅艺术字被 OCR 拆成「目\n录」也能中）
+                if "目录" in re.sub(r"\s", "", text):
+                    toc_pages.add(page_no)
+                    continue
+                # 判据二：标题密度——命中 ≥半数且 ≥2 个章节标题
+                # （横幅纯图片 OCR 不出「目录」时的兜底；单章目录页靠判据一）
+                hits = sum(1 for _, t, _ in chapters if t in text)
+                if hits >= 2 and hits * 2 >= n_ch:
+                    toc_pages.add(page_no)
+            for cid, title, _ in chapters:
+                starts = [page_no for page_no, text in page_text
+                          if title in (text or "") and page_no not in toc_pages]
+                if starts:
+                    located.append((cid, min(starts)))
         for i, (cid, start) in enumerate(located):
             end = (located[i + 1][1] - 1) if i + 1 < len(located) else max_page
             cur.execute(
@@ -162,3 +194,27 @@ def calibrate_pages(conn, doc_id: str) -> int:
                 (start, end, cid),
             )
     return len(located)
+
+
+def _print_page_offset(cur, doc_id: str) -> int | None:
+    """从 footer 块拟合 物理页-印刷页 偏移众数；拟合不出返回 None。
+    页脚混有 Logo/装饰文字，只认剥掉非数字后的纯数字（'$$ 2 $$' → 2）。"""
+    cur.execute(
+        """SELECT p.page_no, b.content_md FROM blocks b
+           JOIN pages p ON p.id = b.page_id
+           WHERE p.document_id=%s AND b.block_type='footer' AND b.content_md IS NOT NULL""",
+        (doc_id,),
+    )
+    votes: dict[int, int] = {}
+    for page_no, content in cur.fetchall():
+        digits = re.sub(r"\D", "", content or "")
+        if not digits:
+            continue
+        print_no = int(digits)
+        if not 0 < print_no <= page_no:  # 印刷页必 ≤ 物理页（前面还有封面/目录）
+            continue
+        off = page_no - print_no
+        votes[off] = votes.get(off, 0) + 1
+    if not votes:
+        return None
+    return max(votes, key=votes.get)

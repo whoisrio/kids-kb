@@ -1,5 +1,9 @@
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { Hono } from "hono";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { redriveStuckDocs } from "../library/jobs.js";
 import { libraryRoutes } from "./library.js";
 
 const DOC_ID = "11111111-1111-1111-1111-111111111111";
@@ -413,5 +417,150 @@ describe("GET /api/library/:id/content", () => {
       pipelineUrl: "http://mock:8766", search: async () => [],
     } as never, { storageRoot: "/tmp" } as never)).request(`/api/library/${DOC_ID}/content`);
     expect(res.status).toBe(404);
+  });
+});
+
+describe("POST /api/library/docs", () => {
+  let storageRoot: string;
+  beforeEach(async () => {
+    storageRoot = await mkdtemp(join(tmpdir(), "kb-library-test-"));
+  });
+  afterEach(async () => {
+    await rm(storageRoot, { recursive: true, force: true });
+  });
+
+  function recordingPool() {
+    const calls: { sql: string; params?: unknown[] }[] = [];
+    const pool2 = {
+      query: async (sql: string, params?: unknown[]) => {
+        calls.push({ sql, params });
+        return { rows: [] };
+      },
+    } as never;
+    return { pool2, calls };
+  }
+
+  function uploadApp(pool2: never, fetchImpl: typeof fetch) {
+    return new Hono().route("/api/library", libraryRoutes(pool2, {
+      pipelineUrl: "http://mock:8766", search: async () => [], fetchImpl,
+    } as never, { storageRoot } as never));
+  }
+
+  function uploadForm(fileName: string, bytes: Uint8Array, fields: Record<string, string> = {}) {
+    const form = new FormData();
+    form.append("file", new Blob([bytes as BlobPart]), fileName);
+    for (const [k, v] of Object.entries(fields)) form.append(k, v);
+    return form;
+  }
+
+  it("上传 pdf:建行 pending + 落盘 + 以正确 body 调 pipeline", async () => {
+    const { pool2, calls } = recordingPool();
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => new Response("{}"));
+    const app2 = uploadApp(pool2, fetchMock as unknown as typeof fetch);
+    const res = await app2.request("/api/library/docs", {
+      method: "POST",
+      body: uploadForm("数学练习册.pdf", new TextEncoder().encode("%PDF-1.4 fake"),
+        { title: "数学练习册", subject: "数学", doc_type: "exam" }),
+    });
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(body).toMatchObject({
+      title: "数学练习册", subject: "数学", doc_type: "exam", parse_status: "pending",
+    });
+    const sourcePath = join(storageRoot, body.id, "source.pdf");
+    // 预插 documents 行(parse_status='pending',source_path 为绝对路径)
+    const insert = calls.find((c) => c.sql.includes("INSERT INTO documents"));
+    expect(insert?.params).toEqual([body.id, "数学练习册", "数学", "exam", sourcePath]);
+    // 文件落盘 storageRoot/<id>/source.pdf
+    expect(await readFile(sourcePath, "utf8")).toContain("%PDF-1.4");
+    // pipeline 被以正确 body 调用
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://mock:8766/internal/ingest-doc",
+      expect.objectContaining({ method: "POST" }),
+    );
+    const init = fetchMock.mock.calls[0]?.[1] as RequestInit;
+    expect(JSON.parse(String(init.body))).toEqual({
+      source_path: sourcePath, title: "数学练习册", subject: "数学", doc_type: "exam",
+    });
+  });
+
+  it("title 缺省取文件名去扩展名;subject 空串存 NULL", async () => {
+    const { pool2, calls } = recordingPool();
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => new Response("{}"));
+    const app2 = uploadApp(pool2, fetchMock as unknown as typeof fetch);
+    const res = await app2.request("/api/library/docs", {
+      method: "POST",
+      body: uploadForm("寒假计算大通关.docx", new TextEncoder().encode("docx")),
+    });
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(body.title).toBe("寒假计算大通关");
+    expect(body.doc_type).toBe("workbook");  // doc_type 默认 workbook
+    const insert = calls.find((c) => c.sql.includes("INSERT INTO documents"));
+    expect(insert?.params?.[2]).toBeNull();  // subject 空 -> NULL
+    const init = fetchMock.mock.calls[0]?.[1] as RequestInit;
+    expect(JSON.parse(String(init.body)).subject).toBeNull();
+  });
+
+  it("非法扩展名 422,不落库不落盘不调 pipeline", async () => {
+    const { pool2, calls } = recordingPool();
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => new Response("{}"));
+    const app2 = uploadApp(pool2, fetchMock as unknown as typeof fetch);
+    const res = await app2.request("/api/library/docs", {
+      method: "POST",
+      body: uploadForm("笔记.txt", new TextEncoder().encode("x")),
+    });
+    expect(res.status).toBe(422);
+    expect(calls).toHaveLength(0);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("pipeline 500 -> documents.parse_status 置 failed", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const { pool2, calls } = recordingPool();
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
+      new Response(JSON.stringify({ detail: "pandoc 缺失" }), { status: 500 }));
+    const app2 = uploadApp(pool2, fetchMock as unknown as typeof fetch);
+    const res = await app2.request("/api/library/docs", {
+      method: "POST",
+      body: uploadForm("讲义.md", new TextEncoder().encode("# hi")),
+    });
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    // driveDoc 是 fire-and-forget,轮询等 UPDATE 落定
+    await vi.waitFor(() => {
+      const upd = calls.find((c) => c.sql.includes("UPDATE documents SET parse_status='failed'"));
+      expect(upd?.params).toEqual([body.id]);
+    });
+  });
+});
+
+describe("redriveStuckDocs", () => {
+  it("重驱动滞留 pending/parsing 的文档并返回数量", async () => {
+    const pool2 = {
+      query: async (sql: string) => {
+        if (sql.includes("FROM documents")) {
+          return { rows: [
+            { id: "d1", source_path: "/tmp/a.pdf", title: "A", subject: "数学", grade: null, doc_type: "workbook" },
+            { id: "d2", source_path: "/tmp/b.md", title: "B", subject: null, grade: "四年级", doc_type: "exam" },
+          ] };
+        }
+        return { rows: [] };
+      },
+    } as never;
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => new Response("{}"));
+    const n = await redriveStuckDocs(pool2, {
+      pipelineUrl: "http://mock:8766", fetchImpl: fetchMock as unknown as typeof fetch,
+    });
+    expect(n).toBe(2);
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    const bodies = fetchMock.mock.calls.map(
+      (c) => JSON.parse(String((c[1] as RequestInit).body)) as Record<string, unknown>);
+    expect(bodies).toContainEqual({
+      source_path: "/tmp/a.pdf", title: "A", subject: "数学", grade: null, doc_type: "workbook",
+    });
+    expect(bodies).toContainEqual({
+      source_path: "/tmp/b.md", title: "B", subject: null, grade: "四年级", doc_type: "exam",
+    });
   });
 });

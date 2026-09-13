@@ -54,6 +54,41 @@ class FakeClient:
     chat = FakeChat()
 
 
+def test_mathy_text_detects_equations_not_prose():
+    """疑似公式判定：等式/乘除/丢上标/分数线 → True；含数字的普通行文 → False。"""
+    from kb.ocr.parse import mathy_text
+
+    assert mathy_text("24+37=61")
+    assert mathy_text("135 ÷ 5 =")
+    assert mathy_text("24 + 37 = 61")
+    assert mathy_text("x2+3x=0")  # 上标被 rapidocr 丢掉
+    assert mathy_text("1/2 + 1/3 =")
+    assert mathy_text("面积 S = a²")
+    assert mathy_text("2^10 =")
+    assert mathy_text("285\n1\n2\n9")  # 竖式被剥掉运算符/方框后剩多行纯数字碎片
+    assert not mathy_text("")
+    assert not mathy_text("285")  # 单行纯数字（页码等）不算
+    assert not mathy_text("普通文字没有符号")
+    assert not mathy_text("第 1 讲 加法")
+    assert not mathy_text("2025 年秋季学期")
+    assert not mathy_text("完成第 2-3 题")
+    assert not mathy_text("1. 计算下面各题")
+
+
+def test_transcribe_prompt_pins_vertical_arithmetic_layout():
+    """竖式呈现质量靠 prompt 锁定：逐数字列 + 禁两列写法/空格凑对齐/前言。
+    KaTeX 只支持 l/c/r 列声明——@{...} 装饰符也要在 prompt 层禁掉。"""
+    from kb.ocr.parse import TRANSCRIBE_PROMPT
+    from kb.ocr.pagelvl import PAGE_VLM_PROMPT
+
+    for prompt in (TRANSCRIBE_PROMPT, PAGE_VLM_PROMPT):
+        assert "每个数字独占一列" in prompt
+        assert "{rl}" in prompt  # 明确点名禁止两列写法
+        assert "\\boxed{\\phantom{0}}" in prompt  # 待填方框写法
+        assert "禁止 @{...}" in prompt
+        assert "不要加任何说明性前言" in prompt
+
+
 def test_transcribe_image_calls_openai_compatible_api(tmp_path):
     from kb.ocr.parse import transcribe_image
 
@@ -336,6 +371,44 @@ def test_run_parse_escalates_starred_ocr_to_vlm(conn, parsed_doc):
         assert cur.fetchone()[0] == "rapidocr"  # 正常文字不升级
 
 
+def test_run_parse_escalates_mathy_ocr_to_vlm(conn, parsed_doc):
+    """初始解析与重识别同口径：text 块 OCR 出疑似公式（等式/纯数字碎片）也升级 VLM。"""
+    from kb.ocr.parse import run_parse
+
+    doc_id, cfg = parsed_doc
+    with conn.cursor() as cur:
+        cur.execute("SELECT id FROM blocks ORDER BY created_at LIMIT 2")
+        b1, b2 = [r[0] for r in cur.fetchall()]
+        cur.execute("UPDATE blocks SET block_type='text' WHERE id IN (%s,%s)", (b1, b2))
+
+    class SpyChat:
+        class completions:
+            @staticmethod
+            def create(model, messages, max_tokens):
+                class M:
+                    content = "$$\\begin{array}{r}24+37\\\\\\hline61\\end{array}$$"
+
+                class C:
+                    message = M()
+
+                class R:
+                    choices = [C()]
+
+                return R()
+
+    class SpyClient:
+        chat = SpyChat()
+
+    texts = iter(["24+37=61", "普通文字没有符号"])
+    n = run_parse(conn, cfg, doc_id, client=SpyClient(), ocr=lambda p: next(texts))
+    assert n == 2
+    with conn.cursor() as cur:
+        cur.execute("SELECT source_model FROM blocks WHERE id=%s", (b1,))
+        assert cur.fetchone()[0] == "qwen3:4b"  # 疑似公式升级到视觉模型
+        cur.execute("SELECT source_model FROM blocks WHERE id=%s", (b2,))
+        assert cur.fetchone()[0] == "rapidocr"  # 普通行文不升级
+
+
 def test_run_parse_escalates_empty_ocr_to_vlm(conn, parsed_doc):
     """OCR 对浅色文字返回空时，不能标页失败；应回退视觉模型重转录。"""
     from kb.ocr.parse import run_parse
@@ -386,3 +459,183 @@ def test_run_parse_escalates_empty_ocr_to_vlm(conn, parsed_doc):
         assert cur.fetchone() == ("rapidocr", "普通文字")
         cur.execute("SELECT parse_status, parse_error FROM pages WHERE document_id=%s", (doc_id,))
         assert cur.fetchall() == [("parsed", None), ("parsed", None)]
+
+
+def test_split_type_marker():
+    """剥 VLM 首行类型标记：[FORMULA]/[TEXT]；无标记时原样返回，不误判。"""
+    from kb.ocr.parse import split_type_marker
+
+    assert split_type_marker("[FORMULA]\n$$1+1=2$$") == (True, "$$1+1=2$$")
+    assert split_type_marker("[TEXT]\n普通文字") == (False, "普通文字")
+    assert split_type_marker("普通文字没有标记") == (False, "普通文字没有标记")
+
+
+def test_is_pure_display_math():
+    """整体就是一个独立公式块（单个 $$…$$、无其他文字）才算；混合行文不算。"""
+    from kb.ocr.parse import is_pure_display_math
+
+    assert is_pure_display_math("$$\\begin{array}{c} 7 2 \\end{array}$$") is True
+    assert is_pure_display_math("  $$1+1=2$$  \n") is True
+    assert is_pure_display_math("$$x$$ 后记文字") is False
+    assert is_pure_display_math("前文 $$x$$") is False
+    assert is_pure_display_math("$$a$$\n$$b$$") is False  # 两个公式块，不是"一个"
+    assert is_pure_display_math("$$$$") is False  # 空公式
+    assert is_pure_display_math("普通文字") is False
+
+
+def test_run_parse_relabels_vlm_confirmed_formula(conn, parsed_doc):
+    """text 块 OCR 疑似公式升级 VLM 后，VLM 判 [FORMULA] -> block_type 改 formula
+    且 block_type_origin='vlm'；判 [TEXT] 的块类型与血缘不动。"""
+    from kb.ocr.parse import run_parse
+
+    doc_id, cfg = parsed_doc
+    with conn.cursor() as cur:
+        cur.execute("SELECT id FROM blocks ORDER BY created_at LIMIT 2")
+        b1, b2 = [r[0] for r in cur.fetchall()]
+        cur.execute("UPDATE blocks SET block_type='text' WHERE id IN (%s,%s)", (b1, b2))
+
+    outputs = iter(["[FORMULA]\n$$24+37=61$$", "[TEXT]\n24+37 等于 61"])
+
+    class SpyChat:
+        class completions:
+            @staticmethod
+            def create(model, messages, max_tokens):
+                class M:
+                    content = next(outputs)
+
+                class C:
+                    message = M()
+
+                class R:
+                    choices = [C()]
+
+                return R()
+
+    class SpyClient:
+        chat = SpyChat()
+
+    texts = iter(["24+37=61", "24+37=61"])  # 两块都因疑似公式升级 VLM
+    n = run_parse(conn, cfg, doc_id, client=SpyClient(), ocr=lambda p: next(texts))
+    assert n == 2
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT block_type, block_type_origin, content_md FROM blocks WHERE id=%s", (b1,))
+        assert cur.fetchone() == ("formula", "vlm", "$$24+37=61$$")  # 标记剥掉后落库
+        cur.execute(
+            "SELECT block_type, block_type_origin, content_md FROM blocks WHERE id=%s", (b2,))
+        assert cur.fetchone() == ("text", "layout", "24+37 等于 61")
+
+
+def test_run_parse_relabels_pure_math_despite_text_marker(conn, parsed_doc):
+    """VLM 误判 [TEXT] 但转录整体就是一个 $$…$$ 公式块 -> 仍改判 formula（确定性兜底）。"""
+    from kb.ocr.parse import run_parse
+
+    doc_id, cfg = parsed_doc
+    with conn.cursor() as cur:
+        cur.execute("SELECT id FROM blocks ORDER BY created_at LIMIT 1")
+        (b1,) = cur.fetchone()
+        cur.execute("UPDATE blocks SET block_type='text' WHERE id=%s", (b1,))
+
+    class SpyChat:
+        class completions:
+            @staticmethod
+            def create(model, messages, max_tokens):
+                class M:
+                    content = "[TEXT]\n$$\\begin{array}{c} 7 2 \\\\ \\hline 3 6 \\end{array}$$"
+
+                class C:
+                    message = M()
+
+                class R:
+                    choices = [C()]
+
+                return R()
+
+    class SpyClient:
+        chat = SpyChat()
+
+    n = run_parse(conn, cfg, doc_id, client=SpyClient(), ocr=lambda p: "72÷2=36")
+    assert n >= 1
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT block_type, block_type_origin FROM blocks WHERE id=%s", (b1,))
+        assert cur.fetchone() == ("formula", "vlm")
+
+
+def test_run_parse_never_relabels_header_footer(conn, parsed_doc):
+    """header/footer 是页眉页脚（页码、书名），即使 VLM 输出纯 $$…$$ 也不改判。"""
+    from kb.ocr.parse import run_parse
+
+    doc_id, cfg = parsed_doc
+    with conn.cursor() as cur:
+        cur.execute("SELECT id FROM blocks ORDER BY created_at LIMIT 1")
+        (b1,) = cur.fetchone()
+        cur.execute("UPDATE blocks SET block_type='footer' WHERE id=%s", (b1,))
+
+    class SpyChat:
+        class completions:
+            @staticmethod
+            def create(model, messages, max_tokens):
+                class M:
+                    content = "[TEXT]\n$$ 2 $$"  # 页码被 VLM 包成公式
+
+                class C:
+                    message = M()
+
+                class R:
+                    choices = [C()]
+
+                return R()
+
+    class SpyClient:
+        chat = SpyChat()
+
+    n = run_parse(conn, cfg, doc_id, client=SpyClient(), ocr=lambda p: "")
+    assert n >= 1
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT block_type, block_type_origin FROM blocks WHERE id=%s", (b1,))
+        assert cur.fetchone() == ("footer", "layout")
+
+
+def test_run_parse_relabels_figure_with_pure_math(conn, parsed_doc):
+    """版面把竖式误判成 figure：VLM 转录整体是 $$…$$ 时改判 formula；
+    真是图（图标/插画，转录非纯公式）保持 figure。"""
+    from kb.ocr.parse import run_parse
+
+    doc_id, cfg = parsed_doc
+    with conn.cursor() as cur:
+        cur.execute("SELECT id FROM blocks ORDER BY created_at LIMIT 2")
+        b1, b2 = [r[0] for r in cur.fetchall()]
+        cur.execute("UPDATE blocks SET block_type='figure' WHERE id IN (%s,%s)", (b1, b2))
+
+    outputs = iter([
+        "$$\\begin{array}{cc} & 7 6 \\\\ \\times & 8 5 \\end{array}$$",  # 竖式图 -> 改判
+        "图片中无可见文字内容，仅包含一个橙色圆形图标。",                # 真图标 -> 不动
+    ])
+
+    class SpyChat:
+        class completions:
+            @staticmethod
+            def create(model, messages, max_tokens):
+                class M:
+                    content = next(outputs)
+
+                class C:
+                    message = M()
+
+                class R:
+                    choices = [C()]
+
+                return R()
+
+    class SpyClient:
+        chat = SpyChat()
+
+    n = run_parse(conn, cfg, doc_id, client=SpyClient(), ocr=lambda p: "")
+    assert n >= 2
+    with conn.cursor() as cur:
+        cur.execute("SELECT block_type, block_type_origin FROM blocks WHERE id=%s", (b1,))
+        assert cur.fetchone() == ("formula", "vlm")
+        cur.execute("SELECT block_type, block_type_origin FROM blocks WHERE id=%s", (b2,))
+        assert cur.fetchone() == ("figure", "layout")

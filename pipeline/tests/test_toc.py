@@ -162,6 +162,74 @@ def test_calibrate_pages_leaves_null_when_not_found(conn, doc_with_toc):
         assert all(r[0] is None for r in cur.fetchall())
 
 
+def test_calibrate_pages_detects_toc_by_title_density(conn, doc_with_toc):
+    """回归：目录横幅是艺术字、OCR 成「目\\n录」（不含连续「目录」二字）时，
+    校准仍须跳过目录页——靠标题密度判（命中 ≥半数且 ≥2 个章节标题即目录页），
+    不靠搜「目录」字面量（真实数据踩过：7 星学霸目录页横幅 OCR 为 '目\\n录'）。"""
+    from kb.rag.toc import calibrate_pages, extract_toc
+
+    doc_id, cfg = doc_with_toc
+    extract_toc(conn, cfg, doc_id, client=_client(TOC_JSON))
+    with conn.cursor() as cur:
+        cur.execute(  # 目录页：横幅被 OCR 拆开 + 全部章节标题，无连续「目录」
+            """UPDATE blocks SET content_md='目
+录
+第 1 讲 乘除法竖式谜………………1
+第 2 讲 三角形………………10' WHERE page_id IN
+               (SELECT id FROM pages WHERE page_no=1)"""
+        )
+        cur.execute(
+            """UPDATE blocks SET content_md='第 1 讲 乘除法竖式谜 正文' WHERE page_id IN
+               (SELECT id FROM pages WHERE page_no=2)"""
+        )
+        cur.execute(
+            """UPDATE blocks SET content_md='第 2 讲 三角形 正文' WHERE page_id IN
+               (SELECT id FROM pages WHERE page_no=3)"""
+        )
+    assert calibrate_pages(conn, doc_id) == 2
+    with conn.cursor() as cur:
+        cur.execute("SELECT chapter_no, page_start, page_end FROM chapters ORDER BY chapter_no")
+        assert cur.fetchall() == [(1, 2, 2), (2, 3, 3)]
+
+
+def test_detect_toc_pages_tolerates_split_banner(conn, doc_with_toc):
+    """目录横幅艺术字被 OCR 拆成「目\\n录」时，自动探测也要能找到目录页。"""
+    from kb.rag.toc import detect_toc_pages
+
+    doc_id, cfg = doc_with_toc
+    with conn.cursor() as cur:
+        cur.execute(
+            """UPDATE blocks SET content_md='目
+录
+第 1 讲 乘除法竖式谜……1' WHERE page_id IN
+               (SELECT id FROM pages WHERE page_no=1)"""
+        )
+        assert detect_toc_pages(cur, doc_id) == [1]
+
+
+def test_calibrate_pages_prefers_footer_print_page_offset(conn, doc_with_toc):
+    """页脚有印刷页码时优先用偏移换算（章节横幅艺术字 OCR 不可靠的正解）：
+    footer 纯数字拟合 物理页-印刷页 偏移众数，print_page+offset 得物理页；
+    物理页未入库的章节留 NULL。"""
+    from kb.rag.toc import calibrate_pages, extract_toc
+
+    doc_id, cfg = doc_with_toc
+    extract_toc(conn, cfg, doc_id, client=_client(TOC_JSON))  # 印刷页 1 / 10
+    with conn.cursor() as cur:  # 物理 2 页 = 印刷 1 页，物理 3 页 = 印刷 2 页 → offset=1
+        cur.execute(
+            """UPDATE blocks SET block_type='footer', content_md='1' WHERE page_id IN
+               (SELECT id FROM pages WHERE page_no=2)"""
+        )
+        cur.execute(
+            """UPDATE blocks SET block_type='footer', content_md='$$ 2 $$' WHERE page_id IN
+               (SELECT id FROM pages WHERE page_no=3)"""
+        )
+    assert calibrate_pages(conn, doc_id) == 1  # 第 2 讲印刷页 10 → 物理 11 未入库
+    with conn.cursor() as cur:
+        cur.execute("SELECT chapter_no, page_start, page_end FROM chapters ORDER BY chapter_no")
+        assert cur.fetchall() == [(1, 2, 3), (2, None, None)]  # 唯一定位章到末页
+
+
 def test_parse_json_array_tolerates_latex_backslashes():
     """模型在 JSON 字符串里直接写 LaTeX（\\square 等非法转义）时，清洗后仍能解析。"""
     from kb.rag.toc import _parse_json_array

@@ -184,6 +184,18 @@ class TestIndexPreviewAndExclusion:
         assert data["page_id"] == page_id
         assert data["chunks"][0]["content_preview"].startswith("一、口算")
 
+        # 分段粒度吃 cfg.chunk_max_chars（fixture 默认 500）：2000 字长页预览应切 4 段
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE pages SET page_md=%s WHERE document_id=%s AND page_no=2",
+                ("退位减法 " * 400, doc_id),
+            )
+            cur.execute("SELECT id FROM pages WHERE document_id=%s AND page_no=2", (doc_id,))
+            page2_id = str(cur.fetchone()[0])
+        resp = client.post("/internal/index-preview", json={"page_id": page2_id})
+        assert resp.status_code == 200
+        assert [c["seq"] for c in resp.json()["chunks"]] == [1, 2, 3, 4]
+
     def test_page_exclusion_removes_flat_chunks_and_rebuilds_chapter(self, conn, flat_doc):
         from kb.rag.flat import build_flat_chapter, embed_flat_pages
 
@@ -206,6 +218,50 @@ class TestIndexPreviewAndExclusion:
             assert cur.fetchone()[0] == 1
             cur.execute("SELECT content_md FROM chapters WHERE document_id=%s", (doc_id,))
             assert "口算" not in cur.fetchone()[0]
+
+    def test_page_exclusion_removes_item_chunks(self, conn, cfg):
+        """toc 模式：排除页删除经 item_blocks 关联到该页的条目 chunk，并标记章节待重建。"""
+        import uuid
+
+        with conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO documents (id, title, source_path, struct_mode)"
+                " VALUES (%s,'t','/tmp/toc.pdf','toc') RETURNING id::text",
+                (str(uuid.uuid4()),),
+            )
+            doc_id = cur.fetchone()[0]
+            cur.execute(
+                "INSERT INTO pages (document_id, page_no, image_path)"
+                " VALUES (%s,1,'p.png') RETURNING id::text", (doc_id,))
+            page_id = cur.fetchone()[0]
+            cur.execute(
+                "INSERT INTO blocks (page_id, block_type, crop_path, content_md, ordinal)"
+                " VALUES (%s,'text','c.png','广告',1) RETURNING id::text", (page_id,))
+            block_id = cur.fetchone()[0]
+            cur.execute(
+                "INSERT INTO chapters (document_id, chapter_no, title, page_start, page_end,"
+                " index_status) VALUES (%s,1,'第1讲',1,1,'indexed')", (doc_id,))
+            cur.execute(
+                "INSERT INTO items (document_id, content_type, label, content_md, qc_status)"
+                " VALUES (%s,'example','例1','广告关联题','approved') RETURNING id::text",
+                (doc_id,))
+            item_id = cur.fetchone()[0]
+            cur.execute(
+                "INSERT INTO item_blocks (item_id, block_id, role) VALUES (%s,%s,'stem')",
+                (item_id, block_id))
+            cur.execute(
+                """INSERT INTO chunks (item_id, document_id, content_md, embedding)
+                   VALUES (%s,%s,'广告关联题', %s)""",
+                (item_id, doc_id, "[" + ",".join(["1"] * 1024) + "]"))
+        client = TestClient(create_internal_app(get_conn=lambda: conn, cfg=cfg))
+        resp = client.post("/internal/page-exclusion", json={"page_id": page_id, "excluded": True})
+        assert resp.status_code == 200
+        assert resp.json()["deleted_chunks"] == 1
+        with conn.cursor() as cur:
+            cur.execute("SELECT count(*)::int FROM chunks WHERE document_id=%s", (doc_id,))
+            assert cur.fetchone()[0] == 0
+            cur.execute("SELECT index_status FROM chapters WHERE document_id=%s", (doc_id,))
+            assert cur.fetchone()[0] == "not_indexed"
 
 
 class _ConnSpy:

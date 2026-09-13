@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { uploadPaper, type PaperSummary } from "../api/papers";
 
 interface UploadDialogProps {
@@ -12,6 +12,7 @@ const SUBJECTS = ["语文", "数学", "英语", "其他"];
 export function UploadDialog({ children: kids, onDone, onClose }: UploadDialogProps) {
   const [childId, setChildId] = useState(kids[0]?.id ?? "");
   const [title, setTitle] = useState("");
+  const titleTouched = useRef(false);
   const [subject, setSubject] = useState("数学");
   const [files, setFiles] = useState<File[]>([]);
   const [error, setError] = useState("");
@@ -46,7 +47,7 @@ export function UploadDialog({ children: kids, onDone, onClose }: UploadDialogPr
         </label>
         <label>
           标题
-          <input aria-label="标题" value={title} onChange={(e) => setTitle(e.target.value)}
+          <input aria-label="标题" value={title} onChange={(e) => { titleTouched.current = true; setTitle(e.target.value); }}
                  placeholder="如：三年级数学期中卷" />
         </label>
         <label>
@@ -58,7 +59,12 @@ export function UploadDialog({ children: kids, onDone, onClose }: UploadDialogPr
         <label>
           文件（PDF/JPG/PNG，可多选）
           <input aria-label="文件" type="file" multiple accept=".pdf,.jpg,.jpeg,.png"
-                 onChange={(e) => setFiles([...(e.target.files ?? [])])} />
+                 onChange={(e) => {
+                   const next = [...(e.target.files ?? [])];
+                   setFiles(next);
+                   // 标题未手改过才用首个文件名（去扩展名）做默认值
+                   if (!titleTouched.current && next[0]) setTitle(next[0].name.replace(/\.[^.]+$/, ""));
+                 }} />
         </label>
         {files.length > 0 && <div className="file-list">{files.map((f) => f.name).join("、")}</div>}
         {error && <div className="form-error">{error}</div>}

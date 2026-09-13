@@ -114,12 +114,14 @@ class PaddleOCRLayout:
         dpi: int = 200,
         pipeline=None,
         qr_detector=None,
+        min_figure_ratio: float = 0.0,
     ):
         self._blocks_dir = Path(blocks_dir)
         self._model_name = model_name
         self._dpi = dpi
         self._pipeline = pipeline  # 测试可注入假模型
         self._qr_detector = qr_detector  # 测试可注入假识别器
+        self._min_figure_ratio = min_figure_ratio  # 小图标/装饰图块丢弃阈值（面积占页比），0 关闭
 
     def _get_pipeline(self):
         if self._pipeline is None:
@@ -169,9 +171,14 @@ class PaddleOCRLayout:
         del pix
         raw = [tuple(b.get("coordinate") or (0, 0, 0, 0)) for b in boxes]
         drafts = []
+        page_area = float(page_size[0] * page_size[1])
         for i, b in enumerate(boxes, start=1):
             bbox = raw[i - 1]
             block_type = map_block_label(b.get("label"))
+            if block_type == "figure" and self._min_figure_ratio > 0:
+                x0, y0, x1, y1 = bbox
+                if max(0.0, x1 - x0) * max(0.0, y1 - y0) < self._min_figure_ratio * page_area:
+                    continue  # 小图标/装饰图块默认无学习价值，layout 层丢弃（连裁图都不生成）
             padded, pad = padded_px_bbox(
                 bbox, block_type, self._dpi, page_size,
                 prev_bbox=raw[i - 2] if i > 1 else None,
@@ -240,5 +247,5 @@ def make_layout_analyzer(cfg, doc_id: str | None = None) -> LayoutAnalyzer:
         blocks_dir = (Path(cfg.storage_dir) / doc_id / "blocks"
                       if doc_id else Path(cfg.storage_dir) / "blocks")
         return PaddleOCRLayout(blocks_dir=blocks_dir, model_name=cfg.layout_model,
-                               dpi=cfg.dpi)
+                               dpi=cfg.dpi, min_figure_ratio=cfg.layout_min_figure_ratio)
     return WholePageLayout()

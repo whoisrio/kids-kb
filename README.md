@@ -72,7 +72,9 @@ uv run python -m kb.cli structure <doc_id> [--toc-pages 5]   # 目录页不给�
 
 `structure` 探测不到目录页时自动回退（`--flat` 可显式强制，`--toc-pages` 仍可指定走目录路径）：
 建 1 条「全卷」合成章、不拆条，`approve` 后按页向量化——chunk meta 带 `page_no`，检索可定位到页。
-适合无目录页的试卷集合（如《学霸提优大试卷》）；`documents.struct_mode` 记录模式（toc|flat）。
+适合无目录页的试卷集合（如《学霸提优大试卷》）；`documents.struct_mode` 记录模式（toc|flat|heading）。
+无目录但有 ≥2 个一级标题（blocks.title_level=1，0024）的文档走 heading 模式：
+一级标题确定性合成章节（页范围顺排，末章到文档最大页），之后与 toc 同路逐章拆条。
 
 ## 统计与用量
 

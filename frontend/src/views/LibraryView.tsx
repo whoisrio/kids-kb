@@ -5,7 +5,7 @@ import {
 } from "../api/library";
 import { Icon } from "../components/Icon";
 import { LibraryDetail } from "../components/LibraryDetail";
-import { UploadDialog } from "../components/UploadDialog";
+import { LibraryUploadDialog } from "../components/LibraryUploadDialog";
 
 const STATUS_TEXT: Record<string, string> = {
   pending: "未审核", passed: "已通过", needs_review: "需复核", failed: "失败",
@@ -34,6 +34,24 @@ function subjectMeta(subject: string | null): { cls: string; icon: string } {
   return { cls: "subj-other", icon: "menu_book" };
 }
 
+/** doc 级检测状态徽标：pending 待检测（灰）/ parsing 检测中（琥珀，有页数带进度）/ failed 检测失败（红）。
+    docx/md 无页面（total_pages=0）时 parsing 只显示「检测中」。 */
+function parseBadge(doc: LibraryDoc): { cls: string; text: string; icon: string } | null {
+  switch (doc.parse_status) {
+    case "pending":
+      return { cls: "queued", text: "待检测", icon: "hourglass_top" };
+    case "parsing":
+      return {
+        cls: "detecting", icon: "autorenew",
+        text: doc.total_pages > 0 ? `检测中 ${doc.pages_parsed}/${doc.total_pages} 页` : "检测中",
+      };
+    case "failed":
+      return { cls: "failed", text: "检测失败", icon: "error" };
+    default:
+      return null;
+  }
+}
+
 function ShelfCard({ doc, onOpen, onReview, onDelete, onApprove, approving }: {
   doc: LibraryDoc; onOpen: (doc: LibraryDoc) => void;
   onReview?: (doc: LibraryDoc) => void; onDelete: (doc: LibraryDoc) => void;
@@ -43,6 +61,8 @@ function ShelfCard({ doc, onOpen, onReview, onDelete, onApprove, approving }: {
   const [menuOpen, setMenuOpen] = useState(false);
   const subj = subjectMeta(doc.subject);
   const pending = doc.auto_review.needs_review + doc.auto_review.pending;
+  // 检测态（pending/parsing/failed）下原「N 页待确认/全部就绪」徽标让位
+  const parsingBadge = parseBadge(doc);
   return (
     <div className={`shelf-card${pending > 0 ? " has-pending" : ""}`}>
       <div className="sc-badges">
@@ -52,7 +72,11 @@ function ShelfCard({ doc, onOpen, onReview, onDelete, onApprove, approving }: {
           </span>
           {doc.doc_type && <span className="sc-type">{DOC_TYPE_TEXT[doc.doc_type] ?? doc.doc_type}</span>}
         </div>
-        {pending > 0 ? (
+        {parsingBadge ? (
+          <span className={`sc-status ${parsingBadge.cls}`}>
+            <Icon name={parsingBadge.icon} />{parsingBadge.text}
+          </span>
+        ) : pending > 0 ? (
           <span className="sc-status pending"><Icon name="report_problem" />{pending} 页待确认</span>
         ) : (
           <span className="sc-status ok"><span className="sc-dot" />全部就绪</span>
@@ -109,11 +133,10 @@ function ShelfCard({ doc, onOpen, onReview, onDelete, onApprove, approving }: {
   );
 }
 
-export function LibraryView({ fetchImpl = fetch, onOpenDoc, onOpenReview, kids = [] }: {
+export function LibraryView({ fetchImpl = fetch, onOpenDoc, onOpenReview }: {
   fetchImpl?: typeof fetch;
   onOpenDoc?: (doc: LibraryDoc) => void;
   onOpenReview?: (docId: string) => void;
-  kids?: { id: string; name: string }[];
 }) {
   const initialQuery = typeof window === "undefined" ? "" : window.location.search.replace(/^\?/, "");
   const [filters, setFilters] = useState({
@@ -162,6 +185,13 @@ export function LibraryView({ fetchImpl = fetch, onOpenDoc, onOpenReview, kids =
     } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
   }, [filters, sort, fetchImpl]);
   useEffect(() => { void reload(); }, [reload]);
+
+  // 有文档处于检测流程（pending/parsing）时每 4s 轮询刷新进度，全部出检测态后自动停止
+  useEffect(() => {
+    if (!docs.some((d) => d.parse_status === "pending" || d.parse_status === "parsing")) return;
+    const timer = setTimeout(() => { void reload(); }, 4000);
+    return () => clearTimeout(timer);
+  }, [docs, reload]);
 
   // 后端未提供 summary（旧版本）时指标卡降级为「—」，不阻塞列表
   const reloadSummary = useCallback(async () => {
@@ -371,13 +401,16 @@ export function LibraryView({ fetchImpl = fetch, onOpenDoc, onOpenReview, kids =
               <tr><th>资料</th><th>类型</th><th>自动审核</th><th>人工复核</th><th>索引</th><th>操作</th></tr>
             </thead>
             <tbody>
-              {docs.map((doc) => (
+              {docs.map((doc) => {
+                const parsing = parseBadge(doc);
+                return (
                 <tr key={doc.id}>
                   <td>
                     <button className="doc-title" onClick={() => openDoc(doc)}>
                       {doc.title}
                     </button>
                     <span className="mono">{doc.total_units} 单元 · {new Date(doc.created_at).toLocaleDateString()}</span>
+                    {parsing && <span className={`badge parse-${doc.parse_status}`}>{parsing.text}</span>}
                   </td>
                   <td>
                     {doc.subject ?? "未分类"}
@@ -401,7 +434,8 @@ export function LibraryView({ fetchImpl = fetch, onOpenDoc, onOpenReview, kids =
                   </td>
                   <td><button className="btn-ghost" onClick={() => openDoc(doc)}>查看</button></td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -426,8 +460,8 @@ export function LibraryView({ fetchImpl = fetch, onOpenDoc, onOpenReview, kids =
       </div>
 
       {uploadOpen && (
-        <UploadDialog
-          children={kids}
+        <LibraryUploadDialog
+          fetchImpl={fetchImpl}
           onClose={() => setUploadOpen(false)}
           onDone={() => {
             setUploadOpen(false);

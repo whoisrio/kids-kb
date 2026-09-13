@@ -21,6 +21,7 @@ import { libraryRoutes } from "./routes/library.js";
 import { quizRoutes } from "./routes/quizzes.js";
 import { makeCallText } from "./llm.js";
 import { redriveWhenPipelineReady, type PaperJobDeps } from "./papers/jobs.js";
+import { redriveStuckDocs } from "./library/jobs.js";
 
 export function createApp(
   cfg: BackendConfig = loadConfig(),
@@ -86,8 +87,11 @@ if (process.env.VITEST === undefined) {
     };
     // 启动重驱动:探活 pipeline 就绪后才驱动滞留 processing 的卷,
     // 避免 backend 先起时把卷误打成 failed(pipeline 幂等,安全)
-    void redriveWhenPipelineReady(pool, jobs, { attempts: 30, retryMs: 2_000 }).then((n) => {
+    void redriveWhenPipelineReady(pool, jobs, { attempts: 30, retryMs: 2_000 }).then(async (n) => {
       if (n > 0) console.log(`重驱动 ${n} 卷滞留 processing 的试卷`);
+      // 顺带重驱动滞留 pending/parsing 的资料库文档(同样幂等,安全)
+      const m = await redriveStuckDocs(pool, { pipelineUrl: cfg.pipelineUrl });
+      if (m > 0) console.log(`重驱动 ${m} 份滞留 pending/parsing 的文档`);
     });
   });
 }

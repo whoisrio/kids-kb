@@ -157,7 +157,7 @@ export function App() {
               onToast={showToast}
             />
           : view === "library"
-            ? <LibraryView kids={children} onOpenReview={(id) => { setReviewDocId(id); setView("review"); }} />
+            ? <LibraryView onOpenReview={(id) => { setReviewDocId(id); setView("review"); }} />
             : view === "review"
               ? <ReviewView initialDocId={reviewDocId ?? undefined} />
               : view === "stats"

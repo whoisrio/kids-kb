@@ -68,13 +68,14 @@ export function reviewRoutes(pool: pg.Pool, deps: ReviewDeps): Hono {
       const { rows: [page] } = await pool.query(
       `SELECT p.id::text, p.page_no, d.title AS doc_title, p.page_md, p.page_md_model, p.adopted_source,
               p.review_status, p.index_status, p.auto_review_status, p.manual_review_status,
-              p.excluded_from_index, p.index_error
+              p.excluded_from_index, p.index_error,
+              p.parse_status, p.document_id::text AS doc_id, d.struct_mode
          FROM pages p JOIN documents d ON d.id = p.document_id WHERE p.id = $1`,
         [c.req.param("id")]);
       if (!page) return c.json({ error: "page 不存在" }, 404);
       const { rows: blocks } = await pool.query(
         `SELECT id::text, block_type, bbox, content_md, source_model,
-                origin, geometry_revision, crop_pad
+                origin, block_type_origin, geometry_revision, crop_pad, title_level
          FROM blocks WHERE page_id = $1 ORDER BY ordinal`, [page.id]);
       const blocksWithCrop = blocks.map((b) => ({ ...b, crop_url: `/api/review/blocks/${b.id}/crop` }));
       const blockIds = blocks.map((b) => b.id);
@@ -103,7 +104,7 @@ export function reviewRoutes(pool: pg.Pool, deps: ReviewDeps): Hono {
         const part = itemParts.get(m.id) ?? {
           id: m.id, label: m.label, content_type: m.content_type,
           content_md: m.content_md, qc_status: m.qc_status,
-          block_ids: [], block_crops: [],
+          block_ids: [] as string[], block_crops: [] as string[],
         };
         part.block_ids.push(m.block_id);
         part.block_crops.push(`/api/review/blocks/${m.block_id}/crop`);
@@ -132,7 +133,7 @@ export function reviewRoutes(pool: pg.Pool, deps: ReviewDeps): Hono {
       for (const row of pairedAnswerRows) {
         const answer = pairedAnswers.get(row.question_id) ?? {
           id: row.id, content_md: row.content_md, qc_status: row.qc_status,
-          block_ids: [], block_crops: [],
+          block_ids: [] as string[], block_crops: [] as string[],
         };
         if (row.block_id) {
           answer.block_ids.push(row.block_id);
@@ -164,11 +165,25 @@ export function reviewRoutes(pool: pg.Pool, deps: ReviewDeps): Hono {
         if (r.block_id) (byBlock.get(r.block_id) ?? byBlock.set(r.block_id, []).get(r.block_id)!).push({ id: r.id, reason: r.reason });
         else pagePending.push({ id: r.id, reason: r.reason });
       }
+      // 采用口径的整页 markdown（选块口径与 pipeline flat.page_contents 一致）：
+      // adopted=page_md 用整页稿，否则按 ordinal 拼块文本、跳 header/footer。
+      // 块间空行成段（单 \n 在 Markdown 里是段内软换行，整页稿会糊成一坨）。
+      // title 块按 title_level 加 Markdown 标题前缀；NULL（未送判）按二级处理。
+      const HEADING_PREFIX: Record<number, string> = { 1: "# ", 2: "## ", 3: "### " };
+      const contentMd = page.adopted_source === "page_md" && page.page_md
+        ? page.page_md
+        : blocks
+            .filter((b) => b.block_type !== "header" && b.block_type !== "footer" && b.content_md !== null)
+            .map((b) => (b.block_type === "title"
+              ? (HEADING_PREFIX[b.title_level as number] ?? HEADING_PREFIX[2]) + (b.content_md as string)
+              : b.content_md) as string)
+            .join("\n\n");
       return c.json({
         id: page.id, page_no: page.page_no, doc_title: page.doc_title,
+        doc_id: page.doc_id, struct_mode: page.struct_mode, parse_status: page.parse_status,
         image_url: `/api/review/pages/${page.id}/image`,
         page_md: page.page_md, page_md_model: page.page_md_model,
-        adopted_source: page.adopted_source,
+        adopted_source: page.adopted_source, content_md: contentMd,
         blocks: blocksWithCrop.map((b) => ({
           ...b,
           pending: byBlock.get(b.id) ?? [],
@@ -681,12 +696,29 @@ export function reviewRoutes(pool: pg.Pool, deps: ReviewDeps): Hono {
     }
     try {
       const { rows: [page] } = await pool.query(
-        "SELECT id::text, page_md FROM pages WHERE id=$1", [c.req.param("id")]);
+        `SELECT id::text, page_no, document_id::text, page_md, adopted_source
+         FROM pages WHERE id=$1`, [c.req.param("id")]);
       if (!page) return c.json({ error: "page 不存在" }, 404);
       if (source === "page_md" && !page.page_md) {
         return c.json({ error: "该页还没有整页转录" }, 409);
       }
-      await pool.query("UPDATE pages SET adopted_source=$2 WHERE id=$1", [page.id, source]);
+      // 采用来源变化 = 页内容变化：与编辑同口径置索引过期、清 chunks、记事件；同源不动。
+      if (page.adopted_source !== source) {
+        await pool.query(
+          "UPDATE pages SET adopted_source=$2, index_status='stale', index_error=NULL WHERE id=$1",
+          [page.id, source]);
+        await pool.query(
+          `DELETE FROM chunks WHERE document_id=$1 AND (
+             page_no=$2 OR source_block_ids && ARRAY(
+               SELECT id FROM blocks WHERE page_id=$3))`,
+          [page.document_id, page.page_no, page.id]);
+        await pool.query(
+          `INSERT INTO pipeline_events
+             (run_id, document_id, page_id, stage, event_type, summary, payload, actor)
+           VALUES (gen_random_uuid(), $1, $2, 'user_edit', 'adopt', $3, $4, 'user')`,
+          [page.document_id, page.id, `采用来源切换：${page.adopted_source} → ${source}`,
+           JSON.stringify({ from: page.adopted_source, to: source })]);
+      }
       return c.json({ page_id: page.id, adopted_source: source });
     } catch (err) {
       return invalidId(c, err) ?? (() => { throw err; })();
@@ -746,6 +778,10 @@ export function reviewRoutes(pool: pg.Pool, deps: ReviewDeps): Hono {
         `UPDATE review_queue SET status='approved' WHERE status='pending' AND (
            page_id=$1 OR block_id IN (SELECT id FROM blocks WHERE page_id=$1))
          RETURNING id`, [page.id]);
+      // 复核阶段收口：与 pipeline approve_flat_pages 同口径置页级复核状态
+      await pool.query(
+        "UPDATE pages SET review_status='approved', manual_review_status='approved' WHERE id=$1",
+        [page.id]);
       if (page.struct_mode === "flat") {
         try {
           const resp = await fetch(`${deps.pipelineUrl}/internal/embed-flat-page`, {
@@ -754,9 +790,13 @@ export function reviewRoutes(pool: pg.Pool, deps: ReviewDeps): Hono {
           });
           if (!resp.ok) throw new Error(await resp.text());
           const { chunks } = await resp.json() as { chunks: number };
+          await pool.query(
+            "UPDATE pages SET index_status='indexed', index_error=NULL WHERE id=$1", [page.id]);
           return c.json({ id: page.id, resolved: closed.length, embedded: chunks });
         } catch (err) {
           console.error("flat 页向量化失败", err);
+          await pool.query("UPDATE pages SET index_error=$2 WHERE id=$1",
+            [page.id, err instanceof Error ? err.message : String(err)]);
           return c.json({ id: page.id, resolved: closed.length, embed_error: "向量化失败，可重新通过该页重试" });
         }
       }

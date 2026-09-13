@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { fetchCandidates, matchQuestion, type MatchCandidate, type PaperQuestion } from "../api/papers";
+import { ItemBlocksPreview } from "./ItemBlocksPreview";
 
 /** 候选浮层:实时检索 top-5,点选关联;已匹配可清除。 */
 export function MatchPicker({ question, onMatched }: {
@@ -40,7 +41,11 @@ export function MatchPicker({ question, onMatched }: {
           {!error && candidates.length === 0 && <div className="empty">没有候选</div>}
           {candidates.map((c) => (
             <button key={c.item_id} className="cand" onClick={() => void pick(c)}>
-              <span className="t">{c.content_md.slice(0, 60)}</span>
+              {c.blocks?.length ? (
+                <span className="cand-crops"><ItemBlocksPreview blocks={c.blocks} /></span>
+              ) : (
+                <span className="t">{c.content_md.slice(0, 60)}</span>
+              )}
               <span className="m">
                 {c.doc_title}{c.chapter ? ` · ${c.chapter}` : ""}{c.label ? ` · ${c.label}` : ""}
                 {c.vec_score != null && ` · ${c.vec_score.toFixed(2)}`}

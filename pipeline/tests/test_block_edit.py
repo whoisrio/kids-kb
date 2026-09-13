@@ -158,6 +158,28 @@ def test_commit_moves_crop_inside_transaction(doc1, conn, monkeypatch):
     assert transaction_statuses == [TransactionStatus.INTRANS]
 
 
+def test_commit_normalizes_adopted_latex(doc1, conn):
+    """commit 落库前过 normalize_latex：adopted_text 含 KaTeX 不支持的命令也要归一化
+    （否则调框确认后的 LaTeX 如 \\begin{array}{r@{\\quad}l} 在前端渲染不出来）。"""
+    from kb.ocr.block_edit import commit_block_geometry, preview_block_geometry
+
+    _doc_id, cfg = doc1
+    with conn.cursor() as cur:
+        cur.execute("SELECT id::text FROM blocks ORDER BY ordinal LIMIT 1")
+        (block_id,) = cur.fetchone()
+    preview = preview_block_geometry(
+        conn, cfg, block_id, [90, 95, 510, 210], ocr=lambda _p: "新识别文本")
+    commit_block_geometry(
+        conn, cfg, block_id, [90, 95, 510, 210], preview["staging"],
+        "$$\\begin{array}{r@{\\quad}l} 1 \\end{array}$$ 与 \\cline{1-2}", "qwen3:4b")
+    with conn.cursor() as cur:
+        cur.execute("SELECT content_md FROM blocks WHERE id=%s", (block_id,))
+        stored = cur.fetchone()[0]
+    assert "@{" not in stored
+    assert "\\cline" not in stored
+    assert "\\hline" in stored
+
+
 def test_recrop_uses_neighbor_clamp(doc1, conn):
     from kb.ocr.block_edit import recrop_block
 
@@ -170,6 +192,64 @@ def test_recrop_uses_neighbor_clamp(doc1, conn):
     with conn.cursor() as cur:
         cur.execute("SELECT crop_pad FROM blocks WHERE id=%s", (block_id,))
         assert cur.fetchone()[0] == [6, 4]
+
+
+def test_preview_escalates_mathy_ocr_to_vlm(doc1, conn, monkeypatch):
+    """调框重识别：OCR 文本疑似公式（等式/丢上标）必须升级 VLM（公式一律 LaTeX），
+    且输出过 normalize_latex 归一化。"""
+    from kb.ocr import block_edit
+
+    _doc_id, cfg = doc1
+    with conn.cursor() as cur:
+        cur.execute("SELECT id::text FROM blocks ORDER BY ordinal LIMIT 1")
+        (block_id,) = cur.fetchone()
+
+    def fake_transcribe(client, model, image_path):
+        assert model == cfg.vision_model
+        return "$$\\begin{array}{r}24+37\\\\\\cline{1-2}61\\end{array}$$", (None, None)
+
+    monkeypatch.setattr(block_edit, "transcribe_image", fake_transcribe)
+    output = block_edit.preview_block_geometry(
+        conn, cfg, block_id, [90, 95, 510, 210], ocr=lambda _p: "24+37=61")
+    assert output["source_model"] == cfg.vision_model
+    assert "\\hline" in output["text"]  # cline 被归一化
+    assert "\\cline" not in output["text"]
+
+
+def test_preview_escalates_empty_ocr_to_vlm(doc1, conn, monkeypatch):
+    """调框重识别：OCR 空结果升级 VLM（与 run_parse 同口径）。"""
+    from kb.ocr import block_edit
+
+    _doc_id, cfg = doc1
+    with conn.cursor() as cur:
+        cur.execute("SELECT id::text FROM blocks ORDER BY ordinal LIMIT 1")
+        (block_id,) = cur.fetchone()
+    monkeypatch.setattr(
+        block_edit, "transcribe_image",
+        lambda client, model, image_path: ("VLM 补救内容", (None, None)))
+    output = block_edit.preview_block_geometry(
+        conn, cfg, block_id, [90, 95, 510, 210], ocr=lambda _p: "  ")
+    assert output["source_model"] == cfg.vision_model
+    assert output["text"] == "VLM 补救内容"
+
+
+def test_preview_plain_prose_stays_on_rapidocr(doc1, conn, monkeypatch):
+    """普通行文不升级 VLM（不浪费模型调用）。"""
+    from kb.ocr import block_edit
+
+    _doc_id, cfg = doc1
+    with conn.cursor() as cur:
+        cur.execute("SELECT id::text FROM blocks ORDER BY ordinal LIMIT 1")
+        (block_id,) = cur.fetchone()
+
+    def boom(*_args, **_kwargs):
+        raise AssertionError("不应调用 VLM")
+
+    monkeypatch.setattr(block_edit, "transcribe_image", boom)
+    output = block_edit.preview_block_geometry(
+        conn, cfg, block_id, [90, 95, 510, 210], ocr=lambda _p: "第 2 课 课文朗读")
+    assert output["source_model"] == "rapidocr"
+    assert output["text"] == "第 2 课 课文朗读"
 
 
 def test_create_block_manual_origin_and_ordinal(doc1, conn):
