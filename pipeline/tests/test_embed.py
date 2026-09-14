@@ -58,6 +58,48 @@ def test_assemble_chapter_mixed_sources(conn, doc_chapter):
     assert "第 2 页整页稿" in md
 
 
+def test_assemble_skips_excluded_pages(conn, doc_chapter):
+    """章节组装跳过被排除的页（excluded_from_index）——与 flat 路径同口径。"""
+    from kb.rag.assemble import assemble_chapter
+
+    doc_id, _cfg = doc_chapter
+    with conn.cursor() as cur:
+        cur.execute(
+            "UPDATE pages SET excluded_from_index=true WHERE document_id=%s AND page_no=2",
+            (doc_id,),
+        )
+    md = assemble_chapter(conn, doc_id, 1)
+    assert "例1 在方框中填入合适的数字" in md
+    assert "第 2 页整页稿" not in md
+
+
+def test_embed_skips_items_on_excluded_pages(conn, doc_chapter):
+    """条目引用了被排除页的块 -> 不向量化；恢复后补 embed 可重建。"""
+    from kb.rag.embed import embed_approved_items
+
+    doc_id, cfg = doc_chapter
+    with conn.cursor() as cur:
+        cur.execute(
+            """INSERT INTO item_blocks (item_id, block_id, role)
+               SELECT i.id, b.id, 'stem' FROM items i
+               JOIN blocks b ON true JOIN pages p ON p.id = b.page_id
+               WHERE i.document_id=%s AND i.label='例1'
+                 AND p.document_id=%s AND p.page_no=1 LIMIT 1""",
+            (doc_id, doc_id),
+        )
+        cur.execute(
+            "UPDATE pages SET excluded_from_index=true WHERE document_id=%s AND page_no=1",
+            (doc_id,),
+        )
+    assert embed_approved_items(conn, cfg, doc_id, client=_FakeEmbed()) == 0
+    with conn.cursor() as cur:
+        cur.execute(
+            "UPDATE pages SET excluded_from_index=false WHERE document_id=%s AND page_no=1",
+            (doc_id,),
+        )
+    assert embed_approved_items(conn, cfg, doc_id, client=_FakeEmbed()) == 1
+
+
 def test_embed_only_approved_and_idempotent(conn, doc_chapter):
     from kb.rag.embed import embed_approved_items
 

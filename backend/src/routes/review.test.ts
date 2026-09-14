@@ -156,7 +156,8 @@ maybe("review API（真库）", () => {
     expect(resp.status).toBe(200);
     const d = (await resp.json()) as {
       id: string; page_no: number; doc_title: string; image_url: string;
-      blocks: { id: string; origin: string; geometry_revision: number; crop_pad: number[] | null }[];
+      blocks: { id: string; origin: string; block_type_origin: string; geometry_revision: number;
+        crop_pad: number[] | null; pending: { id: string; reason: string }[] }[];
       page_pending: { reason: string }[];
     };
     expect(d.page_no).toBe(1);
@@ -165,6 +166,7 @@ maybe("review API（真库）", () => {
     expect(d.blocks.map((b) => b.id)).toEqual([block11, block12, block13]);
     const text = d.blocks.find((b) => b.id === block11)!;
     expect(text.origin).toBe("layout");
+    expect(text.block_type_origin).toBe("layout");
     expect(text.geometry_revision).toBe(1);
     expect(text).toHaveProperty("crop_pad");
     expect(text).toMatchObject({ block_type: "text", content_md: "24+37=61", bbox: [10, 20, 200, 80], pending: [] });
@@ -206,6 +208,55 @@ maybe("review API（真库）", () => {
     expect(crop.status).toBe(200);
     const missing = await app.request("/api/review/pages/00000000-0000-0000-0000-000000000000/image");
     expect(missing.status).toBe(404);
+  });
+
+  it("GET /pages/:id：content_md 为采用口径整页稿（page_md 优先，否则拼块跳页眉页脚）", async () => {
+    const flatPage = (await pool.query(
+      "SELECT id::text FROM pages WHERE document_id=$1", [flatDocId])).rows[0].id;
+    const d1 = (await (await app.request(`/api/review/pages/${flatPage}`)).json()) as {
+      content_md: string; doc_id: string; struct_mode: string; parse_status: string;
+    };
+    expect(d1.content_md).toBe("第二套 竖式计算");
+    expect(d1.doc_id).toBe(flatDocId);
+    expect(d1.struct_mode).toBe("flat");
+    expect(d1.parse_status).toBe("parsed");
+    const p = (await pool.query(
+      `INSERT INTO pages (document_id, page_no, image_path, parse_status)
+       VALUES ($1,9,$2,'parsed') RETURNING id::text`,
+      [docId, join(docId, "pages", "p0009.png")])).rows[0].id;
+    const mkB = (type: string, content: string | null, ord: number) => pool.query(
+      `INSERT INTO blocks (page_id, block_type, bbox, crop_path, content_md, ordinal)
+       VALUES ($1,$2,'[0,0,1,1]',$3,$4,$5)`,
+      [p, type, join(docId, "blocks", `cm-${type}-${ord}.png`), content, ord]);
+    await mkB("header", "页眉", 1);
+    await mkB("text", "第一段", 2);
+    await mkB("figure", null, 3);
+    await mkB("text", "第二段", 4);
+    await mkB("footer", "页脚", 5);
+    const d2 = (await (await app.request(`/api/review/pages/${p}`)).json()) as { content_md: string };
+    expect(d2.content_md).toBe("第一段\n\n第二段");
+  });
+
+  it("GET /pages/:id：整页稿 title 块按 title_level 加 Markdown 前缀（NULL 按二级）", async () => {
+    const p = (await pool.query(
+      `INSERT INTO pages (document_id, page_no, image_path, parse_status)
+       VALUES ($1,10,$2,'parsed') RETURNING id::text`,
+      [docId, join(docId, "pages", "p0010.png")])).rows[0].id;
+    const mkT = (content: string, level: number | null, ord: number) => pool.query(
+      `INSERT INTO blocks (page_id, block_type, bbox, crop_path, content_md, ordinal, title_level)
+       VALUES ($1,'title','[0,0,1,1]',$2,$3,$4,$5)`,
+      [p, join(docId, "blocks", `tl-${ord}.png`), content, ord, level]);
+    await mkT("第一章 大标题", 1, 1);
+    await mkT("二级小节", 2, 2);
+    await pool.query(
+      `INSERT INTO blocks (page_id, block_type, bbox, crop_path, content_md, ordinal)
+       VALUES ($1,'text','[0,0,1,1]',$2,'正文段落',3)`,
+      [p, join(docId, "blocks", "tl-text.png")]);
+    await mkT("三级小点", 3, 4);
+    await mkT("未送判标题", null, 5);
+    const d = (await (await app.request(`/api/review/pages/${p}`)).json()) as { content_md: string };
+    expect(d.content_md).toBe(
+      "# 第一章 大标题\n\n## 二级小节\n\n正文段落\n\n### 三级小点\n\n## 未送判标题");
   });
 
   it("GET /pages/:id 不存在 → 404；id 非法 → 422", async () => {
@@ -410,6 +461,40 @@ maybe("review API（真库）", () => {
     expect(ok.status).toBe(200);
     expect((await pool.query("SELECT adopted_source FROM pages WHERE id=$1", [page2])).rows[0].adopted_source)
       .toBe("page_md");
+  });
+
+  it("POST /pages/:id/adopt：切换采用来源置索引过期并清 chunks；同源不动索引", async () => {
+    const flatPage = (await pool.query(
+      "SELECT id::text FROM pages WHERE document_id=$1", [flatDocId])).rows[0].id;
+    const vec = `[${"1,".repeat(1023)}1]`;
+    await pool.query(
+      `INSERT INTO chunks (chapter_id, document_id, seg_no, content_md, meta, embedding, page_no)
+       SELECT ch.id, ch.document_id, 1001, '旧chunk', '{}'::jsonb, $1::vector, 1
+       FROM chapters ch WHERE ch.document_id=$2`, [vec, flatDocId]);
+    await pool.query("UPDATE pages SET index_status='indexed' WHERE id=$1", [flatPage]);
+    const same = await app.request(`/api/review/pages/${flatPage}/adopt`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ source: "page_md" }),
+    });
+    expect(same.status).toBe(200);
+    expect((await pool.query("SELECT index_status FROM pages WHERE id=$1", [flatPage])).rows[0].index_status)
+      .toBe("indexed");
+    expect((await pool.query("SELECT count(*)::int AS n FROM chunks WHERE document_id=$1", [flatDocId])).rows[0].n)
+      .toBe(1);
+    const sw = await app.request(`/api/review/pages/${flatPage}/adopt`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ source: "blocks" }),
+    });
+    expect(sw.status).toBe(200);
+    const pg = (await pool.query(
+      "SELECT adopted_source, index_status, index_error FROM pages WHERE id=$1", [flatPage])).rows[0];
+    expect(pg).toMatchObject({ adopted_source: "blocks", index_status: "stale", index_error: null });
+    expect((await pool.query("SELECT count(*)::int AS n FROM chunks WHERE document_id=$1", [flatDocId])).rows[0].n)
+      .toBe(0);
+    const ev = await pool.query(
+      "SELECT 1 FROM pipeline_events WHERE page_id=$1 AND stage='user_edit' AND event_type='adopt'",
+      [flatPage]);
+    expect(ev.rowCount).toBeGreaterThan(0);
   });
 
   it("POST /blocks/merge：合并两块——item_blocks 重定向不重复、chunks 标 stale、origin/ordinal 正确（验收 9）", async () => {
@@ -723,6 +808,10 @@ maybe("review API（真库）", () => {
         "SELECT count(*)::int AS n FROM review_queue WHERE block_id=$1 AND status='pending'",
         [block12])).rows[0].n).toBe(0);
       expect(calls).toEqual([]);
+      // 页级复核状态收口
+      expect((await pool.query(
+        "SELECT review_status, manual_review_status FROM pages WHERE id=$1", [page1])).rows[0])
+        .toMatchObject({ review_status: "approved", manual_review_status: "approved" });
 
       const flatPage = (await pool.query(
         "SELECT id::text FROM pages WHERE document_id=$1", [flatDocId])).rows[0].id;
@@ -731,12 +820,18 @@ maybe("review API（真库）", () => {
       const body2 = await r2.json();
       expect(body2.embedded).toBe(1);
       expect(calls).toEqual([{ doc_id: flatDocId, page_no: 1 }]);
+      // flat 页 embed 成功 → 索引完成
+      expect((await pool.query("SELECT index_status FROM pages WHERE id=$1", [flatPage])).rows[0]
+        .index_status).toBe("indexed");
 
       vi.stubGlobal("fetch", async () => new Response("boom", { status: 500 }));
       const r3 = await a.request(`/api/review/pages/${flatPage}/approve`, { method: "POST" });
       expect(r3.status).toBe(200);
       const body3 = await r3.json();
       expect(body3.embed_error).toBeTruthy();
+      // embed 失败 → index_error 落库供阶段条呈现
+      expect((await pool.query("SELECT index_error FROM pages WHERE id=$1", [flatPage])).rows[0]
+        .index_error).toBeTruthy();
     } finally {
       vi.unstubAllGlobals();
     }

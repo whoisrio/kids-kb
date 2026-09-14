@@ -92,7 +92,8 @@ test("t1 页复核：页卡/页图 bbox/块编辑/整页通过（flat 页级向�
   await page.locator(".page-card").click();
   await expect(page.getByAltText("第 1 页")).toBeVisible();
   await expect(page.locator(".pd-image .bbox.has-issue")).toHaveCount(1);
-  await page.locator(".blockitem.has-issue").getByRole("button", { name: "✎ 编辑" }).click();
+  await page.locator(".blockitem.has-issue").getByRole("button", { name: /块操作/ }).click();
+  await page.getByRole("menuitem", { name: "✎ 编辑" }).click();
   await page.getByRole("textbox", { name: "编辑转录" }).fill(`${KEYWORD} 24+37=61（人工修正）`);
   await page.getByRole("button", { name: "保存" }).click();
   await expect(page.locator(".blockitem .bc")).toContainText("人工修正");
@@ -136,6 +137,43 @@ test("t2 条目 approve 即时可检索 + 试搜", async ({ page }) => {
   await page.getByPlaceholder(/语义检索/).fill(`${KEYWORD} 24+37`);
   await page.getByRole("button", { name: "检索" }).click();
   await expect(page.locator(".hits li").filter({ hasText: "24+37" }).first()).toBeVisible();
+});
+
+test("t3 复合页：解析路线切换 + 阶段条 + 整页编辑后重建索引", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "复核", exact: true }).click();
+  await page.getByRole("button", { name: "资料", exact: true }).click();
+  await page.getByRole("button", { name: "已通过页" }).click();
+  await page.getByRole("combobox", { name: "选择文档" }).selectOption(flatDocId);
+  await expect(page.locator(".page-card")).toHaveCount(1);
+  await page.locator(".page-card").click();
+  await expect(page.getByAltText("第 1 页")).toBeVisible();
+
+  // 该页采用整页版：默认落在整页解析（VLM）路线，无 bbox 覆层
+  await expect(page.getByRole("button", { name: /远端整页解析/ })).toBeVisible();
+  await expect(page.locator(".pd-image .bbox")).toHaveCount(0);
+  const stages = page.getByRole("group", { name: "处理阶段" });
+  await expect(stages).toContainText("解析 · 完成");
+  await expect(stages).toContainText("复核 · 已通过");
+  await expect(stages).toContainText("索引 · 已完成");
+
+  // 分块解析路线的整页稿视图：呈现采用口径的整页 markdown
+  await page.getByRole("button", { name: /分块解析/ }).click();
+  await page.getByRole("button", { name: "整页稿", exact: true }).click();
+  await expect(page.getByRole("region", { name: "整页稿" })).toContainText(KEYWORD);
+
+  // 修改整页稿 → 索引过期 → 出现重建入口 → 重建后完成且 chunk 内容更新
+  await page.getByRole("button", { name: /整页解析（VLM）/ }).click();
+  await page.getByRole("button", { name: "✎ 编辑整页稿" }).click();
+  await page.getByRole("textbox", { name: "编辑整页稿" }).fill(`${KEYWORD} 退位减法专项卷（改）`);
+  await page.getByRole("button", { name: "保存并过期索引" }).click();
+  await expect(stages).toContainText("索引 · 已过期");
+  await page.getByRole("button", { name: "重建索引" }).click();
+  await expect(stages).toContainText("索引 · 已完成", { timeout: 120_000 });
+  const chunks = await pool.query(
+    "SELECT content_md FROM chunks WHERE document_id=$1", [flatDocId]);
+  expect(chunks.rows.length).toBeGreaterThan(0);
+  expect(chunks.rows[0].content_md).toContain("退位减法专项卷（改）");
 });
 
 test.afterAll(async () => {

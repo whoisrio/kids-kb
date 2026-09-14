@@ -93,6 +93,24 @@ def test_approve_doc_dispatches_structured_document(monkeypatch):
     assert calls[0][1:] == ("doc1", None, "embed")
 
 
+def test_approve_doc_dispatches_heading_document(monkeypatch):
+    """heading 文档（一级标题分章）与 toc 同路：approve_items。"""
+    calls = []
+
+    def fake_approve(conn, _cfg, doc_id, chapter_no=None, client=None):
+        calls.append((conn, doc_id, chapter_no, client))
+        return {"approved": 2, "embedded": 4}
+
+    monkeypatch.setattr("kb.rag.embed.approve_items", fake_approve)
+    client = TestClient(create_internal_app(
+        get_conn=lambda: FakeConn("heading", True, True, True), cfg=object(), embed_client="embed"))
+    resp = client.post("/internal/approve-doc", json={"doc_id": "doc1"})
+
+    assert resp.status_code == 200
+    assert resp.json() == {"doc_id": "doc1", "approved": 2, "embedded": 4}
+    assert calls[0][1:] == ("doc1", None, "embed")
+
+
 def test_approve_doc_returns_404_for_missing_document():
     client = TestClient(create_internal_app(
         get_conn=lambda: FakeConn(None), cfg=object()))

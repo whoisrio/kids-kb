@@ -107,7 +107,8 @@ test("t1 合并并拆分，引用重定向且不触发模型", async ({ page }) 
   expect(chunks.rows[0]).toMatchObject({ state: "stale", source_block_ids: [merged.rows[0].id] });
 
   const before = await pool.query("SELECT count(*)::int AS n FROM llm_calls");
-  await page.getByRole("button", { name: "✎ 编辑" }).click();
+  await page.locator(".blockitem").first().getByRole("button", { name: /块操作/ }).click();
+  await page.getByRole("menuitem", { name: "✎ 编辑" }).click();
   const textarea = page.getByRole("textbox", { name: "编辑转录" });
   await expect(textarea).toHaveValue("第一行\n第二行\n第三行\n\n中文内容");
   await textarea.evaluate((element) => element.setSelectionRange(7, 7));
@@ -127,10 +128,12 @@ test("t2 删除保护：复核行阻止，解除后删除并置 item needs_revie
   const { rows: [block] } = await pool.query(
     "SELECT id::text FROM blocks WHERE page_id=$1 ORDER BY ordinal LIMIT 1", [pageId]);
   await pool.query("INSERT INTO review_queue (block_id, reason) VALUES ($1,'empty')", [block.id]);
-  await page.locator(".blockitem").first().getByRole("button", { name: "删除块" }).click();
+  await page.locator(".blockitem").first().getByRole("button", { name: /块操作/ }).click();
+  await page.getByRole("menuitem", { name: "删除块" }).click();
   await expect(page.locator(".pd-edit-bar")).toContainText("该块有复核记录");
   await pool.query("DELETE FROM review_queue WHERE block_id=$1", [block.id]);
-  await page.locator(".blockitem").first().getByRole("button", { name: "删除块" }).click();
+  await page.locator(".blockitem").first().getByRole("button", { name: /块操作/ }).click();
+  await page.getByRole("menuitem", { name: "删除块" }).click();
   await expect(page.getByText("块已删除")).toBeVisible();
   const item = await pool.query("SELECT qc_status FROM items WHERE id=$1", [itemId]);
   expect(item.rows[0].qc_status).toBe("needs_review");
@@ -176,7 +179,8 @@ test("t4 补画新框，manual 块入库并可见", async ({ page }) => {
   await page.mouse.move(bounds.x + bounds.width * 0.9, bounds.y + bounds.height * 0.9);
   await page.mouse.up();
   await expect(page.getByText("已补画新块")).toBeVisible();
-  await expect(page.locator(".bbox.manual")).toBeVisible();
+  // 新补画块自动选中：聚焦蓝框优先，补画身份由角标表达
+  await expect(page.locator(".bbox.focus")).toBeVisible();
   await expect(page.locator(".bbox-tag.manual-tag")).toBeVisible();
   // 新块在右栏出现并处于选中联动状态
   await expect(page.locator(".blockitem.selected")).toBeVisible();
@@ -198,6 +202,8 @@ test("t4 补画新框，manual 块入库并可见", async ({ page }) => {
 test("t5 左图选块右栏联动高亮，删除选中块移除补画块", async ({ page }) => {
   await openPage(page);
   // 点左图补画框 → 右栏对应块进入选中态并滚进视口
+  // 注意：补画块与布局块在页图上有重叠，必须先点它（无选中时 manual z-index 2 压过普通块；
+  // 一旦布局块被聚焦，z-index 3 会盖住补画块的点击点——重叠区改用右栏卡片点选）
   await page.locator(".bbox.manual").click();
   const selectedCard = page.locator(".blockitem.selected");
   await expect(selectedCard).toBeVisible();
@@ -210,6 +216,33 @@ test("t5 左图选块右栏联动高亮，删除选中块移除补画块", async
   const remaining = await pool.query(
     "SELECT count(*)::int AS n FROM blocks WHERE page_id=$1 AND origin='manual'", [pageId]);
   expect(remaining.rows[0].n).toBe(0);
+  // 批注输入框不是点击死区：点它也选中所属块（左右联动）
+  await page.locator(".blockitem").first().getByRole("button", { name: /块操作/ }).click();
+  await page.getByRole("menuitem", { name: "添加批注" }).click();
+  await page.locator(".blockitem").first().getByLabel(/批注/).click();
+  await expect(page.locator(".blockitem").first()).toHaveClass(/selected/);
+});
+
+test("t6 题目视图逐条确认：qc_status→approved 并即时向量化门禁生效", async ({ page }) => {
+  // 前面的用例已把页内块删光，而题目视图按「页内块 ↔ item_blocks」关联题目——
+  // 补一个新块并把既有题目挂回去，让题卡在题目视图可见
+  // crop_path 非空约束：复用仍存在的页图，裁图接口能取到文件即可
+  const { rows: [b] } = await pool.query(
+    `INSERT INTO blocks (page_id, block_type, bbox, crop_path, content_md, ordinal)
+     VALUES ($1,'text','[0,0,600,100]',$2,'确认用题块 24+37=？',10) RETURNING id::text`,
+    [pageId, `${docId}/pages/p0001.png`]);
+  await pool.query(
+    "INSERT INTO item_blocks (item_id, block_id, role) VALUES ($1,$2,'stem')", [itemId, b.id]);
+  await openPage(page);
+  await page.getByRole("button", { name: "题目视图" }).click();
+  const card = page.locator(".itemcard").first();
+  await expect(card).toBeVisible();
+  await card.getByRole("button", { name: `确认条目 ${itemId}` }).click();
+  // 确认后徽标变 approved、按钮消失，DB 同步
+  await expect(card.locator(".badge.qc-approved")).toBeVisible();
+  await expect(card.getByRole("button", { name: `确认条目 ${itemId}` })).toHaveCount(0);
+  const item = await pool.query("SELECT qc_status FROM items WHERE id=$1", [itemId]);
+  expect(item.rows[0].qc_status).toBe("approved");
 });
 
 test.afterAll(async () => {

@@ -32,10 +32,12 @@ STRUCTURE_PROMPT = (
 
 def _chapter_blocks(cur, doc_id: str, page_start: int, page_end: int) -> list[tuple]:
     """章节窗口的输入：逐页按采用版本取——adopted=page_md 的页用整页转录（单条伪块，
-    block_id 为 None 不进 item_blocks），其余页用块文本。"""
+    block_id 为 None 不进 item_blocks），其余页用块文本。被排除的页（excluded_from_index，
+    广告/目录/封面或人工排除）不进拆题窗口。"""
     cur.execute(
         """SELECT p.id, p.adopted_source, p.page_md FROM pages p
            WHERE p.document_id=%s AND p.page_no BETWEEN %s AND %s
+             AND NOT p.excluded_from_index
            ORDER BY p.page_no""",
         (doc_id, page_start, page_end),
     )
@@ -123,8 +125,12 @@ def structure_chapter(conn, cfg: Config, doc_id: str, chapter_no: int, client=No
                         recorder=recorder, stage="structure",
                         prompt=prompt, output=resp.choices[0].message.content)
         entries = _parse_json_array(resp.choices[0].message.content)
+        if isinstance(entries, dict):
+            entries = [entries]  # 模型把单条结果直接输出为对象
         n = 0
         for entry in entries:
+            if not isinstance(entry, dict):
+                continue  # 模型输出混入字符串/数字等坏条目，跳过不炸整章
             item_id = str(uuid.uuid4())
             cur.execute(
                 """INSERT INTO items (id, document_id, content_type, label, content_md,
@@ -183,7 +189,8 @@ def pair_items(conn, doc_id: str) -> int:
 def run_structure(conn, cfg: Config, doc_id: str, toc_pages: list[int] | None = None,
                   flat: bool = False, exam: bool = False, client=None) -> dict:
     """structure 编排（CLI 同款流程，可直接测试）。
-    模式判定：--flat > --exam / doc_type='exam'（试卷拆题）> --toc-pages > 自动探测目录页，探测不到回退 flat。"""
+    模式判定：--flat > --exam / doc_type='exam'（试卷拆题）> --toc-pages > 自动探测目录页
+    > 一级标题分章（heading，≥2 个 title_level=1 候选），都不行回退 flat。"""
     from kb.rag.export_md import export_chapter_mds, export_page_mds
     from kb.rag.flat import build_flat_chapter, resolve_mode
     from kb.ocr.grounding import run_grounding
@@ -242,11 +249,18 @@ def run_structure(conn, cfg: Config, doc_id: str, toc_pages: list[int] | None = 
                     (doc_id,),
                 )
 
-    n_toc = extract_toc(conn, cfg, doc_id, client=client, toc_pages=toc_pages,
-                        recorder=rec)
-    n_cal = calibrate_pages(conn, doc_id)
-    print(f"目录: {n_toc} 章入库, {n_cal} 章完成页码校准")
-    rec.decision("structure", f"目录: {n_toc} 章入库, {n_cal} 章完成页码校准")
+    if mode == "heading":
+        from kb.rag.heading_chapters import synthesize_heading_chapters
+
+        n_ch = synthesize_heading_chapters(conn, doc_id)
+        print(f"标题分章: {n_ch} 章入库（一级标题合成）")
+        rec.decision("structure", f"标题分章: {n_ch} 章入库（一级标题合成）")
+    else:
+        n_toc = extract_toc(conn, cfg, doc_id, client=client, toc_pages=toc_pages,
+                            recorder=rec)
+        n_cal = calibrate_pages(conn, doc_id)
+        print(f"目录: {n_toc} 章入库, {n_cal} 章完成页码校准")
+        rec.decision("structure", f"目录: {n_toc} 章入库, {n_cal} 章完成页码校准")
     with conn.cursor() as cur:
         cur.execute(
             "SELECT chapter_no FROM chapters WHERE document_id=%s ORDER BY chapter_no",
@@ -266,8 +280,8 @@ def run_structure(conn, cfg: Config, doc_id: str, toc_pages: list[int] | None = 
           f"接地检查新增 {run_grounding(conn, doc_id)} 条")
     rec.decision("structure", f"条目: {total} 条入库")
     with conn.cursor() as cur:
-        cur.execute("UPDATE documents SET struct_mode='toc' WHERE id=%s", (doc_id,))
+        cur.execute("UPDATE documents SET struct_mode=%s WHERE id=%s", (mode, doc_id))
     print(f"落盘: {export_page_mds(conn, cfg, doc_id)} 页 md, "
           f"{export_chapter_mds(conn, cfg, doc_id)} 章 md")
     rec.end("structure", f"拆条完成，{len(chapters)} 章 {total} 条")
-    return {"mode": "toc", "chapters": len(chapters), "items": total}
+    return {"mode": mode, "chapters": len(chapters), "items": total}

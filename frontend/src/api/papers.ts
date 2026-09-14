@@ -47,6 +47,15 @@ export interface MatchCandidate {
   label?: string | null;
   chapter?: string | null;
   doc_title?: string | null;
+  /** 题库条目的块裁图（裁图对照呈现用；无块条目为空数组，前端回退文本摘录） */
+  blocks?: ItemBlock[];
+}
+
+export interface ItemBlock {
+  block_id: string;
+  block_type: string;
+  content_md: string | null;
+  crop_url: string;
 }
 
 type FetchLike = typeof fetch;

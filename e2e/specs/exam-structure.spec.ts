@@ -110,6 +110,9 @@ test("t3 资料库三视图：全文(默认)/索引账页/OCR 分块", async ({ 
   await page.getByRole("button", { name: "页面表", exact: true }).click();
   await page.getByRole("button", { name: "查看" }).first().click();
   await expect(page.getByAltText("第 1 页")).toBeVisible();
+  // 该页采用整页版，默认落在整页解析路线；切回分块解析才见 bbox 与块列表
+  await expect(page.locator(".pd-image .bbox")).toHaveCount(0);
+  await page.getByRole("button", { name: /分块解析/ }).click();
   await expect(page.locator(".pd-image .bbox")).toHaveCount(1);
   await expect(page.locator(".blockitem")).toContainText(KEYWORD);
   await page.getByRole("button", { name: "← 返回列表" }).click();

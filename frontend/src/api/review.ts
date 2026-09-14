@@ -16,6 +16,10 @@ export interface ReviewBlock {
   items?: { id: string; label: string | null; content_type: string; role: string }[];
   annotations: { id: string; block_id: string; author: string; body: string; created_at: string; updated_at: string }[];
   origin?: string;
+  /** block_type 血缘：layout 版面检测 | vlm VLM 改判（如 text 被 VLM 确认为公式） */
+  block_type_origin?: string;
+  /** 标题层级 1/2/3（仅 title 块；NULL=未判定或非标题） */
+  title_level?: number | null;
   geometry_revision?: number;
   crop_pad?: number[];
 }
@@ -29,8 +33,11 @@ export interface BlockGeometryPreview {
 
 export interface ReviewPageDetail {
   id: string; page_no: number; doc_title: string; image_url: string;
+  doc_id: string; struct_mode: string | null; parse_status: string;
   page_md: string | null; page_md_model: string | null;
   adopted_source: "blocks" | "page_md";
+  /** 采用口径的整页 markdown（adopted=page_md 用整页稿，否则拼块跳页眉页脚） */
+  content_md: string;
   blocks: ReviewBlock[];
   page_pending: { id: string; reason: string }[];
   questions?: ReviewPageQuestion[];

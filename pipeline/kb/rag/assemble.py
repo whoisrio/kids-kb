@@ -1,7 +1,7 @@
 """章节组装：把采用版本的页内容拼成章节 markdown（完整文档产物）。
 
 content_md 非空的章（docx 等无页文档）：章稿直接取章原文。
-其余章：adopted_source=page_md 的页用远端整页稿，其余页用块文本（跳页眉页脚）按阅读序拼接。
+其余章：adopted_source=page_md 的页用远端整页稿，其余页用块文本（跳页眉页脚与被排除页）按阅读序拼接。
 """
 from __future__ import annotations
 
@@ -23,6 +23,7 @@ def assemble_chapter(conn, doc_id: str, chapter_no: int) -> str:
         cur.execute(
             """SELECT p.page_no, p.adopted_source, p.page_md, p.id FROM pages p
                WHERE p.document_id=%s AND p.page_no BETWEEN %s AND %s
+                 AND NOT p.excluded_from_index
                ORDER BY p.page_no""",
             (doc_id, row[0], row[1]),
         )

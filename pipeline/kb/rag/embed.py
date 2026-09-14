@@ -38,6 +38,10 @@ def embed_approved_items(conn, cfg: Config, doc_id: str | None = None,
                 FROM items i JOIN documents d ON d.id = i.document_id
                 WHERE i.qc_status='approved' AND i.content_md IS NOT NULL
                   AND NOT EXISTS (SELECT 1 FROM chunks c WHERE c.item_id = i.id)
+                  AND NOT EXISTS (SELECT 1 FROM item_blocks ib
+                                  JOIN blocks b ON b.id = ib.block_id
+                                  JOIN pages p ON p.id = b.page_id
+                                  WHERE ib.item_id = i.id AND p.excluded_from_index)
                 {where}""",
             params,
         )

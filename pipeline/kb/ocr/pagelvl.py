@@ -13,9 +13,14 @@ from kb.telemetry.metering import record_llm_call
 from kb.ocr.parse import transcribe_image
 
 PAGE_VLM_PROMPT = (
-    "请完整转录这一整页的内容，保持原有阅读顺序（从上到下、从左到右）。\n"
+    "请完整转录这一整页的内容，保持原有阅读顺序（从上到下、从左到右）。"
+    "直接输出转录内容，不要加任何说明性前言。\n"
     "输出干净的 markdown：标题/正文/题目直接写，数学公式、竖式、算式一律用 LaTeX"
-    "（行内 $...$，独立公式 $$...$$），只用 KaTeX 支持的命令（横线用 \\hline，禁止 \\cline）。\n"
+    "（行内 $...$，独立公式 $$...$$），只用 KaTeX 支持的命令（横线用 \\hline，禁止 \\cline，"
+    "array 列声明只用 l/c/r，禁止 @{...} 装饰符）。\n"
+    "竖式必须每个数字独占一列、\\times 等运算符独占第一列（\\begin{array}{cccc} 形式），"
+    "空位用 \\phantom{0}，待填方框用 \\boxed{\\phantom{0}}；"
+    "禁止 \\begin{array}{rl} 这类两列写法，禁止用 \\quad 或 \\, 空格凑数位对齐。\n"
     "页眉、页脚、页码、装饰图标、二维码直接忽略，不要描述它们。"
 )
 

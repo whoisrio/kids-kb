@@ -1,12 +1,17 @@
-/** 资料库 API：分页列表/详情、删除、检索和索引控制。 */
+/** 资料库 API：上传、分页列表/详情、删除、检索和索引控制。 */
+import { randomUUID } from "node:crypto";
+import { mkdir, writeFile } from "node:fs/promises";
+import { extname, join, resolve } from "node:path";
 import { Hono } from "hono";
 import type pg from "pg";
 import type { BackendConfig } from "../config.js";
+import { driveDoc } from "../library/jobs.js";
 import type { SearchHit } from "../retrieval/search.js";
 
 export interface LibraryDeps {
   pipelineUrl: string;
   search: (q: string, filters?: Record<string, string>) => Promise<SearchHit[]>;
+  fetchImpl?: typeof fetch;
 }
 
 const DOCUMENT_STATS_SQL = `
@@ -40,7 +45,9 @@ const DOCUMENT_STATS_SQL = `
               ELSE coalesce(cs.index_stale, 0) END AS index_stale,
          CASE WHEN lower(d.source_path) LIKE '%.pdf' THEN coalesce(ps.index_not_indexed, 0)
               ELSE coalesce(cs.index_not_indexed, 0) END AS index_not_indexed,
-         coalesce(ps.index_excluded, 0) AS index_excluded
+         coalesce(ps.index_excluded, 0) AS index_excluded,
+         coalesce(ps.pages_parsed, 0) AS pages_parsed,
+         coalesce(ps.pages_failed, 0) AS pages_failed
   FROM documents d
   LEFT JOIN LATERAL (
     SELECT count(*) AS total_pages,
@@ -54,7 +61,9 @@ const DOCUMENT_STATS_SQL = `
            count(*) FILTER (WHERE NOT excluded_from_index AND index_status = 'indexed') AS index_indexed,
            count(*) FILTER (WHERE NOT excluded_from_index AND index_status = 'stale') AS index_stale,
            count(*) FILTER (WHERE NOT excluded_from_index AND index_status = 'not_indexed') AS index_not_indexed,
-           count(*) FILTER (WHERE excluded_from_index) AS index_excluded
+           count(*) FILTER (WHERE excluded_from_index) AS index_excluded,
+           count(*) FILTER (WHERE parse_status = 'parsed') AS pages_parsed,
+           count(*) FILTER (WHERE parse_status = 'failed') AS pages_failed
     FROM pages WHERE document_id = d.id
   ) ps ON true
   LEFT JOIN LATERAL (
@@ -116,6 +125,43 @@ function counts(row: Record<string, unknown>) {
 
 export function libraryRoutes(pool: pg.Pool, deps: LibraryDeps, cfg: BackendConfig): Hono {
   const app = new Hono({ strict: false });
+
+  app.post("/docs", async (c) => {
+    let form: FormData;
+    try {
+      // c.req.parseBody 返回普通对象而非 FormData;raw.formData() 才是标准 FormData
+      form = await c.req.raw.formData();
+    } catch {
+      return c.json({ error: "请求体须为 multipart" }, 400);
+    }
+    const file = form.get("file");
+    if (!(file instanceof File)) return c.json({ error: "file 必填(单文件)" }, 422);
+    const ext = extname(file.name).toLowerCase();
+    if (![".pdf", ".docx", ".md"].includes(ext)) {
+      return c.json({ error: "仅支持 .pdf/.docx/.md 文件" }, 422);
+    }
+    const docType = String(form.get("doc_type") ?? "").trim() || "workbook";
+    if (!["workbook", "exam"].includes(docType)) return c.json({ error: "doc_type 非法" }, 422);
+    const title = String(form.get("title") ?? "").trim() || file.name.replace(/\.[^.]+$/, "");
+    const subject = String(form.get("subject") ?? "").trim() || null;
+
+    const docId = randomUUID();
+    const sourcePath = resolve(join(cfg.storageRoot, docId, `source${ext}`));
+    await mkdir(join(cfg.storageRoot, docId), { recursive: true });
+    await writeFile(sourcePath, new Uint8Array(await file.arrayBuffer()));
+    // 预插 pending 行:表达「待检测」窗口;pipeline 端点以 source_path 幂等接管
+    await pool.query(
+      `INSERT INTO documents (id, title, subject, doc_type, source_path, parse_status)
+       VALUES ($1,$2,$3,$4,$5,'pending')`,
+      [docId, title, subject, docType, sourcePath]);
+    void driveDoc(pool, { pipelineUrl: deps.pipelineUrl, fetchImpl: deps.fetchImpl }, docId, {
+      source_path: sourcePath, title, subject, doc_type: docType,
+    });
+    return c.json(
+      { id: docId, title, subject, doc_type: docType, parse_status: "pending" },
+      201,
+    );
+  });
 
   app.get("/", async (c) => {
     try {
@@ -194,6 +240,8 @@ export function libraryRoutes(pool: pg.Pool, deps: LibraryDeps, cfg: BackendConf
           ...doc,
           total_pages: Number(doc.total_pages),
           total_chapters: Number(doc.total_chapters),
+          pages_parsed: Number(doc.pages_parsed),
+          pages_failed: Number(doc.pages_failed),
           ...counts(doc),
         })),
         pagination: {
@@ -373,6 +421,8 @@ export function libraryRoutes(pool: pg.Pool, deps: LibraryDeps, cfg: BackendConf
         ...stat,
         total_pages: Number(stat.total_pages),
         total_chapters: Number(stat.total_chapters),
+        pages_parsed: Number(stat.pages_parsed),
+        pages_failed: Number(stat.pages_failed),
       };
       const aggregates = counts(stat);
       if (stat.file_type === "pdf") {

@@ -116,7 +116,7 @@ def embed_flat_pages(conn, cfg: Config, doc_id: str, page_no: int | None = None,
     label = "全卷"
     payloads: list[tuple[int, int, str]] = []  # (page_no, seg_idx, content)
     for pno, text in contents:
-        for i, seg in enumerate(segment_chapter(text), start=1):
+        for i, seg in enumerate(segment_chapter(text, max_chars=cfg.chunk_max_chars), start=1):
             payloads.append((pno, i, f"{label} · 第 {pno} 页\n\n{seg}"))
     if not payloads:
         with conn.transaction(), conn.cursor() as cur:
@@ -200,10 +200,14 @@ def approve_flat_pages(conn, cfg: Config, doc_id: str, client=None) -> dict:
 
 
 def resolve_mode(cur, doc_id: str, flat: bool, toc_pages: list[int] | None) -> str:
-    """structure 模式判定：显式 --flat > 显式 --toc-pages > 自动探测目录页。"""
+    """structure 模式判定：显式 --flat > 显式 --toc-pages > 自动探测目录页
+    > 一级标题分章（≥2 个 title_level=1 候选）> flat 兜底。"""
     if flat:
         return "flat"
     if toc_pages:
         return "toc"
     from kb.rag.toc import detect_toc_pages
-    return "toc" if detect_toc_pages(cur, doc_id) else "flat"
+    if detect_toc_pages(cur, doc_id):
+        return "toc"
+    from kb.rag.heading_chapters import count_h1_candidates
+    return "heading" if count_h1_candidates(cur, doc_id) >= 2 else "flat"

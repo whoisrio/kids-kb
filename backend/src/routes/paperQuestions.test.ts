@@ -143,6 +143,26 @@ maybe("paper-questions API（真库）", () => {
     expect(candidates[0].vec_score).toBeGreaterThan(0.88);
   });
 
+  it("candidates:候选带题库条目块裁图(供裁图对照呈现);无块 item 给空数组", async () => {
+    const PAGE = "44444444-4444-4444-4444-444444444444";
+    const BLOCK = "55555555-5555-5555-5555-555555555555";
+    await pool.query(
+      "INSERT INTO pages (id, document_id, page_no, image_path) VALUES ($1,$2,1,'p.png')", [PAGE, DOC]);
+    await pool.query(
+      "INSERT INTO blocks (id, page_id, block_type, crop_path, content_md, ordinal) VALUES ($1,$2,'text','c.png','135 ÷ 5 =',1)",
+      [BLOCK, PAGE]);
+    await pool.query(
+      "INSERT INTO item_blocks (item_id, block_id, role) VALUES ($1,$2,'stem')", [ITEM, BLOCK]);
+    const r = await app.request(`/api/paper-questions/${q1}/candidates`);
+    expect(r.status).toBe(200);
+    const { candidates } = await r.json();
+    const hit = candidates.find((c: { item_id: string }) => c.item_id === ITEM);
+    expect(hit.blocks).toMatchObject([{
+      block_id: BLOCK, block_type: "text", content_md: "135 ÷ 5 =",
+      crop_url: `/api/review/blocks/${BLOCK}/crop`,
+    }]);
+  });
+
   it("GET /:id/image：相对路径经 resolveStoragePath 解析（不再读原始绝对路径）", async () => {
     const { mkdirSync, writeFileSync } = await import("node:fs");
     const { join } = await import("node:path");

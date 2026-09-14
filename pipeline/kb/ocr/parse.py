@@ -15,14 +15,50 @@ from kb.telemetry.metering import record_llm_call
 
 TRANSCRIBE_PROMPT = (
     "请完整转录这张页面上的所有文字内容，保持原有阅读顺序"
-    "（从上到下、从左到右）。\n"
+    "（从上到下、从左到右）。直接输出转录内容，不要加任何说明性前言。\n"
     "不要丢失也不要编造页面上没有的内容；"
     "如果页面含多个栏块，请按顺序逐块列出。\n"
     "特别注意：如果内容包含数学公式、表达式、算式、符号等，"
     "必须一律使用 LaTeX 表达--行内公式用 $...$，独立公式块用 $$...$$，"
     "公式必须能被 KaTeX 渲染：只用常见命令，禁止用 \\cline、\\textcircled、\\rule "
-    "（横线用 \\hline，圈起来的字符用 \\boxed{}）。"
+    "（横线用 \\hline，圈起来的字符用 \\boxed{}）；"
+    "array 列声明只用 l/c/r，禁止 @{...} 装饰符。\n"
+    "竖式（乘/除/加/减竖式）必须每个数字独占一列、\\times 等运算符独占第一列，例如"
+    " 376×85 写成：$$\\begin{array}{cccc} & 3 & 7 & 6 \\\\ \\times & & 8 & 5 \\\\ \\hline"
+    " & 1 & 8 & 8 \\\\ 3 & 0 & 0 & 8 \\\\ \\hline 3 & 1 & 9 & 6 \\end{array}$$；"
+    "空位用 \\phantom{0}，待填方框用 \\boxed{\\phantom{0}}；"
+    "禁止 \\begin{array}{rl} 这类两列写法，禁止用 \\quad 或 \\, 空格凑数位对齐。"
 )
+
+# OCR 疑似公式升级 VLM 时的专用 prompt：先判类型再转录。
+# 版面检测（PP-DocLayout）漏判的公式块在升级转录时顺手改判为 formula（block_type_origin='vlm'）。
+FORMULA_CHECK_PROMPT = (
+    "这张图疑似包含数学内容，先判断主体类型：如果整块主体是数学公式、算式或竖式"
+    "（哪怕整块只有一行 $$…$$ 也算），第一行只输出 [FORMULA]；"
+    "只有当公式只是行文段落的附属时，第一行才输出 [TEXT]。\n"
+    "从第二行开始按以下要求转录：" + TRANSCRIBE_PROMPT +
+    "\n重申：第一行必须是 [FORMULA] 或 [TEXT] 类型标记，转录内容从第二行开始。"
+)
+
+_TYPE_MARKER_RE = re.compile(r"\s*\[(FORMULA|TEXT)\]\s*\n?", re.IGNORECASE)
+
+
+def split_type_marker(content: str) -> tuple[bool, str]:
+    """剥掉 VLM 输出的首行类型标记，返回 (is_formula, 转录正文)；无标记原样返回。"""
+    m = _TYPE_MARKER_RE.match(content or "")
+    if not m:
+        return False, content
+    return m.group(1).upper() == "FORMULA", content[m.end():].strip()
+
+
+def is_pure_display_math(content: str) -> bool:
+    """转录整体就是一个独立公式块（单个 $$…$$、无其他文字）。
+    VLM 判型可能漏判，这是确定性兜底——整块都是 LaTeX 时语义上就是 formula。"""
+    s = (content or "").strip()
+    if not (s.startswith("$$") and s.endswith("$$") and len(s) > 4):
+        return False
+    inner = s[2:-2]
+    return "$$" not in inner and bool(inner.strip())
 
 
 _THINK_PAIR_RE = re.compile(r"<think>.*?</think>", re.DOTALL | re.IGNORECASE)
@@ -111,6 +147,26 @@ def starred_math(content: str) -> bool:
         return False
     return sum(1 for line in content.splitlines() if _MATH_MARK_RE.search(line)) >= 2
 
+
+_MATHY_LINE_RE = re.compile(r"\d\s*[=＝+×xX*÷/^]|[=＝+×÷]\s*\d|[¹²³⁰⁴⁵⁶⁷⁸⁹√π]")
+_PURE_DIGIT_LINE_RE = re.compile(r"[\d\s.]+")
+
+
+def mathy_text(content: str) -> bool:
+    """OCR 文本疑似含算式/公式（等式、数字紧贴运算符、上下标/根号字符）。
+    rapidocr 不产 LaTeX，疑似公式必须升级 VLM，满足「公式一律 LaTeX」口径；
+    starred_math 只认竖式星号占位，这里覆盖单行等式、丢上标等更常见的失真。
+    竖式被剥掉运算符/方框后剩多行纯数字碎片（如 "285\\n1\\n2\\n9"）也算。"""
+    if not content:
+        return False
+    lines = content.splitlines()
+    if any(_MATHY_LINE_RE.search(line) for line in lines):
+        return True
+    return sum(
+        1 for line in lines
+        if line.strip() and _PURE_DIGIT_LINE_RE.fullmatch(line)
+    ) >= 2
+
 _ocr_engine = None
 
 
@@ -151,16 +207,33 @@ def run_parse(conn, cfg: Config, doc_id: str, client=None, ocr=None,
             try:
                 if block_type in _OCRABLE_TYPES:
                     text, source, usage = ocr(crop_path), "rapidocr", (None, None)
-                    # OCR 把竖式拍成星号，或对浅色文字返回空 -> 升级视觉模型
-                    if starred_math(text) or not text.strip():
+                    # OCR 把竖式拍成星号、疑似含公式/算式，或对浅色文字返回空 -> 升级视觉模型
+                    # （与调框/补画重识别同一判定，保证初始解析也能产出 LaTeX）
+                    if starred_math(text) or mathy_text(text) or not text.strip():
                         t0 = time.monotonic()
-                        text, usage = transcribe_image(client, cfg.vision_model, crop_path)
+                        raw, usage = transcribe_image(
+                            client, cfg.vision_model, crop_path, prompt=FORMULA_CHECK_PROMPT)
+                        is_formula, text = split_type_marker(raw)
+                        # VLM 判型可能漏判：转录整体就是一个 $$…$$ 块时确定性兜底
+                        is_formula = is_formula or is_pure_display_math(text)
                         source = cfg.vision_model
                         record_llm_call(
                             conn, doc_id, "transcribe", cfg.vision_model, usage,
                             recorder=recorder, stage="parse", page_id=str(page_id),
                             duration_ms=int((time.monotonic() - t0) * 1000),
-                            prompt=TRANSCRIBE_PROMPT, output=text)
+                            prompt=FORMULA_CHECK_PROMPT, output=raw)
+                        if is_formula and block_type in ("text", "title"):
+                            # VLM 确认整块是公式：改判 block_type 并记血缘，复核页可见「VLM改判」。
+                            # header/footer 是页眉页脚（页码常被 VLM 包成 $$2$$），不改判。
+                            cur.execute(
+                                "UPDATE blocks SET block_type='formula',"
+                                " block_type_origin='vlm' WHERE id=%s",
+                                (block_id,))
+                            if recorder is not None:
+                                recorder.decision(
+                                    "parse",
+                                    f"VLM 改判 {block_type}→formula {str(block_id)[:8]}",
+                                    page_id=str(page_id))
                 else:
                     t0 = time.monotonic()
                     text, usage = transcribe_image(client, cfg.vision_model, crop_path)
@@ -170,6 +243,17 @@ def run_parse(conn, cfg: Config, doc_id: str, client=None, ocr=None,
                         recorder=recorder, stage="parse", page_id=str(page_id),
                         duration_ms=int((time.monotonic() - t0) * 1000),
                         prompt=TRANSCRIBE_PROMPT, output=text)
+                    # 版面常把竖式/算式误判成 figure：VLM 转录整体是 $$…$$ 时改判 formula
+                    if block_type == "figure" and is_pure_display_math(text):
+                        cur.execute(
+                            "UPDATE blocks SET block_type='formula',"
+                            " block_type_origin='vlm' WHERE id=%s",
+                            (block_id,))
+                        if recorder is not None:
+                            recorder.decision(
+                                "parse",
+                                f"VLM 改判 figure→formula {str(block_id)[:8]}",
+                                page_id=str(page_id))
             except Exception as e:  # noqa: BLE001 - 单块失败不中断
                 if recorder is not None:
                     recorder.error("parse", f"块转录失败: {str(e)[:200]}",

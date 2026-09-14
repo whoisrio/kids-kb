@@ -121,7 +121,30 @@ export function paperQuestionsRoutes(pool: pg.Pool, deps: PaperJobDeps, storageR
       if (!q) return c.json({ error: "题目不存在" }, 404);
       const { candidates } = await matchQuestion(
         pool, { embed: deps.embed, rerank: deps.rerank }, q.content_md, q.subject, deps.matchThreshold);
-      return c.json({ candidates });
+      // 比对呈现是裁图对照：候选带上题库条目的块裁图（无块 item 给空数组，前端回退文本）
+      const itemIds = candidates.map((h) => h.item_id).filter((x): x is string => Boolean(x));
+      const blocksByItem = new Map<string, unknown[]>();
+      if (itemIds.length) {
+        const { rows: blockRows } = await pool.query(
+          `SELECT ib.item_id::text, b.id::text AS block_id, b.block_type, b.content_md
+           FROM item_blocks ib
+           JOIN blocks b ON b.id = ib.block_id
+           JOIN pages p ON p.id = b.page_id
+           WHERE ib.item_id = ANY($1::uuid[])
+           ORDER BY p.page_no, b.ordinal`, [itemIds]);
+        for (const r of blockRows) {
+          if (!blocksByItem.has(r.item_id)) blocksByItem.set(r.item_id, []);
+          blocksByItem.get(r.item_id)!.push({
+            block_id: r.block_id, block_type: r.block_type, content_md: r.content_md,
+            crop_url: `/api/review/blocks/${r.block_id}/crop`,
+          });
+        }
+      }
+      return c.json({
+        candidates: candidates.map((h) => ({
+          ...h, blocks: blocksByItem.get(h.item_id ?? "") ?? [],
+        })),
+      });
     } catch (err) {
       return invalidId(c, err) ?? ((err as { code?: string })?.code === "23503"
         ? c.json({ error: "item_id 不存在" }, 404) : (() => { throw err; })());

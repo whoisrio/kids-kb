@@ -68,6 +68,14 @@ class BlockCreateRequest(BaseModel):
     block_type: str = "text"
 
 
+class IngestDocRequest(BaseModel):
+    source_path: str
+    title: str
+    subject: str | None = None
+    grade: str | None = None
+    doc_type: str = "workbook"
+
+
 def create_internal_app(reranker_factory=None, get_conn=None, cfg=None,
                         vlm_client=None, embed_client=None) -> FastAPI:
     """reranker_factory / get_conn / cfg / vlm_client 均可注入假实现；默认懒加载真实依赖。"""
@@ -127,6 +135,47 @@ def create_internal_app(reranker_factory=None, get_conn=None, cfg=None,
             raise HTTPException(status_code=500, detail=str(e)) from e
         finally:
             conn.close()
+
+    @app.post("/internal/ingest-doc")
+    def ingest_doc_ep(body: IngestDocRequest):
+        """资料库上传入库：documents 行由 TS 预插(parse_status='pending')，本端点按扩展名
+        分流(pdf/docx/md 均以 source_path 为幂等键复用该行)并推进 doc 级 parse_status。"""
+        with conn_ctx() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT id FROM documents WHERE source_path=%s", (body.source_path,))
+                row = cur.fetchone()
+            if not row:
+                raise HTTPException(status_code=404, detail="documents 行不存在(需先按 source_path 预插)")
+            doc_id = str(row[0])
+            lower = body.source_path.lower()
+            if not lower.endswith((".pdf", ".docx", ".md")):
+                raise HTTPException(status_code=422, detail=f"不支持的文件类型: {body.source_path}")
+            with conn.cursor() as cur:
+                cur.execute("UPDATE documents SET parse_status='parsing' WHERE id=%s", (doc_id,))
+            try:
+                if lower.endswith(".pdf"):
+                    from kb.pdf_ingest import ingest
+                    ingest(conn, _cfg(), body.source_path, body.title,
+                           subject=body.subject, grade=body.grade,
+                           doc_type=body.doc_type, client=vlm_client)
+                elif lower.endswith(".docx"):
+                    from kb.rag.docx_ingest import ingest_docx
+                    ingest_docx(conn, _cfg(), body.source_path, body.title,
+                                subject=body.subject, grade=body.grade,
+                                doc_type=body.doc_type, client=embed_client)
+                else:
+                    from kb.rag.text_ingest import ingest_md
+                    ingest_md(conn, _cfg(), body.source_path, body.title,
+                              subject=body.subject, grade=body.grade,
+                              doc_type=body.doc_type, client=embed_client)
+            except Exception as e:
+                # 失败置 failed 并透传真实原因:TS 侧据此呈现「检测失败」
+                with conn.cursor() as cur:
+                    cur.execute("UPDATE documents SET parse_status='failed' WHERE id=%s", (doc_id,))
+                raise HTTPException(status_code=500, detail=str(e)) from e
+            with conn.cursor() as cur:
+                cur.execute("UPDATE documents SET parse_status='parsed' WHERE id=%s", (doc_id,))
+            return {"doc_id": doc_id, "parse_status": "parsed"}
 
     @app.post("/internal/recognize-page")
     def recognize_page_ep(body: RecognizePageRequest):
@@ -259,7 +308,7 @@ def create_internal_app(reranker_factory=None, get_conn=None, cfg=None,
                             status_code=409,
                             detail="文档没有可入库内容，请重新上传或检查源文件",
                         )
-                elif struct_mode in ("toc", "exam"):
+                elif struct_mode in ("toc", "exam", "heading"):
                     from kb.rag.embed import approve_items
                     out = approve_items(conn, _cfg(), body.doc_id, client=embed_client)
                     with conn.cursor() as cur:
@@ -345,7 +394,8 @@ def create_internal_app(reranker_factory=None, get_conn=None, cfg=None,
                 return {"page_id": page_id, "page_no": page_no, "chunks": []}
             sources = page_source_blocks(cur, doc_id).get(page_no, [])
             chunks = []
-            for seq, seg in enumerate(segment_chapter(contents[page_no]), start=1):
+            for seq, seg in enumerate(
+                    segment_chapter(contents[page_no], max_chars=cfg.chunk_max_chars), start=1):
                 chunks.append({
                     "seq": seq, "page_no": page_no,
                     "source_block_ids": sources,
@@ -374,8 +424,12 @@ def create_internal_app(reranker_factory=None, get_conn=None, cfg=None,
                     cur.execute(
                         """DELETE FROM chunks WHERE document_id=%s AND (
                              page_no=%s OR source_block_ids && ARRAY(
-                                 SELECT id FROM blocks WHERE page_id=%s))""",
-                        (doc_id, page_no, body.page_id),
+                                 SELECT id FROM blocks WHERE page_id=%s)
+                             OR item_id IN (
+                                 SELECT ib.item_id FROM item_blocks ib
+                                 JOIN blocks b ON b.id = ib.block_id
+                                 WHERE b.page_id=%s))""",
+                        (doc_id, page_no, body.page_id, body.page_id),
                     )
                     deleted_chunks = cur.rowcount
                     if struct_mode == "flat":
